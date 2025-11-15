@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
+const SuperAdmin = require('../model/superAdminSchema');
 
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
 
@@ -12,11 +13,24 @@ const authMiddleware = (req, res, next) => {
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        if (decoded.email !== 'admin@society.com' || decoded.role !== 'admin') {
-            return res.status(403).json({ message: 'Access denied: Not an admin' });
+        if (!decoded?.id || decoded.role !== 'super_admin') {
+            return res.status(403).json({ message: 'Access denied' });
         }
 
-        req.user = decoded;
+        const superAdmin = await SuperAdmin.findById(decoded.id).select('-password');
+
+        if (!superAdmin) {
+            return res.status(401).json({ message: 'Unauthorized: user not found' });
+        }
+
+        req.user = {
+            id: superAdmin._id,
+            fullName: superAdmin.fullName,
+            email: superAdmin.email,
+            phoneNumber: superAdmin.phoneNumber,
+            role: decoded.role,
+        };
+
         next();
         
     } catch (error) {

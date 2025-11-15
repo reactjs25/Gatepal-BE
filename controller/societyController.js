@@ -1,6 +1,13 @@
 const Society = require('../model/societySchema');
 
-const createSociety = async (req, res) => {
+const createHttpError = (message, statusCode = 500) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.publicMessage = message;
+  return error;
+};
+
+const createSociety = async (req, res, next) => {
   try {
     const {
       societyName,
@@ -17,11 +24,20 @@ const createSociety = async (req, res) => {
       entryGates,
       exitGates,
       societyAdmins,
-      engagement,
+      engagement: engagementInput,
     } = req.body;
 
-    let gst = engagement.gst || engagement.baseRate * 0.18;
-    let total = engagement.total || engagement.baseRate + gst;
+    const engagement = engagementInput || {};
+    let gst = engagement.gst;
+    let total = engagement.total;
+
+    if (gst === undefined && engagement.baseRate !== undefined) {
+      gst = engagement.baseRate * 0.18;
+    }
+
+    if (total === undefined && engagement.baseRate !== undefined) {
+      total = engagement.baseRate + (gst !== undefined ? gst : 0);
+    }
 
     const newSociety = new Society({
       societyName,
@@ -48,38 +64,41 @@ const createSociety = async (req, res) => {
     await newSociety.save();
     res.status(201).json({ message: 'Society created successfully', data: newSociety });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to create society', error: error.message });
+    error.statusCode = error.statusCode || 500;
+    error.publicMessage = error.publicMessage || 'Failed to create society';
+    next(error);
   }
 };
 
-const getAllSociety = async (req, res) => {
+const getAllSociety = async (req, res, next) => {
   try {
     const societies = await Society.find();
     res.status(200).json({ message: 'Societies fetched successfully', data: societies });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to fetch societies', error: error.message });
+    error.statusCode = error.statusCode || 500;
+    error.publicMessage = error.publicMessage || 'Failed to fetch societies';
+    next(error);
   }
 };
 
-const getSocietyById = async (req, res) => {
+const getSocietyById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const society = await Society.findById(id);
 
     if (!society) {
-      return res.status(404).json({ message: 'Society not found' });
+      return next(createHttpError('Society not found', 404));
     }
 
     res.status(200).json({ message: 'Society fetched successfully', data: society });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to fetch society', error: error.message });
+    error.statusCode = error.statusCode || 500;
+    error.publicMessage = error.publicMessage || 'Failed to fetch society';
+    next(error);
   }
 };
 
-const updateSocietyById = async (req, res) => {
+const updateSocietyById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { engagement, ...rest } = req.body;
@@ -111,23 +130,24 @@ const updateSocietyById = async (req, res) => {
     });
 
     if (!updatedSociety) {
-      return res.status(404).json({ message: 'Society not found' });
+      return next(createHttpError('Society not found', 404));
     }
 
     res.status(200).json({ message: 'Society updated successfully', data: updatedSociety });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to update society', error: error.message });
+    error.statusCode = error.statusCode || 500;
+    error.publicMessage = error.publicMessage || 'Failed to update society';
+    next(error);
   }
 };
 
-const toggleSocietyStatus = async (req, res) => {
+const toggleSocietyStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
     const society = await Society.findById(id);
 
     if (!society) {
-      return res.status(404).json({ message: 'Society not found' });
+      return next(createHttpError('Society not found', 404));
     }
 
     society.status = society.status === 'Active' ? 'Inactive' : 'Active';
@@ -135,8 +155,9 @@ const toggleSocietyStatus = async (req, res) => {
 
     res.status(200).json({ message: `Society status updated to ${society.status}`, data: society });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to toggle society status', error: error.message });
+    error.statusCode = error.statusCode || 500;
+    error.publicMessage = error.publicMessage || 'Failed to toggle society status';
+    next(error);
   }
 };
 

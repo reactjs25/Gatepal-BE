@@ -20,6 +20,9 @@ const societyAdminSchema = new mongoose.Schema(
         mobile: { type: String, required: true },
         email: { type: String, required: true },
         status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
+        password: { type: String },
+        resetPasswordToken: { type: String, default: null },
+        resetPasswordExpires: { type: Date, default: null },
     },
     { timestamps: true }
 );

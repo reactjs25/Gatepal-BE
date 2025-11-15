@@ -5,6 +5,8 @@ const connectToDb = require('./connectToDb/connectToDb');
 const authRoutes = require('./routes/authRoutes');
 const societyRoutes = require('./routes/societyRoutes');
 const societyAdminRoutes = require('./routes/societyAdminRoutes');
+const systemRoutes = require('./routes/systemRoutes');
+const errorHandler = require('./middleware/errorHandler');
 
 dotenv.config();
 
@@ -23,6 +25,15 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/society', societyRoutes);
 app.use('/api/society-admin', societyAdminRoutes);
+app.use('/api/system', systemRoutes);
+
+app.use((req, res, next) => {
+  const notFoundError = new Error(`Route ${req.originalUrl} not found`);
+  notFoundError.statusCode = 404;
+  next(notFoundError);
+});
+
+app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
