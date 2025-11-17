@@ -39,6 +39,37 @@ const createSociety = async (req, res, next) => {
       total = engagement.baseRate + (gst !== undefined ? gst : 0);
     }
 
+    // Validate duplicate email and mobile for admins
+    if (societyAdmins && Array.isArray(societyAdmins) && societyAdmins.length > 0) {
+      const allSocieties = await Society.find({});
+      
+      for (const admin of societyAdmins) {
+        if (admin.email) {
+          const normalizedEmail = admin.email.trim().toLowerCase();
+          for (const checkSociety of allSocieties) {
+            const duplicateEmail = checkSociety.societyAdmins.find(
+              (a) => a.email && a.email.toLowerCase() === normalizedEmail
+            );
+            if (duplicateEmail) {
+              return next(createHttpError(`An admin with email ${admin.email} already exists in ${checkSociety.societyName}`, 409));
+            }
+          }
+        }
+        
+        if (admin.mobile) {
+          const normalizedMobile = admin.mobile.trim().replace(/\D/g, '');
+          for (const checkSociety of allSocieties) {
+            const duplicateMobile = checkSociety.societyAdmins.find(
+              (a) => a.mobile && a.mobile.replace(/\D/g, '') === normalizedMobile
+            );
+            if (duplicateMobile) {
+              return next(createHttpError(`An admin with mobile number ${admin.mobile} already exists in ${checkSociety.societyName}`, 409));
+            }
+          }
+        }
+      }
+    }
+
     const newSociety = new Society({
       societyName,
       societyPin,
@@ -101,7 +132,7 @@ const getSocietyById = async (req, res, next) => {
 const updateSocietyById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { engagement, ...rest } = req.body;
+    const { engagement, societyAdmins, ...rest } = req.body;
 
     const updates = { ...rest };
 
@@ -122,6 +153,47 @@ const updateSocietyById = async (req, res, next) => {
         ...(gst !== undefined ? { gst } : {}),
         ...(total !== undefined ? { total } : {}),
       };
+    }
+
+    // Validate duplicate email and mobile for admins if societyAdmins is being updated
+    if (societyAdmins && Array.isArray(societyAdmins) && societyAdmins.length > 0) {
+      const allSocieties = await Society.find({});
+      
+      for (const admin of societyAdmins) {
+        if (admin.email) {
+          const normalizedEmail = admin.email.trim().toLowerCase();
+          for (const checkSociety of allSocieties) {
+            // Skip current society when checking
+            if (checkSociety._id.toString() === id) {
+              continue;
+            }
+            const duplicateEmail = checkSociety.societyAdmins.find(
+              (a) => a.email && a.email.toLowerCase() === normalizedEmail
+            );
+            if (duplicateEmail) {
+              return next(createHttpError(`An admin with email ${admin.email} already exists in ${checkSociety.societyName}`, 409));
+            }
+          }
+        }
+        
+        if (admin.mobile) {
+          const normalizedMobile = admin.mobile.trim().replace(/\D/g, '');
+          for (const checkSociety of allSocieties) {
+            // Skip current society when checking
+            if (checkSociety._id.toString() === id) {
+              continue;
+            }
+            const duplicateMobile = checkSociety.societyAdmins.find(
+              (a) => a.mobile && a.mobile.replace(/\D/g, '') === normalizedMobile
+            );
+            if (duplicateMobile) {
+              return next(createHttpError(`An admin with mobile number ${admin.mobile} already exists in ${checkSociety.societyName}`, 409));
+            }
+          }
+        }
+      }
+      
+      updates.societyAdmins = societyAdmins;
     }
 
     const updatedSociety = await Society.findByIdAndUpdate(id, updates, {

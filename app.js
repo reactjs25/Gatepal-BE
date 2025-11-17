@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const connectToDb = require('./connectToDb/connectToDb');
 const authRoutes = require('./routes/authRoutes');
+const registrationRoutes = require('./routes/registrationRoutes');
 const societyRoutes = require('./routes/societyRoutes');
 const societyAdminRoutes = require('./routes/societyAdminRoutes');
 const systemRoutes = require('./routes/systemRoutes');
@@ -23,6 +24,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/registration', registrationRoutes);
 app.use('/api/society', societyRoutes);
 app.use('/api/society-admin', societyAdminRoutes);
 app.use('/api/system', systemRoutes);

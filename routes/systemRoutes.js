@@ -15,3 +15,5 @@ router.post('/diagnostics/alert', authMiddleware, triggerAlertEmail);
 module.exports = router;
 
 
+
+

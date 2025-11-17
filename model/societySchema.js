@@ -17,8 +17,8 @@ const gateSchema = new mongoose.Schema({
 const societyAdminSchema = new mongoose.Schema(
     {
         name: { type: String, required: true },
-        mobile: { type: String, required: true },
-        email: { type: String, required: true },
+        mobile: { type: String, required: true, unique: true },
+        email: { type: String, required: true, unique: true },
         status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
         password: { type: String },
         resetPasswordToken: { type: String, default: null },
