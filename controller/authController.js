@@ -108,9 +108,7 @@ const forgotPassword = async (req, res, next) => {
     const superAdmin = await SuperAdmin.findOne({ email: email.toLowerCase() });
 
     if (!superAdmin) {
-      return res.status(200).json({
-        message: 'If the email exists, a password reset link has been sent',
-      });
+      return next(createHttpError('No account found with this email address', 404));
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
