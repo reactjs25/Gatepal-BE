@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { logError } = require('../utils/errorLogger');
 const { sendSystemAlertEmail } = require('../utils/systemAlertEmail');
+const { countryCityData } = require('../utils/countryCityData');
 
 const mapReadyState = (state) => {
   switch (state) {
@@ -89,9 +90,18 @@ const triggerAlertEmail = async (req, res, next) => {
   }
 };
 
+const getCountryCityOptions = async (req, res) => {
+  res.status(200).json({
+    success: true,
+    data: countryCityData,
+    timestamp: new Date().toISOString(),
+  });
+};
+
 module.exports = {
   healthCheck,
   logTestError,
   triggerAlertEmail,
+  getCountryCityOptions,
 };
 

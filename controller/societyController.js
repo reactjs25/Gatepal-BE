@@ -7,11 +7,36 @@ const createHttpError = (message, statusCode = 500) => {
   return error;
 };
 
+const PIN_MIN = 100000;
+const PIN_MAX = 999999;
+
+const generateCandidatePin = () =>
+  Math.floor(Math.random() * (PIN_MAX - PIN_MIN + 1)) + PIN_MIN;
+
+const generateUniqueSocietyPin = async () => {
+  const maxAttempts = 25;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const candidate = generateCandidatePin().toString();
+    const exists = await Society.exists({ societyPin: candidate });
+    if (!exists) {
+      return candidate;
+    }
+  }
+
+  const fallback = `${Date.now()}`;
+  const fallbackExists = await Society.exists({ societyPin: fallback });
+  if (!fallbackExists) {
+    return fallback;
+  }
+
+  throw createHttpError('Unable to generate a unique Society PIN. Please try again later.', 500);
+};
+
 const createSociety = async (req, res, next) => {
   try {
     const {
       societyName,
-      societyPin,
       address,
       city,
       country,
@@ -70,9 +95,22 @@ const createSociety = async (req, res, next) => {
       }
     }
 
+    const requestedPin =
+      typeof req.body.societyPin === 'string' ? req.body.societyPin.trim() : '';
+
+    let societyPinToUse = requestedPin;
+    if (!societyPinToUse) {
+      societyPinToUse = await generateUniqueSocietyPin();
+    } else {
+      const duplicatePin = await Society.exists({ societyPin: societyPinToUse });
+      if (duplicatePin) {
+        societyPinToUse = await generateUniqueSocietyPin();
+      }
+    }
+
     const newSociety = new Society({
       societyName,
-      societyPin,
+      societyPin: societyPinToUse,
       address,
       city,
       country,

@@ -16,7 +16,7 @@ const gateSchema = new mongoose.Schema({
 
 const societyAdminSchema = new mongoose.Schema(
     {
-        name: { type: String, required: true },
+        name: { type: String, required: true, trim: true, maxlength: 150 },
         mobile: { type: String, required: true, unique: true },
         email: { type: String, required: true, unique: true },
         status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
@@ -42,8 +42,8 @@ const societySchema = new mongoose.Schema(
         address: { type: String, required: true },
         city: { type: String, required: true },
         country: { type: String, required: true },
-        latitude: { type: Number, required: true },
-        longitude: { type: Number, required: true },
+        latitude: { type: Number, default: null },
+        longitude: { type: Number, default: null },
         status: { type: String, enum: ['Active', 'Inactive', 'Trial'], default: 'Active' },
         maintenanceDueDate: { type: Number, required: true },
         notes: { type: String },
