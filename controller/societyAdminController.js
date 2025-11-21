@@ -1,17 +1,9 @@
 const crypto = require('crypto');
-const bcrypt = require('bcrypt');
 const Society = require('../model/societySchema');
 const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
+const { createHttpError } = require('../utils/httpError');
 
-const SALT_ROUNDS = 10;
 const RESET_LINK_EXPIRY_MS = 60 * 60 * 1000;
-
-const createHttpError = (message, statusCode = 500) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.publicMessage = message;
-  return error;
-};
 
 const formatDate = (value) => {
   if (!value) {
@@ -59,9 +51,9 @@ const createSocietyAdmin = async (req, res, next) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const normalizedMobile = mobile.trim().replace(/\D/g, ''); // Remove non-digits for comparison
+    const normalizedMobile = mobile.trim().replace(/\D/g, '');
 
-    // Check for duplicate email across all societies
+
     const duplicateEmailAdmin = await Society.findOne({
       'societyAdmins.email': normalizedEmail,
     });
@@ -70,8 +62,7 @@ const createSocietyAdmin = async (req, res, next) => {
       return next(createHttpError('An admin with this email already exists in another society', 409));
     }
 
-    // Check for duplicate mobile across all societies
-    // We need to check all societies and normalize mobile numbers for comparison
+
     const allSocieties = await Society.find({});
     for (const checkSociety of allSocieties) {
       const duplicateMobile = checkSociety.societyAdmins.find(
@@ -82,9 +73,8 @@ const createSocietyAdmin = async (req, res, next) => {
       }
     }
 
-    // Check for duplicates within the same society
     const duplicateInSociety = society.societyAdmins.find(
-      (admin) => 
+      (admin) =>
         admin.email?.toLowerCase() === normalizedEmail ||
         admin.mobile?.replace(/\D/g, '') === normalizedMobile
     );
@@ -192,19 +182,18 @@ const updateSocietyAdmin = async (req, res, next) => {
       return next(createHttpError('Society admin not found', 404));
     }
 
-    // Check for duplicate email if email is being updated
+
     if (email !== undefined) {
       const normalizedEmail = email.trim().toLowerCase();
       const duplicateEmailAdmin = await Society.findOne({
         'societyAdmins.email': normalizedEmail,
-        'societyAdmins._id': { $ne: adminId }, // Exclude current admin
+        'societyAdmins._id': { $ne: adminId },
       });
 
       if (duplicateEmailAdmin) {
         return next(createHttpError('An admin with this email already exists in another society', 409));
       }
 
-      // Check within same society (excluding current admin)
       const duplicateInSociety = society.societyAdmins.find(
         (a) => a._id.toString() !== adminId && a.email?.toLowerCase() === normalizedEmail
       );
@@ -216,28 +205,25 @@ const updateSocietyAdmin = async (req, res, next) => {
       admin.email = normalizedEmail;
     }
 
-    // Check for duplicate mobile if mobile is being updated
     if (mobile !== undefined) {
       const normalizedMobile = mobile.trim().replace(/\D/g, '');
-      
-      // Check across all societies
+
       const allSocieties = await Society.find({});
       for (const checkSociety of allSocieties) {
         const duplicateMobile = checkSociety.societyAdmins.find(
-          (a) => a._id.toString() !== adminId && 
-                 a.mobile && 
-                 a.mobile.replace(/\D/g, '') === normalizedMobile
+          (a) => a._id.toString() !== adminId &&
+            a.mobile &&
+            a.mobile.replace(/\D/g, '') === normalizedMobile
         );
         if (duplicateMobile) {
           return next(createHttpError(`An admin with this mobile number already exists in ${checkSociety.societyName}`, 409));
         }
       }
 
-      // Check within same society (excluding current admin)
       const duplicateInSociety = society.societyAdmins.find(
-        (a) => a._id.toString() !== adminId && 
-               a.mobile && 
-               a.mobile.replace(/\D/g, '') === normalizedMobile
+        (a) => a._id.toString() !== adminId &&
+          a.mobile &&
+          a.mobile.replace(/\D/g, '') === normalizedMobile
       );
 
       if (duplicateInSociety) {
@@ -386,56 +372,6 @@ const requestSocietyAdminPasswordReset = async (req, res, next) => {
   }
 };
 
-const resetSocietyAdminPassword = async (req, res, next) => {
-  try {
-    const { token, email, password } = req.body;
-
-    if (!token || !email || !password) {
-      return next(createHttpError('Token, email, and password are required', 400));
-    }
-
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const society = await Society.findOne({
-      'societyAdmins.email': normalizedEmail,
-      'societyAdmins.resetPasswordToken': hashedToken,
-      'societyAdmins.resetPasswordExpires': { $gt: new Date() },
-    });
-
-    if (!society) {
-      return next(createHttpError('Invalid or expired reset token', 400));
-    }
-
-    const admin = society.societyAdmins.find(
-      (candidate) =>
-        candidate.email?.toLowerCase() === normalizedEmail &&
-        candidate.resetPasswordToken === hashedToken &&
-        candidate.resetPasswordExpires &&
-        candidate.resetPasswordExpires > new Date()
-    );
-
-    if (!admin) {
-      return next(createHttpError('Invalid or expired reset token', 400));
-    }
-
-    const salt = await bcrypt.genSalt(SALT_ROUNDS);
-    admin.password = await bcrypt.hash(password, salt);
-    admin.resetPasswordToken = null;
-    admin.resetPasswordExpires = null;
-
-    await society.save();
-
-    return res.status(200).json({
-      message: 'Password reset successful',
-    });
-  } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to reset password';
-    return next(error);
-  }
-};
-
 module.exports = {
   createSocietyAdmin,
   getAllSocietyAdmins,
@@ -444,5 +380,4 @@ module.exports = {
   toggleSocietyAdminStatus,
   deleteSocietyAdmin,
   requestSocietyAdminPasswordReset,
-  resetSocietyAdminPassword,
 };

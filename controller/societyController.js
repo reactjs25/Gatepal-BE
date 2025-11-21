@@ -1,11 +1,5 @@
 const Society = require('../model/societySchema');
-
-const createHttpError = (message, statusCode = 500) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.publicMessage = message;
-  return error;
-};
+const { createHttpError } = require('../utils/httpError');
 
 const PIN_MIN = 100000;
 const PIN_MAX = 999999;
@@ -64,7 +58,7 @@ const createSociety = async (req, res, next) => {
       total = engagement.baseRate + (gst !== undefined ? gst : 0);
     }
 
-    // Validate duplicate email and mobile for admins
+   
     if (societyAdmins && Array.isArray(societyAdmins) && societyAdmins.length > 0) {
       const allSocieties = await Society.find({});
       
@@ -193,7 +187,6 @@ const updateSocietyById = async (req, res, next) => {
       };
     }
 
-    // Validate duplicate email and mobile for admins if societyAdmins is being updated
     if (societyAdmins && Array.isArray(societyAdmins) && societyAdmins.length > 0) {
       const allSocieties = await Society.find({});
       
@@ -201,7 +194,7 @@ const updateSocietyById = async (req, res, next) => {
         if (admin.email) {
           const normalizedEmail = admin.email.trim().toLowerCase();
           for (const checkSociety of allSocieties) {
-            // Skip current society when checking
+         
             if (checkSociety._id.toString() === id) {
               continue;
             }
@@ -217,7 +210,7 @@ const updateSocietyById = async (req, res, next) => {
         if (admin.mobile) {
           const normalizedMobile = admin.mobile.trim().replace(/\D/g, '');
           for (const checkSociety of allSocieties) {
-            // Skip current society when checking
+           
             if (checkSociety._id.toString() === id) {
               continue;
             }

@@ -2,14 +2,26 @@ const mongoose = require('mongoose');
 const { logError } = require('../utils/errorLogger');
 const { sendSystemAlertEmail } = require('../utils/systemAlertEmail');
 
-const ALERT_DEBOUNCE_MS = Number(process.env.DB_ALERT_DEBOUNCE_MS || 15 * 60 * 1000);
+const DEFAULT_ALERT_DEBOUNCE_MS = 15 * 60 * 1000;
 
 let listenersRegistered = false;
 let lastAlertTimestamp = 0;
+let alertDebounceWindowMs = Number(process.env.DB_ALERT_DEBOUNCE_MS || DEFAULT_ALERT_DEBOUNCE_MS);
+
+const setAlertDebounceWindow = (value) => {
+  if (typeof value !== 'number') {
+    return;
+  }
+
+  const normalized = Number(value);
+  if (!Number.isNaN(normalized) && normalized >= 0) {
+    alertDebounceWindowMs = normalized;
+  }
+};
 
 const shouldSendAlert = () => {
   const now = Date.now();
-  if (now - lastAlertTimestamp > ALERT_DEBOUNCE_MS) {
+  if (now - lastAlertTimestamp > alertDebounceWindowMs) {
     lastAlertTimestamp = now;
     return true;
   }
@@ -28,7 +40,7 @@ const emitDbAlert = async ({ subject, message }) => {
       html: `<p>${message}</p><p>Timestamp: ${new Date().toISOString()}</p>`,
     });
   } catch (error) {
-    // eslint-disable-next-line no-console
+
     console.error('Failed to send database alert email:', error);
   }
 };
@@ -81,9 +93,19 @@ const registerDatabaseListeners = () => {
   listenersRegistered = true;
 };
 
-const connectToDb = async () => {
+const connectToDb = async (options = {}) => {
+  const { uri = process.env.MONGO_URI, mongooseOptions = {}, alertDebounceMs } = options;
+
+  if (!uri) {
+    throw new Error('MongoDB connection string (MONGO_URI) is missing');
+  }
+
+  if (typeof alertDebounceMs === 'number') {
+    setAlertDebounceWindow(alertDebounceMs);
+  }
+
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(uri, mongooseOptions);
     registerDatabaseListeners();
     console.log('Connected to MongoDB');
   } catch (error) {
@@ -100,7 +122,7 @@ const connectToDb = async () => {
       message: `Initial MongoDB connection failed.\n\nMessage: ${error.message}`,
     });
 
-    process.exit(1);
+    throw error;
   }
 };
 

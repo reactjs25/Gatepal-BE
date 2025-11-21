@@ -2,13 +2,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const SuperAdmin = require('../model/superAdminSchema');
 const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
-
-const createHttpError = (message, statusCode = 500) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.publicMessage = message;
-  return error;
-};
+const { createHttpError } = require('../utils/httpError');
 
 const generateToken = (superAdminId, email) =>
   jwt.sign(

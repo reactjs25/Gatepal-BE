@@ -7,12 +7,10 @@ const {
   toggleSocietyAdminStatus,
   deleteSocietyAdmin,
   requestSocietyAdminPasswordReset,
-  resetSocietyAdminPassword,
 } = require('../controller/societyAdminController');
 const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 
-router.post('/reset-password', resetSocietyAdminPassword);
 router.post('/:societyId', authMiddleware, createSocietyAdmin);
 router.get('/:societyId', authMiddleware, getAllSocietyAdmins);
 router.get('/:societyId/:adminId', authMiddleware, getSocietyAdminById);

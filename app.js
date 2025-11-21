@@ -1,42 +1,26 @@
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
-const connectToDb = require('./connectToDb/connectToDb');
-const authRoutes = require('./routes/authRoutes');
-const registrationRoutes = require('./routes/registrationRoutes');
-const societyRoutes = require('./routes/societyRoutes');
-const societyAdminRoutes = require('./routes/societyAdminRoutes');
-const systemRoutes = require('./routes/systemRoutes');
+const routes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
-
-dotenv.config();
+const notFoundHandler = require('./middleware/notFoundHandler');
+const config = require('./config/appConfig');
 
 const app = express();
-const port = process.env.PORT || 3003;
 
-app.use(cors());
+const corsOptions =
+  config.cors?.origins && config.cors.origins.length > 0
+    ? { origin: config.cors.origins, credentials: true }
+    : undefined;
+
+app.use(cors(corsOptions));
 app.use(express.json());
-
-connectToDb();
 
 app.get('/', (req, res) => {
   res.send('Gatepal API is up and running');
 });
 
-app.use('/api/auth', authRoutes);
-app.use('/api/registration', registrationRoutes);
-app.use('/api/society', societyRoutes);
-app.use('/api/society-admin', societyAdminRoutes);
-app.use('/api/system', systemRoutes);
-
-app.use((req, res, next) => {
-  const notFoundError = new Error(`Route ${req.originalUrl} not found`);
-  notFoundError.statusCode = 404;
-  next(notFoundError);
-});
-
+app.use('/api', routes);
+app.use(notFoundHandler);
 app.use(errorHandler);
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+module.exports = app;

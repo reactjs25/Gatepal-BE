@@ -1,6 +1,6 @@
 const { logError } = require('../utils/errorLogger');
 
-// eslint-disable-next-line no-unused-vars
+  
 const errorHandler = async (err, req, res, next) => {
   const statusCode = err.statusCode || err.status || 500;
   const safeStatus = Number.isInteger(statusCode) ? statusCode : 500;

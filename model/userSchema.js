@@ -45,6 +45,14 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    resetPasswordToken: {
+      type: String,
+      default: null,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      default: null,
+    },
     termsAcceptedAt: {
       type: Date,
       default: null,
@@ -99,5 +107,6 @@ userSchema.methods.verifyOtp = function verifyOtp(otp) {
 };
 
 module.exports = mongoose.model('User', userSchema);
+
 
 

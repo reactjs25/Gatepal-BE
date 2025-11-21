@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const { logError } = require('../utils/errorLogger');
 const { sendSystemAlertEmail } = require('../utils/systemAlertEmail');
 const { countryCityData } = require('../utils/countryCityData');
+const { createHttpError } = require('../utils/httpError');
 
 const mapReadyState = (state) => {
   switch (state) {
@@ -16,13 +17,6 @@ const mapReadyState = (state) => {
     default:
       return 'unknown';
   }
-};
-
-const buildHttpError = (message, statusCode = 500) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.publicMessage = message;
-  return error;
 };
 
 const healthCheck = async (req, res) => {
@@ -40,7 +34,7 @@ const healthCheck = async (req, res) => {
 
 const logTestError = async (req, res, next) => {
   try {
-    const diagnosticError = buildHttpError('Manual diagnostic error log', 500);
+    const diagnosticError = createHttpError('Manual diagnostic error log', 500);
 
     await logError({
       req,
@@ -69,7 +63,7 @@ const triggerAlertEmail = async (req, res, next) => {
     const { subject, message } = req.body || {};
 
     if (!message) {
-      return next(buildHttpError('Message is required to trigger an alert email', 400));
+      return next(createHttpError('Message is required to trigger an alert email', 400));
     }
 
     await sendSystemAlertEmail({
