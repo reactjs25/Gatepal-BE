@@ -1,84 +1,24 @@
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const User = require('../model/userSchema');
-const Society = require('../model/societySchema');
 const { generateNumericOtp } = require('../utils/otpService');
 const { createHttpError } = require('../utils/httpError');
+const {
+  ROLE_TYPES,
+  APP_USER_ROLES,
+  normalizeRole,
+} = require('../utils/userRoleUtils');
+const {
+  normalizePhoneNumber,
+  normalizeCountryCode,
+  normalizeDigits,
+} = require('../utils/phoneNumber');
+const { generateUserAuthToken } = require('../utils/authToken');
+const { findSocietyAdminByPhone } = require('../utils/societyAdminUtils');
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10);
 const PASSWORD_RESET_TOKEN_TTL = parseInt(process.env.PASSWORD_RESET_TOKEN_TTL || '3600000', 10);
-const USER_JWT_EXPIRES_IN = process.env.USER_JWT_EXPIRES_IN || '7d';
-
-const ROLE_TYPES = {
-  MEMBER: 'member',
-  VISITOR: 'visitor',
-  GUARD: 'guard',
-  SOCIETY_ADMIN: 'society_admin',
-};
-
-const USER_ROLES = new Set([ROLE_TYPES.MEMBER, ROLE_TYPES.VISITOR, ROLE_TYPES.GUARD]);
-
-const normalizeRole = (rawRole = '') => {
-  const sanitized = rawRole.trim().toLowerCase().replace(/[\s-]+/g, '_');
-
-  if (sanitized === 'security_guard') {
-    return ROLE_TYPES.GUARD;
-  }
-
-  if (sanitized === 'society_admin') {
-    return ROLE_TYPES.SOCIETY_ADMIN;
-  }
-
-  if (USER_ROLES.has(sanitized)) {
-    return sanitized;
-  }
-
-  throw createHttpError('Unsupported role provided', 400);
-};
-
-const normalizePhoneNumber = (value = '') => value.trim();
-
-const normalizeCountryCode = (value) => (value && value.trim() ? value.trim() : '+91');
-
-const normalizeDigits = (value = '') => value.replace(/\D/g, '');
-
-const generateAuthToken = ({ id, role, extraClaims = {} }) =>
-  jwt.sign(
-    {
-      id,
-      role,
-      ...extraClaims,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: USER_JWT_EXPIRES_IN }
-  );
-
-const findSocietyAdminByPhone = async (phoneNumber) => {
-  const normalizedTarget = normalizeDigits(phoneNumber);
-  if (!normalizedTarget) {
-    return null;
-  }
-
-  const societies = await Society.find({ 'societyAdmins.mobile': { $exists: true, $ne: null } });
-
-  for (const society of societies) {
-    const admin = society.societyAdmins.find((candidate) => {
-      if (!candidate.mobile) {
-        return false;
-      }
-
-      return normalizeDigits(candidate.mobile) === normalizedTarget;
-    });
-
-    if (admin) {
-      return { society, admin };
-    }
-  }
-
-  return null;
-};
 
 const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   const normalizedRole = normalizeRole(role);
@@ -90,7 +30,7 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
 
   const normalizedCountryCode = normalizeCountryCode(countryCode);
 
-  if (USER_ROLES.has(normalizedRole)) {
+  if (APP_USER_ROLES.has(normalizedRole)) {
     const query = {
       role: normalizedRole,
       phoneNumber: normalizedPhone,
@@ -114,15 +54,19 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
       }
     }
 
-    return user
-      ? {
-          type: 'user',
-          role: normalizedRole,
-          countryCode: normalizedCountryCode,
-          doc: user,
-          save: () => user.save(),
-        }
-      : null;
+    if (user) {
+      return {
+        type: 'user',
+        role: normalizedRole,
+        countryCode: normalizedCountryCode,
+        doc: user,
+        save: () => user.save(),
+      };
+    }
+
+    if (normalizedRole !== ROLE_TYPES.SOCIETY_ADMIN) {
+      return null;
+    }
   }
 
   const match = await findSocietyAdminByPhone(normalizedPhone);
@@ -207,7 +151,7 @@ const login = async (req, res, next) => {
       throw createHttpError('Invalid credentials', 401);
     }
 
-    const token = generateAuthToken({
+    const token = generateUserAuthToken({
       id: principal.doc._id,
       role: principal.role,
       extraClaims:
@@ -341,7 +285,7 @@ const resetPassword = async (req, res, next) => {
 
     await principal.save();
 
-    const token = generateAuthToken({
+    const token = generateUserAuthToken({
       id: principal.doc._id,
       role: principal.role,
       extraClaims:

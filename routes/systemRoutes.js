@@ -4,13 +4,11 @@ const {
   healthCheck,
   logTestError,
   triggerAlertEmail,
-  getCountryCityOptions,
 } = require('../controller/systemController');
 
 const router = express.Router();
 
 router.get('/health', healthCheck);
-router.get('/locations/country-cities', getCountryCityOptions);
 router.post('/diagnostics/error', authMiddleware, logTestError);
 router.post('/diagnostics/alert', authMiddleware, triggerAlertEmail);
 

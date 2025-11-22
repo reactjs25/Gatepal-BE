@@ -5,6 +5,19 @@ const crypto = require('crypto');
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10); // default 5 minutes
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 
+const MEMBER_OCCUPANT_TYPES = [
+  'unit_owner',
+  'unit_owner_family_member',
+  'tenant',
+  'tenant_family_member',
+];
+
+const MEMBER_OCCUPANCY_STATUSES = ['currently_residing', 'unit_rented', 'unit_vacant'];
+
+const ONBOARDING_FLOWS = ['member', 'guard', 'visitor'];
+const INTENDED_ROLE_TYPES = ['member', 'society_admin', 'guard', 'visitor'];
+const ONBOARDING_STATUS_TYPES = ['not_started', 'in_progress', 'completed'];
+
 const userSchema = new mongoose.Schema(
   {
     countryCode: {
@@ -26,7 +39,89 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       required: true,
-      enum: ['member', 'visitor', 'guard'],
+      enum: ['member', 'visitor', 'guard', 'society_admin'],
+    },
+    intendedRole: {
+      type: String,
+      enum: INTENDED_ROLE_TYPES,
+      default: 'member',
+    },
+    onboardingFlow: {
+      type: String,
+      enum: ONBOARDING_FLOWS,
+      default: 'member',
+    },
+    onboardingStatus: {
+      type: String,
+      enum: ONBOARDING_STATUS_TYPES,
+      default: 'not_started',
+    },
+    onboardingData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: () => ({}),
+    },
+    fullName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: null,
+    },
+    country: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    city: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    societyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Society',
+      default: null,
+    },
+    societyName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    wingName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    unitNumber: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    occupantType: {
+      type: String,
+      enum: MEMBER_OCCUPANT_TYPES,
+      default: null,
+    },
+    occupancyStatus: {
+      type: String,
+      enum: MEMBER_OCCUPANCY_STATUSES,
+      default: null,
+    },
+    linkedSocietyAdminId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    upgradedToSocietyAdminAt: {
+      type: Date,
+      default: null,
+    },
+    onboardedAt: {
+      type: Date,
+      default: null,
     },
     status: {
       type: String,

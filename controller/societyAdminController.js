@@ -1,9 +1,16 @@
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const Society = require('../model/societySchema');
 const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
 const { createHttpError } = require('../utils/httpError');
+const {
+  normalizeAdminEmail,
+  normalizeAdminMobile,
+  ensureAdminContactsUnique,
+} = require('../utils/societyAdminUtils');
 
 const RESET_LINK_EXPIRY_MS = 60 * 60 * 1000;
+const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 
 const formatDate = (value) => {
   if (!value) {
@@ -50,43 +57,18 @@ const createSocietyAdmin = async (req, res, next) => {
       return next(createHttpError('Society not found', 404));
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedMobile = mobile.trim().replace(/\D/g, '');
+    const normalizedEmail = normalizeAdminEmail(email);
+    const normalizedMobile = normalizeAdminMobile(mobile);
 
-
-    const duplicateEmailAdmin = await Society.findOne({
-      'societyAdmins.email': normalizedEmail,
-    });
-
-    if (duplicateEmailAdmin) {
-      return next(createHttpError('An admin with this email already exists in another society', 409));
-    }
-
-
-    const allSocieties = await Society.find({});
-    for (const checkSociety of allSocieties) {
-      const duplicateMobile = checkSociety.societyAdmins.find(
-        (admin) => admin.mobile && admin.mobile.replace(/\D/g, '') === normalizedMobile
-      );
-      if (duplicateMobile) {
-        return next(createHttpError(`An admin with this mobile number already exists in ${checkSociety.societyName}`, 409));
-      }
-    }
-
-    const duplicateInSociety = society.societyAdmins.find(
-      (admin) =>
-        admin.email?.toLowerCase() === normalizedEmail ||
-        admin.mobile?.replace(/\D/g, '') === normalizedMobile
+    await ensureAdminContactsUnique(
+      {
+        email: normalizedEmail,
+        rawEmail: email,
+        mobile: normalizedMobile,
+        rawMobile: mobile,
+      },
+      {}
     );
-
-    if (duplicateInSociety) {
-      if (duplicateInSociety.email?.toLowerCase() === normalizedEmail) {
-        return next(createHttpError('An admin with this email already exists in this society', 409));
-      }
-      if (duplicateInSociety.mobile?.replace(/\D/g, '') === normalizedMobile) {
-        return next(createHttpError('An admin with this mobile number already exists in this society', 409));
-      }
-    }
 
     society.societyAdmins.push({ name, email: normalizedEmail, mobile: mobile.trim() });
     await society.save();
@@ -184,52 +166,26 @@ const updateSocietyAdmin = async (req, res, next) => {
 
 
     if (email !== undefined) {
-      const normalizedEmail = email.trim().toLowerCase();
-      const duplicateEmailAdmin = await Society.findOne({
-        'societyAdmins.email': normalizedEmail,
-        'societyAdmins._id': { $ne: adminId },
-      });
-
-      if (duplicateEmailAdmin) {
-        return next(createHttpError('An admin with this email already exists in another society', 409));
-      }
-
-      const duplicateInSociety = society.societyAdmins.find(
-        (a) => a._id.toString() !== adminId && a.email?.toLowerCase() === normalizedEmail
+      const normalizedEmail = normalizeAdminEmail(email);
+      await ensureAdminContactsUnique(
+        {
+          email: normalizedEmail,
+          rawEmail: email,
+        },
+        { excludeSocietyId: societyId, excludeAdminId: adminId }
       );
-
-      if (duplicateInSociety) {
-        return next(createHttpError('An admin with this email already exists in this society', 409));
-      }
-
       admin.email = normalizedEmail;
     }
 
     if (mobile !== undefined) {
-      const normalizedMobile = mobile.trim().replace(/\D/g, '');
-
-      const allSocieties = await Society.find({});
-      for (const checkSociety of allSocieties) {
-        const duplicateMobile = checkSociety.societyAdmins.find(
-          (a) => a._id.toString() !== adminId &&
-            a.mobile &&
-            a.mobile.replace(/\D/g, '') === normalizedMobile
-        );
-        if (duplicateMobile) {
-          return next(createHttpError(`An admin with this mobile number already exists in ${checkSociety.societyName}`, 409));
-        }
-      }
-
-      const duplicateInSociety = society.societyAdmins.find(
-        (a) => a._id.toString() !== adminId &&
-          a.mobile &&
-          a.mobile.replace(/\D/g, '') === normalizedMobile
+      const normalizedMobile = normalizeAdminMobile(mobile);
+      await ensureAdminContactsUnique(
+        {
+          mobile: normalizedMobile,
+          rawMobile: mobile,
+        },
+        { excludeSocietyId: societyId, excludeAdminId: adminId }
       );
-
-      if (duplicateInSociety) {
-        return next(createHttpError('An admin with this mobile number already exists in this society', 409));
-      }
-
       admin.mobile = mobile.trim();
     }
 
@@ -372,6 +328,59 @@ const requestSocietyAdminPasswordReset = async (req, res, next) => {
   }
 };
 
+const resetSocietyAdminPassword = async (req, res, next) => {
+  try {
+    const { token, email, password } = req.body;
+
+    if (!token || !email || !password) {
+      return next(createHttpError('Token, email, and password are required', 400));
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    const normalizedEmail = normalizeAdminEmail(email);
+
+    const society = await Society.findOne({
+      'societyAdmins.email': normalizedEmail,
+      'societyAdmins.resetPasswordToken': hashedToken,
+      'societyAdmins.resetPasswordExpires': { $gt: new Date() },
+    });
+
+    if (!society) {
+      return next(createHttpError('Invalid or expired reset token', 400));
+    }
+
+    const admin = society.societyAdmins.find(
+      (candidate) =>
+        candidate.email?.toLowerCase() === normalizedEmail &&
+        candidate.resetPasswordToken === hashedToken &&
+        candidate.resetPasswordExpires &&
+        candidate.resetPasswordExpires > new Date()
+    );
+
+    if (!admin) {
+      return next(createHttpError('Invalid or expired reset token', 400));
+    }
+
+    const salt = await bcrypt.genSalt(SALT_ROUNDS);
+    admin.password = await bcrypt.hash(password, salt);
+    admin.resetPasswordToken = null;
+    admin.resetPasswordExpires = null;
+
+    await society.save();
+
+    return res.status(200).json({
+      message: 'Password reset successful',
+    });
+  } catch (error) {
+    error.statusCode = error.statusCode || 500;
+    error.publicMessage = error.publicMessage || 'Failed to reset password';
+    return next(error);
+  }
+};
+
+
+
+
 module.exports = {
   createSocietyAdmin,
   getAllSocietyAdmins,
@@ -380,4 +389,5 @@ module.exports = {
   toggleSocietyAdminStatus,
   deleteSocietyAdmin,
   requestSocietyAdminPasswordReset,
+  resetSocietyAdminPassword,
 };

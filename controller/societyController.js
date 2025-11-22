@@ -1,5 +1,6 @@
 const Society = require('../model/societySchema');
 const { createHttpError } = require('../utils/httpError');
+const { ensureAdminListIsUnique } = require('../utils/societyAdminUtils');
 
 const PIN_MIN = 100000;
 const PIN_MAX = 999999;
@@ -26,6 +27,15 @@ const generateUniqueSocietyPin = async () => {
 
   throw createHttpError('Unable to generate a unique Society PIN. Please try again later.', 500);
 };
+
+const normalizeIncomingAdmins = (admins = []) =>
+  Array.isArray(admins)
+    ? admins.map((admin = {}) => ({
+        ...admin,
+        email: admin.email ? admin.email.trim().toLowerCase() : admin.email,
+        mobile: admin.mobile ? admin.mobile.trim() : admin.mobile,
+      }))
+    : [];
 
 const createSociety = async (req, res, next) => {
   try {
@@ -57,36 +67,12 @@ const createSociety = async (req, res, next) => {
     if (total === undefined && engagement.baseRate !== undefined) {
       total = engagement.baseRate + (gst !== undefined ? gst : 0);
     }
+    const normalizedSocietyAdmins = Array.isArray(societyAdmins)
+      ? normalizeIncomingAdmins(societyAdmins)
+      : undefined;
 
-   
-    if (societyAdmins && Array.isArray(societyAdmins) && societyAdmins.length > 0) {
-      const allSocieties = await Society.find({});
-      
-      for (const admin of societyAdmins) {
-        if (admin.email) {
-          const normalizedEmail = admin.email.trim().toLowerCase();
-          for (const checkSociety of allSocieties) {
-            const duplicateEmail = checkSociety.societyAdmins.find(
-              (a) => a.email && a.email.toLowerCase() === normalizedEmail
-            );
-            if (duplicateEmail) {
-              return next(createHttpError(`An admin with email ${admin.email} already exists in ${checkSociety.societyName}`, 409));
-            }
-          }
-        }
-        
-        if (admin.mobile) {
-          const normalizedMobile = admin.mobile.trim().replace(/\D/g, '');
-          for (const checkSociety of allSocieties) {
-            const duplicateMobile = checkSociety.societyAdmins.find(
-              (a) => a.mobile && a.mobile.replace(/\D/g, '') === normalizedMobile
-            );
-            if (duplicateMobile) {
-              return next(createHttpError(`An admin with mobile number ${admin.mobile} already exists in ${checkSociety.societyName}`, 409));
-            }
-          }
-        }
-      }
+    if (normalizedSocietyAdmins?.length > 0) {
+      await ensureAdminListIsUnique(normalizedSocietyAdmins);
     }
 
     const requestedPin =
@@ -116,7 +102,7 @@ const createSociety = async (req, res, next) => {
       structure,
       entryGates,
       exitGates,
-      societyAdmins,
+      societyAdmins: normalizedSocietyAdmins,
       engagement: {
         ...engagement,
         gst,
@@ -187,44 +173,10 @@ const updateSocietyById = async (req, res, next) => {
       };
     }
 
-    if (societyAdmins && Array.isArray(societyAdmins) && societyAdmins.length > 0) {
-      const allSocieties = await Society.find({});
-      
-      for (const admin of societyAdmins) {
-        if (admin.email) {
-          const normalizedEmail = admin.email.trim().toLowerCase();
-          for (const checkSociety of allSocieties) {
-         
-            if (checkSociety._id.toString() === id) {
-              continue;
-            }
-            const duplicateEmail = checkSociety.societyAdmins.find(
-              (a) => a.email && a.email.toLowerCase() === normalizedEmail
-            );
-            if (duplicateEmail) {
-              return next(createHttpError(`An admin with email ${admin.email} already exists in ${checkSociety.societyName}`, 409));
-            }
-          }
-        }
-        
-        if (admin.mobile) {
-          const normalizedMobile = admin.mobile.trim().replace(/\D/g, '');
-          for (const checkSociety of allSocieties) {
-           
-            if (checkSociety._id.toString() === id) {
-              continue;
-            }
-            const duplicateMobile = checkSociety.societyAdmins.find(
-              (a) => a.mobile && a.mobile.replace(/\D/g, '') === normalizedMobile
-            );
-            if (duplicateMobile) {
-              return next(createHttpError(`An admin with mobile number ${admin.mobile} already exists in ${checkSociety.societyName}`, 409));
-            }
-          }
-        }
-      }
-      
-      updates.societyAdmins = societyAdmins;
+    if (Array.isArray(societyAdmins) && societyAdmins.length > 0) {
+      const normalizedSocietyAdmins = normalizeIncomingAdmins(societyAdmins);
+      await ensureAdminListIsUnique(normalizedSocietyAdmins, { excludeSocietyId: id });
+      updates.societyAdmins = normalizedSocietyAdmins;
     }
 
     const updatedSociety = await Society.findByIdAndUpdate(id, updates, {
