@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const SuperAdmin = require('../model/superAdminSchema');
 const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
 const { createHttpError } = require('../utils/httpError');
+const { sendSuccessResponse } = require('../utils/response');
 
 const generateToken = (superAdminId, email) =>
   jwt.sign(
@@ -45,8 +46,7 @@ const signUp = async (req, res, next) => {
 
     const token = generateToken(superAdmin._id, superAdmin.email);
 
-    return res.status(201).json({
-      message: 'Super admin created successfully',
+    return sendSuccessResponse(res, 201, 'Super admin created successfully', {
       data: mapSuperAdminResponse(superAdmin),
       token,
     });
@@ -79,8 +79,7 @@ const login = async (req, res, next) => {
 
     const token = generateToken(superAdmin._id, superAdmin.email);
 
-    return res.status(200).json({
-      message: 'Super admin login successful',
+    return sendSuccessResponse(res, 200, 'Super admin login successful', {
       data: mapSuperAdminResponse(superAdmin),
       token,
     });
@@ -128,9 +127,7 @@ const forgotPassword = async (req, res, next) => {
              <p>If you did not request this, please ignore this email.</p>`,
     });
 
-    return res.status(200).json({
-      message: 'If the email exists, a password reset link has been sent',
-    });
+    return sendSuccessResponse(res, 200, 'If the email exists, a password reset link has been sent');
   } catch (error) {
     error.statusCode = error.statusCode || 500;
     error.publicMessage = error.publicMessage || 'Failed to send password reset email';
@@ -155,7 +152,7 @@ const resetPassword = async (req, res, next) => {
     });
 
     if (!superAdmin) {
-      return res.status(400).json({ message: 'Invalid or expired reset token' });
+      return next(createHttpError('Invalid or expired reset token', 400));
     }
 
     superAdmin.password = password;
@@ -166,8 +163,7 @@ const resetPassword = async (req, res, next) => {
 
     const authToken = generateToken(superAdmin._id, superAdmin.email);
 
-    return res.status(200).json({
-      message: 'Password reset successful',
+    return sendSuccessResponse(res, 200, 'Password reset successful', {
       data: mapSuperAdminResponse(superAdmin),
       token: authToken,
     });

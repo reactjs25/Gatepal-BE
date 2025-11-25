@@ -1,11 +1,6 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
-const {
-  healthCheck,
-  logTestError,
-  triggerAlertEmail,
-} = require('../controller/systemController');
-
+const { healthCheck, logTestError, triggerAlertEmail } = require('../controller/systemController');
 const router = express.Router();
 
 router.get('/health', healthCheck);

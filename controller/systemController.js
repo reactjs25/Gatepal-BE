@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 const { logError } = require('../utils/errorLogger');
 const { sendSystemAlertEmail } = require('../utils/systemAlertEmail');
-
 const { createHttpError } = require('../utils/httpError');
+const { sendSuccessResponse } = require('../utils/response');
 
 const mapReadyState = (state) => {
   switch (state) {
@@ -24,11 +24,9 @@ const healthCheck = async (req, res) => {
   const dbStatus = mapReadyState(dbState);
   const isHealthy = dbState === 1;
 
-  res.status(isHealthy ? 200 : 503).json({
-    success: isHealthy,
+  return sendSuccessResponse(res, isHealthy ? 200 : 503, isHealthy ? 'System is healthy' : 'System is degraded', {
     status: isHealthy ? 'ok' : 'degraded',
     database: dbStatus,
-    timestamp: new Date().toISOString(),
   });
 };
 
@@ -46,11 +44,11 @@ const logTestError = async (req, res, next) => {
         : { source: 'system-route' },
     });
 
-    res.status(202).json({
-      success: true,
-      message: 'Diagnostic error recorded. Check error logs table for entry.',
-      timestamp: new Date().toISOString(),
-    });
+    return sendSuccessResponse(
+      res,
+      202,
+      'Diagnostic error recorded. Check error logs table for entry.'
+    );
   } catch (error) {
     error.statusCode = error.statusCode || 500;
     error.publicMessage = error.publicMessage || 'Failed to record diagnostic error';
@@ -72,11 +70,11 @@ const triggerAlertEmail = async (req, res, next) => {
       html: `<p>${message}</p><p>Timestamp: ${new Date().toISOString()}</p>`,
     });
 
-    res.status(202).json({
-      success: true,
-      message: 'Alert email has been queued via SMTP transporter.',
-      timestamp: new Date().toISOString(),
-    });
+    return sendSuccessResponse(
+      res,
+      202,
+      'Alert email has been queued via SMTP transporter.'
+    );
   } catch (error) {
     error.statusCode = error.statusCode || 500;
     error.publicMessage = error.publicMessage || 'Failed to send diagnostic alert email';

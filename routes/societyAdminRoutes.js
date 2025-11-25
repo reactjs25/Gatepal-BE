@@ -17,16 +17,8 @@ router.post('/:societyId', authMiddleware, createSocietyAdmin);
 router.get('/:societyId', authMiddleware, getAllSocietyAdmins);
 router.get('/:societyId/:adminId', authMiddleware, getSocietyAdminById);
 router.put('/:societyId/:adminId', authMiddleware, updateSocietyAdmin);
-router.patch(
-  '/:societyId/:adminId/toggle-status',
-  authMiddleware,
-  toggleSocietyAdminStatus
-);
+router.patch('/:societyId/:adminId/toggle-status', authMiddleware, toggleSocietyAdminStatus);
 router.delete('/:societyId/:adminId', authMiddleware, deleteSocietyAdmin);
-router.post(
-  '/:societyId/:adminId/send-reset-link',
-  authMiddleware,
-  requestSocietyAdminPasswordReset
-);
+router.post('/:societyId/:adminId/send-reset-link', authMiddleware, requestSocietyAdminPasswordReset);
 
 module.exports = router;

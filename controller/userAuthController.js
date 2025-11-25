@@ -3,18 +3,11 @@ const bcrypt = require('bcrypt');
 const User = require('../model/userSchema');
 const { generateNumericOtp } = require('../utils/otpService');
 const { createHttpError } = require('../utils/httpError');
-const {
-  ROLE_TYPES,
-  APP_USER_ROLES,
-  normalizeRole,
-} = require('../utils/userRoleUtils');
-const {
-  normalizePhoneNumber,
-  normalizeCountryCode,
-  normalizeDigits,
-} = require('../utils/phoneNumber');
+const { ROLE_TYPES, normalizeRole, APP_USER_ROLES } = require('../utils/userRoleUtils');
+const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require('../utils/phoneNumber');
 const { generateUserAuthToken } = require('../utils/authToken');
 const { findSocietyAdminByPhone } = require('../utils/societyAdminUtils');
+const { sendSuccessResponse } = require('../utils/response');
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10);
@@ -160,8 +153,7 @@ const login = async (req, res, next) => {
           : {},
     });
 
-    return res.status(200).json({
-      message: 'Login successful',
+    return sendSuccessResponse(res, 200, 'Login successful', {
       data: mapPrincipalResponse(principal),
       token,
     });
@@ -193,8 +185,7 @@ const requestPasswordOtp = async (req, res, next) => {
 
     await principal.save();
 
-    return res.status(200).json({
-      message: 'OTP sent successfully',
+    return sendSuccessResponse(res, 200, 'OTP sent successfully', {
       data: {
         otpValidForMs: OTP_TTL_IN_MS,
         otp,
@@ -235,8 +226,7 @@ const verifyOtp = async (req, res, next) => {
 
     await principal.save();
 
-    return res.status(200).json({
-      message: 'OTP verified successfully',
+    return sendSuccessResponse(res, 200, 'OTP verified successfully', {
       data: {
         resetToken,
         resetTokenExpiresAt: Date.now() + PASSWORD_RESET_TOKEN_TTL,
@@ -294,8 +284,7 @@ const resetPassword = async (req, res, next) => {
           : {},
     });
 
-    return res.status(200).json({
-      message: 'Password reset successful',
+    return sendSuccessResponse(res, 200, 'Password reset successful', {
       data: mapPrincipalResponse(principal),
       token,
     });

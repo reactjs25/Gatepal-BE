@@ -23,6 +23,7 @@ const errorHandler = async (err, req, res, next) => {
   }
 
   res.status(safeStatus).json({
+    statusCode: safeStatus,
     success: false,
     message: err.publicMessage || err.message || 'Internal server error',
     timestamp: new Date().toISOString(),

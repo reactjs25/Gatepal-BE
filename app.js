@@ -4,6 +4,7 @@ const routes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const notFoundHandler = require('./middleware/notFoundHandler');
 const config = require('./config/appConfig');
+const { sendSuccessResponse } = require('./utils/response');
 
 const app = express();
 
@@ -15,9 +16,9 @@ const corsOptions =
 app.use(cors(corsOptions));
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('Gatepal API is up and running');
-});
+app.get('/', (req, res) =>
+  sendSuccessResponse(res, 200, 'Gatepal API is up and running')
+);
 
 app.use('/api', routes);
 app.use(notFoundHandler);

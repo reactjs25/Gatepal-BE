@@ -14,6 +14,8 @@ const MEMBER_OCCUPANT_TYPES = [
 
 const MEMBER_OCCUPANCY_STATUSES = ['currently_residing', 'unit_rented', 'unit_vacant'];
 
+const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
+
 const ONBOARDING_FLOWS = ['member', 'guard', 'visitor'];
 const INTENDED_ROLE_TYPES = ['member', 'society_admin', 'guard', 'visitor'];
 const ONBOARDING_STATUS_TYPES = ['not_started', 'in_progress', 'completed'];
@@ -109,6 +111,42 @@ const userSchema = new mongoose.Schema(
     occupancyStatus: {
       type: String,
       enum: MEMBER_OCCUPANCY_STATUSES,
+      default: null,
+    },
+    visitorType: {
+      type: String,
+      enum: VISITOR_TYPES,
+      default: null,
+    },
+    visitorCompanyName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    visitorVehicleNumber: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    visitorWorkCategory: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    profilePhoto: {
+      type: String,
+      default: null,
+    },
+    profilePhotoCapturedAt: {
+      type: Date,
+      default: null,
+    },
+    qrCodeImage: {
+      type: String,
+      default: null,
+    },
+    qrCodeGeneratedAt: {
+      type: Date,
       default: null,
     },
     linkedSocietyAdminId: {

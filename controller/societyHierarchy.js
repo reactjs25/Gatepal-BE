@@ -1,11 +1,10 @@
 const { countryCityData } = require('../utils/countryCityData');
 const Society = require('../model/societySchema');
+const { sendSuccessResponse } = require('../utils/response');
 
 const getCountryCityOptions = async (req, res) => {
-    res.status(200).json({
-        success: true,
+    return sendSuccessResponse(res, 200, 'Country and city options fetched successfully', {
         data: countryCityData,
-        timestamp: new Date().toISOString(),
     });
 };
 
@@ -87,8 +86,7 @@ const getRegistrationHierarchy = async (req, res, next) => {
             }))
         );
 
-        res.status(200).json({
-            success: true,
+        return sendSuccessResponse(res, 200, 'Registration hierarchy fetched successfully', {
             data: {
                 countries,
                 totals: {
@@ -97,7 +95,6 @@ const getRegistrationHierarchy = async (req, res, next) => {
                     societies: societies.length,
                 },
             },
-            timestamp: new Date().toISOString(),
         });
     } catch (error) {
         error.statusCode = error.statusCode || 500;

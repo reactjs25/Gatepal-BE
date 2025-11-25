@@ -3,11 +3,8 @@ const bcrypt = require('bcrypt');
 const Society = require('../model/societySchema');
 const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
 const { createHttpError } = require('../utils/httpError');
-const {
-  normalizeAdminEmail,
-  normalizeAdminMobile,
-  ensureAdminContactsUnique,
-} = require('../utils/societyAdminUtils');
+const { normalizeAdminEmail, normalizeAdminMobile, ensureAdminContactsUnique } = require('../utils/societyAdminUtils');
+const { sendSuccessResponse } = require('../utils/response');
 
 const RESET_LINK_EXPIRY_MS = 60 * 60 * 1000;
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
@@ -76,8 +73,7 @@ const createSocietyAdmin = async (req, res, next) => {
     const newAdmin = society.societyAdmins[society.societyAdmins.length - 1];
     const sanitizedAdmin = sanitizeSocietyAdmin(society, newAdmin);
 
-    res.status(201).json({
-      message: 'Society admin created successfully',
+    return sendSuccessResponse(res, 201, 'Society admin created successfully', {
       data: {
         societyId: society._id.toString(),
         societyName: society.societyName,
@@ -101,8 +97,7 @@ const getAllSocietyAdmins = async (req, res, next) => {
       return next(createHttpError('Society not found', 404));
     }
 
-    res.status(200).json({
-      message: 'Society admins fetched successfully',
+    return sendSuccessResponse(res, 200, 'Society admins fetched successfully', {
       data: {
         societyId: society._id.toString(),
         societyName: society.societyName,
@@ -132,8 +127,7 @@ const getSocietyAdminById = async (req, res, next) => {
       return next(createHttpError('Society admin not found', 404));
     }
 
-    res.status(200).json({
-      message: 'Society admin fetched successfully',
+    return sendSuccessResponse(res, 200, 'Society admin fetched successfully', {
       data: {
         societyId: society._id.toString(),
         societyName: society.societyName,
@@ -193,8 +187,7 @@ const updateSocietyAdmin = async (req, res, next) => {
 
     await society.save();
 
-    res.status(200).json({
-      message: 'Society admin updated successfully',
+    return sendSuccessResponse(res, 200, 'Society admin updated successfully', {
       data: {
         societyId: society._id.toString(),
         societyName: society.societyName,
@@ -227,8 +220,7 @@ const toggleSocietyAdminStatus = async (req, res, next) => {
     admin.status = admin.status === 'Active' ? 'Inactive' : 'Active';
     await society.save();
 
-    res.status(200).json({
-      message: `Society admin status updated to ${admin.status}`,
+    return sendSuccessResponse(res, 200, `Society admin status updated to ${admin.status}`, {
       data: {
         societyId: society._id.toString(),
         societyName: society.societyName,
@@ -261,7 +253,7 @@ const deleteSocietyAdmin = async (req, res, next) => {
     admin.deleteOne();
     await society.save();
 
-    res.status(200).json({ message: 'Society admin deleted successfully' });
+    return sendSuccessResponse(res, 200, 'Society admin deleted successfully');
   } catch (error) {
     error.statusCode = error.statusCode || 500;
     error.publicMessage = error.publicMessage || 'Failed to delete society admin';
@@ -314,8 +306,7 @@ const requestSocietyAdminPasswordReset = async (req, res, next) => {
              <p>If you did not request this, please ignore this email.</p>`,
     });
 
-    return res.status(200).json({
-      message: 'Password reset link sent successfully',
+    return sendSuccessResponse(res, 200, 'Password reset link sent successfully', {
       data: {
         societyId: society._id.toString(),
         admin: sanitizeSocietyAdmin(society, admin),
@@ -368,9 +359,7 @@ const resetSocietyAdminPassword = async (req, res, next) => {
 
     await society.save();
 
-    return res.status(200).json({
-      message: 'Password reset successful',
-    });
+    return sendSuccessResponse(res, 200, 'Password reset successful');
   } catch (error) {
     error.statusCode = error.statusCode || 500;
     error.publicMessage = error.publicMessage || 'Failed to reset password';
