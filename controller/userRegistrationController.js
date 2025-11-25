@@ -120,7 +120,7 @@ const registerUser = async (req, res, next) => {
       otp,
     });
 
-    const includeOtpInResponse = process.env.NODE_ENV !== 'production';
+    const includeOtpInResponse = true;
 
     return sendSuccessResponse(res, 201, 'Registration initiated. Please verify the OTP to continue onboarding.', {
       data: {
@@ -236,4 +236,3 @@ module.exports = {
   verifyRegistrationOtp,
   completeOnboarding,
 };
-

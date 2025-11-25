@@ -23,6 +23,19 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
 
   const normalizedCountryCode = normalizeCountryCode(countryCode);
 
+  const match = await findSocietyAdminByPhone(normalizedPhone);
+
+  if (match) {
+    return {
+      type: ROLE_TYPES.SOCIETY_ADMIN,
+      role: ROLE_TYPES.SOCIETY_ADMIN,
+      countryCode: normalizedCountryCode,
+      doc: match.admin,
+      society: match.society,
+      save: () => match.society.save(),
+    };
+  }
+
   if (APP_USER_ROLES.has(normalizedRole)) {
     const query = {
       role: normalizedRole,
@@ -56,24 +69,9 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
         save: () => user.save(),
       };
     }
-
-    if (normalizedRole !== ROLE_TYPES.SOCIETY_ADMIN) {
-      return null;
-    }
   }
 
-  const match = await findSocietyAdminByPhone(normalizedPhone);
-
-  return match
-    ? {
-        type: ROLE_TYPES.SOCIETY_ADMIN,
-        role: ROLE_TYPES.SOCIETY_ADMIN,
-        countryCode: normalizedCountryCode,
-        doc: match.admin,
-        society: match.society,
-        save: () => match.society.save(),
-      }
-    : null;
+  return null;
 };
 
 const mapPrincipalResponse = (principal) => {
