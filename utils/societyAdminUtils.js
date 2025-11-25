@@ -21,20 +21,14 @@ const toObjectId = (value) => {
 const normalizeAdminEmail = (email = '') => email.trim().toLowerCase();
 const normalizeAdminMobile = (mobile = '') => mobile.trim().replace(/\D/g, '');
 
-const buildMobileMatchConditions = ({ normalizedMobile, excludeSocietyId, excludeAdminId }) => {
-  const match = { normalizedMobile };
-  const societyObjectId = toObjectId(excludeSocietyId);
-  const adminObjectId = toObjectId(excludeAdminId);
-
-  if (societyObjectId) {
-    match.societyId = { $ne: societyObjectId };
+const buildDigitsOnlyRegex = (digits) => {
+  if (!digits) {
+    return null;
   }
 
-  if (adminObjectId) {
-    match.adminId = { $ne: adminObjectId };
-  }
-
-  return match;
+  const parts = digits.split('').map((d) => `\\D*${d}`);
+  const pattern = `^${parts.join('')}\\D*$`;
+  return new RegExp(pattern);
 };
 
 const lookupSocietyAdminByMobile = async (mobile, options = {}) => {
@@ -44,43 +38,32 @@ const lookupSocietyAdminByMobile = async (mobile, options = {}) => {
     return null;
   }
 
-  const matchConditions = buildMobileMatchConditions({
-    normalizedMobile,
-    excludeSocietyId: options.excludeSocietyId,
-    excludeAdminId: options.excludeAdminId,
-  });
+  const excludeSocietyObjectId = toObjectId(options.excludeSocietyId);
+  const excludeAdminObjectId = toObjectId(options.excludeAdminId);
 
-  const pipeline = [
-    {
-      $project: {
-        societyId: '$_id',
-        societyName: '$societyName',
-        societyAdmins: 1,
-      },
-    },
+  const mobileRegex = buildDigitsOnlyRegex(normalizedMobile);
+  if (!mobileRegex) {
+    return null;
+  }
+
+  const pipeline = [];
+
+  if (excludeSocietyObjectId) {
+    pipeline.push({ $match: { _id: { $ne: excludeSocietyObjectId } } });
+  }
+
+  pipeline.push(
+    { $project: { societyId: '$_id', societyName: '$societyName', societyAdmins: 1 } },
     { $unwind: '$societyAdmins' },
     {
-      $set: {
-        normalizedMobile: {
-          $regexReplace: {
-            input: { $ifNull: ['$societyAdmins.mobile', ''] },
-            regex: /[^0-9]/g,
-            replacement: '',
-          },
-        },
-        adminId: '$societyAdmins._id',
+      $match: {
+        'societyAdmins.mobile': { $regex: mobileRegex },
+        ...(excludeAdminObjectId ? { 'societyAdmins._id': { $ne: excludeAdminObjectId } } : {}),
       },
     },
-    { $match: matchConditions },
-    {
-      $project: {
-        societyId: 1,
-        societyName: 1,
-        adminId: 1,
-      },
-    },
-    { $limit: 1 },
-  ];
+    { $project: { societyId: 1, societyName: 1, adminId: '$societyAdmins._id' } },
+    { $limit: 1 }
+  );
 
   const [match] = await Society.aggregate(pipeline);
 
