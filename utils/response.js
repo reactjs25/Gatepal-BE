@@ -1,13 +1,41 @@
 const RESERVED_KEYS = new Set(['statusCode', 'success', 'message', 'timestamp']);
 
+const isPlainObject = (obj) => {
+  if (!obj || typeof obj !== 'object') return false;
+  const proto = Object.getPrototypeOf(obj);
+  return proto === Object.prototype || proto === null;
+};
+
 const normalizeValue = (value) => {
   if (value === null) {
     return '';
   }
+
   if (Array.isArray(value)) {
     return value.map((v) => normalizeValue(v));
   }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
   if (value && typeof value === 'object') {
+    if (typeof value.toHexString === 'function') {
+      return value.toHexString();
+    }
+
+    if (typeof Buffer !== 'undefined' && Buffer.isBuffer && Buffer.isBuffer(value)) {
+      return value.toString('base64');
+    }
+
+    if (typeof value.toJSON === 'function' && !isPlainObject(value)) {
+      return normalizeValue(value.toJSON());
+    }
+
+    if (!isPlainObject(value)) {
+      return value;
+    }
+
     return Object.entries(value).reduce((acc, [k, v]) => {
       if (v === undefined || RESERVED_KEYS.has(k)) {
         return acc;
@@ -16,6 +44,7 @@ const normalizeValue = (value) => {
       return acc;
     }, {});
   }
+
   return value;
 };
 
