@@ -185,6 +185,10 @@ const completeOnboarding = async (req, res, next) => {
       throw createHttpError('Unauthorized', 401);
     }
 
+    if (user.onboardingStatus === 'completed') {
+      throw createHttpError('Onboarding already completed for this account', 409);
+    }
+
     const flow = user.onboardingFlow || resolveOnboardingFlow(user.intendedRole || user.role);
     const payload = req.body || {};
 
