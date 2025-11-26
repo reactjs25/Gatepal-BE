@@ -82,23 +82,37 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
     throw createHttpError('Full name is required for visitor onboarding', 400);
   }
 
-  const sanitizedPhoto = ensureBase64ImageDataUrl({
-    value: profilePhoto,
-    fieldLabel: 'Visitor photo',
-  });
+  const hasProfilePhoto = Boolean((profilePhoto || '').trim());
+  const hasQrCodeImage = Boolean((qrCodeImage || '').trim());
 
-  const sanitizedQrCodeImage = ensureBase64ImageDataUrl({
-    value: qrCodeImage,
-    fieldLabel: 'Visitor QR code',
-    minBytes: 512,
-  });
+  let sanitizedPhoto = null;
+  let sanitizedQrCodeImage = null;
+
+  if (hasProfilePhoto) {
+    sanitizedPhoto = ensureBase64ImageDataUrl({
+      value: profilePhoto,
+      fieldLabel: 'Visitor photo',
+    });
+  }
+
+  if (hasQrCodeImage) {
+    sanitizedQrCodeImage = ensureBase64ImageDataUrl({
+      value: qrCodeImage,
+      fieldLabel: 'Visitor QR code',
+      minBytes: 512,
+    });
+  }
 
   user.fullName = sanitizedFullName;
   user.visitorType = normalizedVisitorType;
-  user.profilePhoto = sanitizedPhoto;
-  user.profilePhotoCapturedAt = new Date();
-  user.qrCodeImage = sanitizedQrCodeImage;
-  user.qrCodeGeneratedAt = new Date();
+  if (sanitizedPhoto) {
+    user.profilePhoto = sanitizedPhoto;
+    user.profilePhotoCapturedAt = new Date();
+  }
+  if (sanitizedQrCodeImage) {
+    user.qrCodeImage = sanitizedQrCodeImage;
+    user.qrCodeGeneratedAt = new Date();
+  }
   const onboardingData = {
     ...(user.onboardingData || {}),
     visitor: {
@@ -106,9 +120,9 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
       visitorType: user.visitorType,
       fullName: user.fullName,
       profilePhotoCapturedAt: user.profilePhotoCapturedAt,
-      hasProfilePhoto: true,
+      hasProfilePhoto: Boolean(user.profilePhoto),
       qrCodeGeneratedAt: user.qrCodeGeneratedAt,
-      hasQrCodeImage: true,
+      hasQrCodeImage: Boolean(user.qrCodeImage),
     },
   };
 
@@ -190,6 +204,7 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
 
   return { society: null };
 };
+
 
 module.exports = {
   handleVisitorOnboarding,

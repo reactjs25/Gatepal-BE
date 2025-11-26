@@ -4,6 +4,7 @@ const userAuthRoutes = require('./userAuthRoutes');
 const societyRoutes = require('./societyRoutes');
 const societyAdminRoutes = require('./societyAdminRoutes');
 const systemRoutes = require('./systemRoutes');
+const visitorRoutes = require('./visitorRoute');
 
 const router = express.Router();
 
@@ -12,6 +13,7 @@ router.use('/userAuth', userAuthRoutes);
 router.use('/society', societyRoutes);
 router.use('/society-admin', societyAdminRoutes);
 router.use('/system', systemRoutes);
+router.use('/visitor', visitorRoutes);
 
 module.exports = router;
 
