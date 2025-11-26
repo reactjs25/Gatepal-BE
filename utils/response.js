@@ -1,5 +1,24 @@
 const RESERVED_KEYS = new Set(['statusCode', 'success', 'message', 'timestamp']);
 
+const normalizeValue = (value) => {
+  if (value === null) {
+    return '';
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => normalizeValue(v));
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value).reduce((acc, [k, v]) => {
+      if (v === undefined || RESERVED_KEYS.has(k)) {
+        return acc;
+      }
+      acc[k] = normalizeValue(v);
+      return acc;
+    }, {});
+  }
+  return value;
+};
+
 const sanitizePayload = (payload = {}) => {
   if (!payload || typeof payload !== 'object') {
     return {};
@@ -10,7 +29,7 @@ const sanitizePayload = (payload = {}) => {
       return acc;
     }
 
-    acc[key] = value;
+    acc[key] = normalizeValue(value);
     return acc;
   }, {});
 };
