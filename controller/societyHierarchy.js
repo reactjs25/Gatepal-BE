@@ -1,6 +1,7 @@
 const { countryCityData } = require('../utils/countryCityData');
 const Society = require('../model/societySchema');
 const { sendSuccessResponse } = require('../utils/response');
+const { setErrorDefaults } = require('../utils/httpError');
 
 const getCountryCityOptions = async (req, res) => {
     return sendSuccessResponse(res, 200, 'Country and city options fetched successfully', {
@@ -51,7 +52,7 @@ const sortByName = (collection = []) =>
 
 const getRegistrationHierarchy = async (req, res, next) => {
     try {
-        const societies = await Society.find({}, 'societyName societyPin country city structure status');
+        const societies = await Society.find({}, 'societyName societyPin country city structure status').lean();
 
         const countryMap = new Map();
 
@@ -97,9 +98,7 @@ const getRegistrationHierarchy = async (req, res, next) => {
             },
         });
     } catch (error) {
-        error.statusCode = error.statusCode || 500;
-        error.publicMessage = error.publicMessage || 'Failed to fetch registration hierarchy';
-        next(error);
+        next(setErrorDefaults(error, 'Failed to fetch registration hierarchy'));
     }
 };
 

@@ -1,17 +1,27 @@
 const fs = require('fs');
 const path = require('path');
 const { sendSuccessResponse } = require('../../utils/response');
+const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
+const DeliveryCompany = require('../../model/deliveryCompanySchema');
 
 const ALLOWED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const assetsDirPath = path.join(__dirname, '..', '..', 'assets');
+const defaultLogoPath = path.join(assetsDirPath, 'Default.png');
 
 const toDisplayName = (filenameBase) =>
   filenameBase.charAt(0).toUpperCase() + filenameBase.slice(1).toLowerCase();
 
 const getDeliveryCompanies = async (req, res, next) => {
   try {
-    let files = [];
+    const existing = await DeliveryCompany.find().lean();
 
+    if (existing && existing.length > 0) {
+      return sendSuccessResponse(res, 200, 'Delivery companies fetched successfully', {
+        data: existing.map((c) => ({ id: c.id, name: c.name, imageUrl: c.imageUrl })),
+      });
+    }
+
+    let files = [];
     try {
       files = fs.readdirSync(assetsDirPath, { withFileTypes: true })
         .filter((entry) => entry.isFile())
@@ -20,24 +30,46 @@ const getDeliveryCompanies = async (req, res, next) => {
       files = [];
     }
 
+    let defaultBuffer;
+    try {
+      defaultBuffer = fs.readFileSync(defaultLogoPath);
+    } catch (e) {
+      defaultBuffer = null;
+    }
+
     const companies = files
       .filter((name) => ALLOWED_IMAGE_EXTENSIONS.has(path.extname(name).toLowerCase()))
       .map((name) => {
         const base = path.basename(name, path.extname(name));
+        let imageUrl = `/assets/${name}`;
+        if (defaultBuffer) {
+          try {
+            const candidateBuffer = fs.readFileSync(path.join(assetsDirPath, name));
+            if (candidateBuffer && candidateBuffer.length === defaultBuffer.length && candidateBuffer.equals(defaultBuffer)) {
+              imageUrl = `/assets/Default.png`;
+            }
+          } catch (e) {}
+        }
         return {
           id: base.toLowerCase(),
           name: toDisplayName(base),
-          imageUrl: `/assets/${name}`,
+          imageUrl,
         };
       });
+
+    if (companies.length > 0) {
+      try {
+        await DeliveryCompany.insertMany(
+          companies.map((c) => ({ id: c.id, name: c.name, imageUrl: c.imageUrl }))
+        );
+      } catch (seedErr) {}
+    }
 
     return sendSuccessResponse(res, 200, 'Delivery companies fetched successfully', {
       data: companies,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to fetch delivery companies';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to fetch delivery companies'));
   }
 };
 
@@ -67,13 +99,46 @@ const getWorkCategories = async (req, res, next) => {
       data: categories,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to fetch work categories';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to fetch work categories'));
+  }
+};
+
+const addDeliveryCompany = async (req, res, next) => {
+  try {
+    const { companyName } = req.body || {};
+
+    if (!companyName || typeof companyName !== 'string') {
+      return next(createHttpError('companyName is required', 400));
+    }
+
+    const trimmed = companyName.trim();
+    const base = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    if (!base) {
+      return next(createHttpError('Company name is invalid', 400));
+    }
+
+    const existing = await DeliveryCompany.findOne({ id: base });
+    if (existing) {
+      return next(createHttpError('Company already exists', 409));
+    }
+
+    const record = await DeliveryCompany.create({
+      id: base,
+      name: toDisplayName(trimmed),
+      imageUrl: `/assets/Default.png`,
+    });
+
+    return sendSuccessResponse(res, 201, 'Delivery company added successfully', {
+      data: { id: record.id, name: record.name, imageUrl: record.imageUrl },
+    });
+  } catch (error) {
+    next(setErrorDefaults(error, 'Failed to add delivery company'));
   }
 };
 
 module.exports = {
   getDeliveryCompanies,
   getWorkCategories,
+  addDeliveryCompany,
 };

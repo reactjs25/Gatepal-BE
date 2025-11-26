@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const Society = require('../model/societySchema');
 const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
-const { createHttpError } = require('../utils/httpError');
+const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { normalizeAdminEmail, normalizeAdminMobile, ensureAdminContactsUnique } = require('../utils/societyAdminUtils');
 const { sendSuccessResponse } = require('../utils/response');
 
@@ -81,9 +81,7 @@ const createSocietyAdmin = async (req, res, next) => {
       },
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to create society admin';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to create society admin'));
   }
 };
 
@@ -105,9 +103,7 @@ const getAllSocietyAdmins = async (req, res, next) => {
       },
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to fetch society admins';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to fetch society admins'));
   }
 };
 
@@ -135,9 +131,7 @@ const getSocietyAdminById = async (req, res, next) => {
       },
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to fetch society admin';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to fetch society admin'));
   }
 };
 
@@ -195,9 +189,7 @@ const updateSocietyAdmin = async (req, res, next) => {
       },
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to update society admin';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to update society admin'));
   }
 };
 
@@ -228,9 +220,7 @@ const toggleSocietyAdminStatus = async (req, res, next) => {
       },
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to toggle society admin status';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to toggle society admin status'));
   }
 };
 
@@ -255,9 +245,7 @@ const deleteSocietyAdmin = async (req, res, next) => {
 
     return sendSuccessResponse(res, 200, 'Society admin deleted successfully');
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to delete society admin';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to delete society admin'));
   }
 };
 
@@ -313,9 +301,7 @@ const requestSocietyAdminPasswordReset = async (req, res, next) => {
       },
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to send password reset email';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to send password reset email'));
   }
 };
 
@@ -361,9 +347,7 @@ const resetSocietyAdminPassword = async (req, res, next) => {
 
     return sendSuccessResponse(res, 200, 'Password reset successful');
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to reset password';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to reset password'));
   }
 };
 

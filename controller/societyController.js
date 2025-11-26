@@ -1,6 +1,6 @@
 const Society = require('../model/societySchema');
-const { createHttpError } = require('../utils/httpError');
-const { ensureAdminListIsUnique } = require('../utils/societyAdminUtils');
+const { createHttpError, setErrorDefaults } = require('../utils/httpError');
+const { ensureAdminListIsUnique, normalizeAdminEmail, normalizeAdminMobile } = require('../utils/societyAdminUtils');
 const { sendSuccessResponse } = require('../utils/response');
 
 const PIN_MIN = 100000;
@@ -33,10 +33,26 @@ const normalizeIncomingAdmins = (admins = []) =>
   Array.isArray(admins)
     ? admins.map((admin = {}) => ({
         ...admin,
-        email: admin.email ? admin.email.trim().toLowerCase() : admin.email,
-        mobile: admin.mobile ? admin.mobile.trim() : admin.mobile,
+        email: admin.email ? normalizeAdminEmail(admin.email) : admin.email,
+        mobile: admin.mobile ? normalizeAdminMobile(admin.mobile) : admin.mobile,
       }))
     : [];
+
+const computeEngagementTotals = (engagement = {}) => {
+  const baseRate = engagement.baseRate;
+  let gst = engagement.gst;
+  let total = engagement.total;
+
+  if (gst === undefined && baseRate !== undefined) {
+    gst = baseRate * 0.18;
+  }
+
+  if (total === undefined && baseRate !== undefined) {
+    total = baseRate + (gst !== undefined ? gst : 0);
+  }
+
+  return { gst, total };
+};
 
 const createSociety = async (req, res, next) => {
   try {
@@ -58,16 +74,7 @@ const createSociety = async (req, res, next) => {
     } = req.body;
 
     const engagement = engagementInput || {};
-    let gst = engagement.gst;
-    let total = engagement.total;
-
-    if (gst === undefined && engagement.baseRate !== undefined) {
-      gst = engagement.baseRate * 0.18;
-    }
-
-    if (total === undefined && engagement.baseRate !== undefined) {
-      total = engagement.baseRate + (gst !== undefined ? gst : 0);
-    }
+    const totals = computeEngagementTotals(engagement);
     const normalizedSocietyAdmins = Array.isArray(societyAdmins)
       ? normalizeIncomingAdmins(societyAdmins)
       : undefined;
@@ -106,28 +113,24 @@ const createSociety = async (req, res, next) => {
       societyAdmins: normalizedSocietyAdmins,
       engagement: {
         ...engagement,
-        gst,
-        total,
+        gst: totals.gst,
+        total: totals.total,
       },
     });
 
     await newSociety.save();
     return sendSuccessResponse(res, 201, 'Society created successfully', { data: newSociety });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to create society';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to create society'));
   }
 };
 
 const getAllSociety = async (req, res, next) => {
   try {
-    const societies = await Society.find();
+    const societies = await Society.find().lean();
     return sendSuccessResponse(res, 200, 'Societies fetched successfully', { data: societies });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to fetch societies';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to fetch societies'));
   }
 };
 
@@ -142,9 +145,7 @@ const getSocietyById = async (req, res, next) => {
 
     return sendSuccessResponse(res, 200, 'Society fetched successfully', { data: society });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to fetch society';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to fetch society'));
   }
 };
 
@@ -156,21 +157,11 @@ const updateSocietyById = async (req, res, next) => {
     const updates = { ...rest };
 
     if (engagement) {
-      let gst = engagement.gst;
-      let total = engagement.total;
-
-      if (gst === undefined && engagement.baseRate !== undefined) {
-        gst = engagement.baseRate * 0.18;
-      }
-
-      if (total === undefined && engagement.baseRate !== undefined) {
-        total = engagement.baseRate + (gst !== undefined ? gst : 0);
-      }
-
+      const totals = computeEngagementTotals(engagement);
       updates.engagement = {
         ...engagement,
-        ...(gst !== undefined ? { gst } : {}),
-        ...(total !== undefined ? { total } : {}),
+        ...(totals.gst !== undefined ? { gst: totals.gst } : {}),
+        ...(totals.total !== undefined ? { total: totals.total } : {}),
       };
     }
 
@@ -191,9 +182,7 @@ const updateSocietyById = async (req, res, next) => {
 
     return sendSuccessResponse(res, 200, 'Society updated successfully', { data: updatedSociety });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to update society';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to update society'));
   }
 };
 
@@ -213,9 +202,7 @@ const toggleSocietyStatus = async (req, res, next) => {
       data: society,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to toggle society status';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to toggle society status'));
   }
 };
 

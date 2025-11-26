@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const { logError } = require('../utils/errorLogger');
 const { sendSystemAlertEmail } = require('../utils/systemAlertEmail');
-const { createHttpError } = require('../utils/httpError');
+const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { sendSuccessResponse } = require('../utils/response');
 
 const mapReadyState = (state) => {
@@ -50,9 +50,7 @@ const logTestError = async (req, res, next) => {
       'Diagnostic error recorded. Check error logs table for entry.'
     );
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to record diagnostic error';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to record diagnostic error'));
   }
 };
 
@@ -76,9 +74,7 @@ const triggerAlertEmail = async (req, res, next) => {
       'Alert email has been queued via SMTP transporter.'
     );
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to send diagnostic alert email';
-    next(error);
+    next(setErrorDefaults(error, 'Failed to send diagnostic alert email'));
   }
 };
 
@@ -89,4 +85,3 @@ module.exports = {
   logTestError,
   triggerAlertEmail,
  };
-

@@ -12,8 +12,15 @@ class HttpError extends Error {
 const createHttpError = (message, statusCode = 500, options = {}) =>
   new HttpError(message, statusCode, options);
 
+const setErrorDefaults = (error, publicMessage, statusCode = 500) => {
+  error.statusCode = error.statusCode || statusCode;
+  error.publicMessage = error.publicMessage || publicMessage;
+  return error;
+};
+
 module.exports = {
   HttpError,
   createHttpError,
+  setErrorDefaults,
 };
 

@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const SuperAdmin = require('../model/superAdminSchema');
 const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
-const { createHttpError } = require('../utils/httpError');
+const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { sendSuccessResponse } = require('../utils/response');
 
 const generateToken = (superAdminId, email) =>
@@ -51,9 +51,7 @@ const signUp = async (req, res, next) => {
       token,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to create super admin';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to create super admin'));
   }
 };
 
@@ -84,9 +82,7 @@ const login = async (req, res, next) => {
       token,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to login';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to login'));
   }
 };
 
@@ -129,9 +125,7 @@ const forgotPassword = async (req, res, next) => {
 
     return sendSuccessResponse(res, 200, 'If the email exists, a password reset link has been sent');
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to send password reset email';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to send password reset email'));
   }
 };
 
@@ -168,9 +162,7 @@ const resetPassword = async (req, res, next) => {
       token: authToken,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to reset password';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to reset password'));
   }
 };
 

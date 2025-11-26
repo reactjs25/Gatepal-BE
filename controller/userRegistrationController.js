@@ -1,6 +1,6 @@
 const User = require('../model/userSchema');
 const { generateNumericOtp, sendOtpToPhone } = require('../utils/otpService');
-const { createHttpError } = require('../utils/httpError');
+const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ROLE_TYPES, normalizeRole, resolveOnboardingFlow } = require('../utils/userRoleUtils');
 const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require('../utils/phoneNumber');
 const { generateUserAuthToken } = require('../utils/authToken');
@@ -131,9 +131,7 @@ const registerUser = async (req, res, next) => {
       },
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to initiate registration';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to initiate registration'));
   }
 };
 
@@ -175,9 +173,7 @@ const verifyRegistrationOtp = async (req, res, next) => {
       token,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to verify OTP';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to verify OTP'));
   }
 };
 
@@ -225,9 +221,7 @@ const completeOnboarding = async (req, res, next) => {
       token,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to complete onboarding';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to complete onboarding'));
   }
 };
 

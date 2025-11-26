@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const User = require('../model/userSchema');
 const { generateNumericOtp } = require('../utils/otpService');
-const { createHttpError } = require('../utils/httpError');
+const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ROLE_TYPES, normalizeRole, APP_USER_ROLES } = require('../utils/userRoleUtils');
 const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require('../utils/phoneNumber');
 const { generateUserAuthToken } = require('../utils/authToken');
@@ -156,9 +156,7 @@ const login = async (req, res, next) => {
       token,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to login';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to login'));
   }
 };
 
@@ -190,9 +188,7 @@ const requestPasswordOtp = async (req, res, next) => {
       },
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to send OTP';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to send OTP'));
   }
 };
 
@@ -231,9 +227,7 @@ const verifyOtp = async (req, res, next) => {
       },
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to verify OTP';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to verify OTP'));
   }
 };
 
@@ -287,9 +281,7 @@ const resetPassword = async (req, res, next) => {
       token,
     });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    error.publicMessage = error.publicMessage || 'Failed to reset password';
-    return next(error);
+    return next(setErrorDefaults(error, 'Failed to reset password'));
   }
 };
 
