@@ -10,7 +10,23 @@ const OCCUPANT_TYPES = new Set([
   'tenant',
   'tenant_family_member',
 ]);
+
 const OCCUPANCY_STATUSES = new Set(['currently_residing', 'unit_rented', 'unit_vacant']);
+const mongoose = require('mongoose');
+
+const UI_OCCUPANCY_ALLOWED = new Set([
+  'owner_is_residing',
+  'unit_is_empty',
+  'unit_is_rented_out',
+]);
+
+const mapUiToCanonicalOccupancy = (value) => {
+  const v = normalizeString(value).toLowerCase();
+  if (v === 'owner_is_residing') return 'currently_residing';
+  if (v === 'unit_is_empty') return 'unit_vacant';
+  if (v === 'unit_is_rented_out') return 'unit_rented';
+  return '';
+};
 
 const normalizeString = (value) => (value || '').toString().trim();
 
@@ -213,7 +229,142 @@ const addMemberUnit = async (req, res, next) => {
   }
 };
 
+const updateUnitOccupancyStatus = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    if (authUser.role !== 'member') {
+      return next(createHttpError('Only members can update unit occupancy status', 403));
+    }
+
+    const unitId = normalizeString(req.params.id || req.params.unit_id || '');
+    const incomingStatus = normalizeString(req.body.occupancy_status);
+
+    if (!unitId) {
+      return next(createHttpError('unit_id is required', 400));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(unitId)) {
+      return next(createHttpError('Invalid unit_id', 400));
+    }
+
+    if (!incomingStatus) {
+      return next(createHttpError('occupancy_status is required', 400));
+    }
+
+    if (!UI_OCCUPANCY_ALLOWED.has(incomingStatus)) {
+      return next(
+        createHttpError(
+          'occupancy_status must be one of owner_is_residing, unit_is_empty, unit_is_rented_out',
+          400
+        )
+      );
+    }
+
+    const canonical = mapUiToCanonicalOccupancy(incomingStatus);
+
+    if (!canonical || !OCCUPANCY_STATUSES.has(canonical)) {
+      return next(createHttpError('Invalid occupancy status value', 400));
+    }
+
+    const doc = await MemberUnit.findById(unitId);
+
+    if (!doc) {
+      return next(createHttpError('Unit not found', 404));
+    }
+
+    if (String(doc.memberId) !== String(authUser._id)) {
+      return next(createHttpError('Forbidden: you do not own this unit', 403));
+    }
+
+    doc.occupancyStatus = canonical;
+    await doc.save();
+
+    const society = await Society.findById(doc.societyId).lean();
+
+    return sendSuccessResponse(res, 200, 'Unit occupancy status updated successfully', {
+      data: {
+        id: String(doc._id),
+        wingName: doc.wingName,
+        unitNumber: doc.unitNumber,
+        occupantType: doc.occupantType,
+        occupancyStatus: doc.occupancyStatus,
+        societyName: society ? society.societyName : undefined,
+        societyPin: society ? society.societyPin : undefined,
+        city: society ? society.city : undefined,
+        country: society ? society.country : undefined,
+        updatedAt: doc.updatedAt,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update unit occupancy status'));
+  }
+};
+
+const getUnitById = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    const unitId = normalizeString(req.params.id || '');
+
+    if (!unitId) {
+      return next(createHttpError('unitId path parameter is required', 400));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(unitId)) {
+      return next(createHttpError('Invalid unit ID format', 400));
+    }
+
+    const doc = await MemberUnit.findById(unitId);
+
+    if (!doc) {
+      return next(createHttpError('Unit not found', 404));
+    }
+
+    if (String(doc.memberId) !== String(authUser._id)) {
+      return next(createHttpError('Forbidden: you do not own this unit', 403));
+    }
+
+    const society = await Society.findById(doc.societyId).lean();
+    const member = await User.findById(doc.memberId).lean();
+
+    return sendSuccessResponse(res, 200, 'Unit details fetched successfully', {
+      data: {
+        id: String(doc._id),
+        memberName: member ? member.fullName || null : null,
+        wingName: doc.wingName,
+        unitNumber: doc.unitNumber,
+        occupantType: doc.occupantType,
+        occupancyStatus: doc.occupancyStatus,
+        society: society
+          ? {
+            id: String(society._id),
+            name: society.societyName,
+            pin: society.societyPin,
+            address: society.address,
+            city: society.city,
+            country: society.country,
+          }
+          : null,
+
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch unit details'));
+  }
+};
+
 module.exports = {
   addMemberUnit,
   validateMemberUnitPayload,
+  updateUnitOccupancyStatus,
+  getUnitById,
 };

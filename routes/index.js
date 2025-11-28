@@ -8,6 +8,7 @@ const visitorRoutes = require('./visitorRoute');
 const guardRoutes = require('./guardRoutes');
 const memberRoutes = require('./memberRoutes');
 
+
 const router = express.Router();
 
 router.use('/auth', superAdminAuthRoutes);
@@ -18,6 +19,7 @@ router.use('/system', systemRoutes);
 router.use('/visitor', visitorRoutes);
 router.use('/guard', guardRoutes);
 router.use('/member', memberRoutes);
+
 
 module.exports = router;
 
