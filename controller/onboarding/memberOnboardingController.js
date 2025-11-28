@@ -1,5 +1,6 @@
 const { createHttpError } = require('../../utils/httpError');
 const Society = require('../../model/societySchema');
+const MemberUnit = require('../../model/memberUnitSchema');
 const { ROLE_TYPES } = require('../../utils/userRoleUtils');
 const { normalizeDigits } = require('../../utils/phoneNumber');
 
@@ -11,6 +12,38 @@ const MEMBER_OCCUPANT_TYPES = new Set([
 ]);
 
 const MEMBER_OCCUPANCY_STATUSES = new Set(['currently_residing', 'unit_rented', 'unit_vacant']);
+
+const normalizeString = (value) => (value || '').toString().trim();
+const toCanonicalEnum = (value, allowed) => {
+  const normalized = normalizeString(value);
+  if (!normalized) return '';
+  const title = normalized
+    .toLowerCase()
+    .replace(/[_\s-]+/g, '')
+    .replace(/^o(wner)?$/, 'owner')
+    .replace(/^unitowner$/, 'unitowner')
+    .replace(/^(ownerfamily|ownerfamilymember|unitownerfamilymember)$/, 'ownerfamilymember')
+    .replace(/^t(enant)?$/, 'tenant')
+    .replace(/^(tenantfamily|tenantfamilymember)$/, 'tenantfamilymember')
+    .replace(/^(currentlyresiding)$/, 'currentlyresiding')
+    .replace(/^(unitrented|rented)$/, 'unitrented')
+    .replace(/^(unitvacant|vacant)$/, 'unitvacant')
+    .replace(/^occupied$/, 'currentlyresiding');
+
+  const mapping = {
+    owner: 'unit_owner',
+    unitowner: 'unit_owner',
+    ownerfamilymember: 'unit_owner_family_member',
+    tenant: 'tenant',
+    tenantfamilymember: 'tenant_family_member',
+    currentlyresiding: 'currently_residing',
+    unitrented: 'unit_rented',
+    unitvacant: 'unit_vacant',
+  };
+
+  const canonical = mapping[title] || value;
+  return allowed.has(canonical) ? canonical : '';
+};
 
 const maybeUpgradeSocietyAdmin = (user, society) => {
   if (!user || !society || user.role === ROLE_TYPES.SOCIETY_ADMIN) {
@@ -50,18 +83,19 @@ const maybeUpgradeSocietyAdmin = (user, society) => {
 };
 
 const handleMemberOnboarding = async ({ user, payload }) => {
-  const {
-    fullName,
-    email,
-    country,
-    city,
-    societyName,
-    societyPin,
-    wingName,
-    unitNumber,
-    occupantType,
-    occupancyStatus,
-  } = payload;
+  const fullName = normalizeString(payload.fullName);
+  const email = normalizeString(payload.email);
+  const country = normalizeString(payload.country);
+  const city = normalizeString(payload.city);
+  const societyName = normalizeString(payload.societyName);
+  const societyPin = normalizeString(payload.societyPin);
+  const wingName = normalizeString(payload.wingName ?? payload.wing);
+  const unitNumber = normalizeString(payload.unitNumber ?? payload.unnitNumber ?? payload.unit);
+  const occupantType = toCanonicalEnum(
+    payload.occupantType ?? payload.occupancyType ?? payload.occupanytype,
+    MEMBER_OCCUPANT_TYPES
+  );
+  const occupancyStatus = toCanonicalEnum(payload.occupancyStatus, MEMBER_OCCUPANCY_STATUSES);
 
   if (!fullName || !email || !societyName || !societyPin || !wingName || !unitNumber) {
     throw createHttpError(
@@ -82,8 +116,8 @@ const handleMemberOnboarding = async ({ user, payload }) => {
     throw createHttpError('Invalid occupancy status provided', 400);
   }
 
-  const normalizedSocietyName = societyName?.trim();
-  const normalizedSocietyPin = societyPin?.trim();
+  const normalizedSocietyName = societyName;
+  const normalizedSocietyPin = societyPin;
 
   const society = await Society.findOne({
     societyName: normalizedSocietyName,
@@ -94,14 +128,14 @@ const handleMemberOnboarding = async ({ user, payload }) => {
     throw createHttpError('Society not found for provided name and pin', 404);
   }
 
-  user.fullName = fullName.trim();
-  user.email = email.trim().toLowerCase();
-  user.country = country?.trim() || null;
-  user.city = city?.trim() || null;
+  user.fullName = fullName;
+  user.email = email.toLowerCase();
+  user.country = country || null;
+  user.city = city || null;
   user.societyId = society._id;
   user.societyName = society.societyName;
-  user.wingName = wingName.trim();
-  user.unitNumber = unitNumber.trim();
+  user.wingName = wingName;
+  user.unitNumber = unitNumber;
   user.occupantType = occupantType;
   user.occupancyStatus = occupancyStatus;
   user.onboardingData = {
@@ -120,6 +154,26 @@ const handleMemberOnboarding = async ({ user, payload }) => {
       occupancyStatus: user.occupancyStatus,
     },
   };
+
+  const exists = await MemberUnit.exists({
+    memberId: user._id,
+    societyId: society._id,
+    wingNameLower: user.wingName.toLowerCase(),
+    unitNumberLower: user.unitNumber.toLowerCase(),
+  });
+
+  if (!exists) {
+    await MemberUnit.create({
+      memberId: user._id,
+      societyId: society._id,
+      wingName: user.wingName,
+      wingNameLower: user.wingName.toLowerCase(),
+      unitNumber: user.unitNumber,
+      unitNumberLower: user.unitNumber.toLowerCase(),
+      occupantType: user.occupantType,
+      occupancyStatus: user.occupancyStatus,
+    });
+  }
 
   const upgradeResult = maybeUpgradeSocietyAdmin(user, society);
 

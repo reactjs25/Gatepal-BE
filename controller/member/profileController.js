@@ -32,9 +32,16 @@ const getMemberProfile = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    const society = user.societyId ? await Society.findById(user.societyId).lean() : null;
+    const unitsFromDb = await MemberUnit.find({ memberId: user._id }).lean();
 
-    const units = await MemberUnit.find({ memberId: user._id }).lean();
+    const societyIds = new Set(unitsFromDb.map((u) => String(u.societyId)).filter(Boolean));
+    const societies = societyIds.size
+      ? await Society.find({ _id: { $in: Array.from(societyIds) } }).lean()
+      : [];
+    const societyMap = societies.reduce((acc, s) => {
+      acc[String(s._id)] = s;
+      return acc;
+    }, {});
 
     const memberCode = generateStableMemberCode(user._id);
 
@@ -63,31 +70,28 @@ const getMemberProfile = async (req, res, next) => {
         memberId: memberCode,
         name: user.fullName || null,
         role: effectiveRole,
-        occupantType: user.occupantType || null,
-        occupancyStatus: user.occupancyStatus || null,
-        wingName: user.wingName || null,
-        unitNumber: user.unitNumber || null,
-        societyName: society ? society.societyName : user.societyName || null,
-        society: society
-          ? {
-              id: String(society._id),
-              name: society.societyName,
-              pin: society.societyPin,
-              address: society.address,
-              city: society.city,
-              country: society.country,
-            }
-          : null,
-        units: units.map((u) => ({
-          id: String(u._id),
-          societyId: String(u.societyId),
-          wingName: u.wingName,
-          unitNumber: u.unitNumber,
-          occupantType: u.occupantType,
-          occupancyStatus: u.occupancyStatus,
-          createdAt: u.createdAt,
-          updatedAt: u.updatedAt,
-        })),
+        units: unitsFromDb.map((u) => {
+          const s = societyMap[String(u.societyId)] || null;
+          return {
+            id: String(u._id),
+            wingName: u.wingName,
+            unitNumber: u.unitNumber,
+            occupantType: u.occupantType,
+            occupancyStatus: u.occupancyStatus,
+            society: s
+              ? {
+                  id: String(s._id),
+                  name: s.societyName,
+                  pin: s.societyPin,
+                  address: s.address,
+                  city: s.city,
+                  country: s.country,
+                }
+              : null,
+            createdAt: u.createdAt,
+            updatedAt: u.updatedAt,
+          };
+        }),
         qrCodeImage,
       },
     });

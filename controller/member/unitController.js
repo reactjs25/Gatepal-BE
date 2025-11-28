@@ -46,10 +46,20 @@ const toCanonicalEnum = (value, allowed) => {
 };
 
 const validateMemberUnitPayload = (payload = {}) => {
-  const wingName = normalizeString(payload.wingName);
-  const unitNumber = normalizeString(payload.unitNumber);
-  const occupantType = toCanonicalEnum(payload.occupantType, OCCUPANT_TYPES);
+  const city = normalizeString(payload.city);
+  const societyName = normalizeString(payload.societyName);
+  const societyPin = normalizeString(payload.societyPin);
+
+  const wingName = normalizeString(payload.wingName ?? payload.wing);
+  const unitNumber = normalizeString(payload.unitNumber ?? payload.unnitNumber ?? payload.unit);
+
+  const rawOccupantType = payload.occupantType ?? payload.occupancyType;
+  const occupantType = toCanonicalEnum(rawOccupantType, OCCUPANT_TYPES);
   const occupancyStatus = toCanonicalEnum(payload.occupancyStatus, OCCUPANCY_STATUSES);
+
+  if (!societyPin) {
+    throw createHttpError('societyPin is required', 400);
+  }
 
   if (!wingName || !unitNumber) {
     throw createHttpError('wingName and unitNumber are required', 400);
@@ -69,7 +79,7 @@ const validateMemberUnitPayload = (payload = {}) => {
     );
   }
 
-  return { wingName, unitNumber, occupantType, occupancyStatus };
+  return { city, societyName, societyPin, wingName, unitNumber, occupantType, occupancyStatus };
 };
 
 const findWingAndUnit = (society, wingName, unitNumber) => {
@@ -88,7 +98,8 @@ const addMemberUnit = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    const { wingName, unitNumber, occupantType, occupancyStatus } = validateMemberUnitPayload(req.body || {});
+    const { city, societyName, societyPin, wingName, unitNumber, occupantType, occupancyStatus } =
+      validateMemberUnitPayload(req.body || {});
 
     if (authUser.role !== 'member') {
       return next(createHttpError('Only members can add units to their account', 403));
@@ -96,13 +107,17 @@ const addMemberUnit = async (req, res, next) => {
 
     const targetUser = authUser;
 
-    if (!targetUser.societyId) {
-      return next(createHttpError('Member is not linked to any society', 400));
-    }
-
-    const society = await Society.findById(targetUser.societyId).lean();
+    let society = await Society.findOne({ societyPin: societyPin }).lean();
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      const nameFilter = societyName ? { societyName: societyName } : {};
+      const cityFilter = city ? { city: city } : {};
+      society = await Society.findOne({ ...nameFilter, ...cityFilter }).lean();
+    }
+    if (!society) {
+      return next(createHttpError('Society not found for provided details', 404));
+    }
+    if (societyPin && normalizeString(society.societyPin) !== societyPin) {
+      return next(createHttpError('Provided societyPin does not match selected society', 400));
     }
 
     const { wing, unit } = findWingAndUnit(society, wingName, unitNumber);
@@ -115,7 +130,7 @@ const addMemberUnit = async (req, res, next) => {
 
     const exists = await MemberUnit.exists({
       memberId: targetUser._id,
-      societyId: targetUser.societyId,
+      societyId: society._id,
       wingNameLower: wingName.toLowerCase(),
       unitNumberLower: unitNumber.toLowerCase(),
     });
@@ -126,7 +141,7 @@ const addMemberUnit = async (req, res, next) => {
 
     const doc = await MemberUnit.create({
       memberId: targetUser._id,
-      societyId: targetUser.societyId,
+      societyId: society._id,
       wingName,
       wingNameLower: wingName.toLowerCase(),
       unitNumber,
@@ -138,16 +153,15 @@ const addMemberUnit = async (req, res, next) => {
     return sendSuccessResponse(res, 201, 'Unit added successfully', {
       data: {
         id: doc._id,
-        memberId: doc.memberId,
-        societyId: doc.societyId,
+        societyName: society.societyName,
+        societyPin: society.societyPin,
+        city: society.city,
+        country: society.country,
         wingName: doc.wingName,
         unitNumber: doc.unitNumber,
         occupantType: doc.occupantType,
         occupancyStatus: doc.occupancyStatus,
         memberName: targetUser.fullName || null,
-        societyName: society.societyName,
-        createdAt: doc.createdAt,
-        updatedAt: doc.updatedAt,
       },
     });
   } catch (error) {
@@ -155,37 +169,7 @@ const addMemberUnit = async (req, res, next) => {
   }
 };
 
-const listMemberUnits = async (req, res, next) => {
-  try {
-    const authUser = req.appUser;
-    if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
-    }
-
-    if (authUser.role !== 'member') {
-      return next(createHttpError('Only members can view their units', 403));
-    }
-
-    const docs = await MemberUnit.find({ memberId: authUser._id }).lean();
-    return sendSuccessResponse(res, 200, 'Member units fetched successfully', {
-      data: docs.map((u) => ({
-        id: u._id,
-        societyId: u.societyId,
-        wingName: u.wingName,
-        unitNumber: u.unitNumber,
-        occupantType: u.occupantType,
-        occupancyStatus: u.occupancyStatus,
-        createdAt: u.createdAt,
-        updatedAt: u.updatedAt,
-      })),
-    });
-  } catch (error) {
-    return next(setErrorDefaults(error, 'Failed to fetch member units'));
-  }
-};
-
 module.exports = {
   addMemberUnit,
-  listMemberUnits,
   validateMemberUnitPayload,
 };
