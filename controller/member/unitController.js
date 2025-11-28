@@ -128,6 +128,42 @@ const addMemberUnit = async (req, res, next) => {
       return next(createHttpError('Unit not found in the specified wing', 404));
     }
 
+    const primaryOccupant = await MemberUnit.findOne({
+      societyId: society._id,
+      wingNameLower: wingName.toLowerCase(),
+      unitNumberLower: unitNumber.toLowerCase(),
+      occupantType: { $in: ['unit_owner', 'tenant'] },
+    }).lean();
+
+    if (occupantType === 'unit_owner' || occupantType === 'tenant') {
+      if (primaryOccupant) {
+        return next(
+          createHttpError(
+            'A primary occupant already exists for this unit. Choose unit_owner_family_member or tenant_family_member.',
+            409
+          )
+        );
+      }
+    } else if (occupantType === 'unit_owner_family_member') {
+      if (!primaryOccupant || primaryOccupant.occupantType !== 'unit_owner') {
+        return next(
+          createHttpError(
+            'Unit owner must be registered for this unit before adding owner family members.',
+            400
+          )
+        );
+      }
+    } else if (occupantType === 'tenant_family_member') {
+      if (!primaryOccupant || primaryOccupant.occupantType !== 'tenant') {
+        return next(
+          createHttpError(
+            'Tenant must be registered for this unit before adding tenant family members.',
+            400
+          )
+        );
+      }
+    }
+
     const exists = await MemberUnit.exists({
       memberId: targetUser._id,
       societyId: society._id,
@@ -139,7 +175,7 @@ const addMemberUnit = async (req, res, next) => {
       return next(createHttpError('This unit has already been added for the member', 409));
     }
 
-    const doc = await MemberUnit.create({
+    const payload = {
       memberId: targetUser._id,
       societyId: society._id,
       wingName,
@@ -148,7 +184,15 @@ const addMemberUnit = async (req, res, next) => {
       unitNumberLower: unitNumber.toLowerCase(),
       occupantType,
       occupancyStatus,
-    });
+      ...(occupantType === 'unit_owner_family_member' && primaryOccupant
+        ? { primaryMemberId: primaryOccupant.memberId }
+        : {}),
+      ...(occupantType === 'tenant_family_member' && primaryOccupant
+        ? { primaryMemberId: primaryOccupant.memberId }
+        : {}),
+    };
+
+    const doc = await MemberUnit.create(payload);
 
     return sendSuccessResponse(res, 201, 'Unit added successfully', {
       data: {

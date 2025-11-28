@@ -1,4 +1,4 @@
-const twilio = require('twilio');
+// const twilio = require('twilio');
 
 const {
   TWILIO_ACCOUNT_SID: twilioAccountSid,
@@ -6,8 +6,9 @@ const {
   TWILIO_FROM_NUMBER: twilioFromNumber,
 } = process.env;
 
-const twilioClient =
-  twilioAccountSid && twilioAuthToken ? twilio(twilioAccountSid, twilioAuthToken) : null;
+// const twilioClient =
+//   twilioAccountSid && twilioAuthToken ? twilio(twilioAccountSid, twilioAuthToken) : null;
+const twilioClient = null;
 
 const generateNumericOtp = (length = 4) => {
   const min = 10 ** (length - 1);
@@ -18,17 +19,16 @@ const generateNumericOtp = (length = 4) => {
 const sendOtpToPhone = async ({ countryCode = '+91', phoneNumber, otp }) => {
   const destinationNumber = `${countryCode}${phoneNumber}`;
 
-  if (!twilioClient || !twilioFromNumber) {
-    console.warn('[OTP] Twilio credentials missing. OTP sending skipped.');
-    console.log(`[OTP] Code ${otp} would be sent to ${destinationNumber}`);
-    return;
-  }
-
-  await twilioClient.messages.create({
-    body: `Your GatePal verification code is ${otp}`,
-    from: twilioFromNumber,
-    to: destinationNumber,
-  });
+  // Twilio sending temporarily disabled. Logging OTP instead.
+  console.log(`[OTP] Code ${otp} would be sent to ${destinationNumber}`);
+  return;
+  
+  // If re-enabling, restore the following:
+  // await twilioClient.messages.create({
+  //   body: `Your GatePal verification code is ${otp}`,
+  //   from: twilioFromNumber,
+  //   to: destinationNumber,
+  // });
 };
 
 module.exports = {

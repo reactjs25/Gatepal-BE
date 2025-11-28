@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const occupantTypes = ['unit_owner', 'unit_owner_family_member', 'tenant', 'tenant_family_member',];
+const occupantTypes = ['unit_owner', 'unit_owner_family_member', 'tenant', 'tenant_family_member'];
 const occupancyStatuses = ['currently_residing', 'unit_rented', 'unit_vacant'];
 
 const memberUnitSchema = new mongoose.Schema(
@@ -13,6 +13,7 @@ const memberUnitSchema = new mongoose.Schema(
     unitNumberLower: { type: String, required: true, lowercase: true, trim: true },
     occupantType: { type: String, required: true, enum: occupantTypes },
     occupancyStatus: { type: String, required: true, enum: occupancyStatuses },
+    primaryMemberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 );
@@ -27,5 +28,13 @@ memberUnitSchema.index(
   { name: 'lookup_unit_in_society' }
 );
 
-module.exports = mongoose.model('MemberUnit', memberUnitSchema);
+memberUnitSchema.index(
+  { societyId: 1, wingNameLower: 1, unitNumberLower: 1 },
+  {
+    unique: true,
+    name: 'uniq_primary_occupant_per_unit_across_owner_or_tenant',
+    partialFilterExpression: { occupantType: { $in: ['unit_owner', 'tenant'] } },
+  }
+);
 
+module.exports = mongoose.model('MemberUnit', memberUnitSchema);

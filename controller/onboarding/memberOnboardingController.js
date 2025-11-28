@@ -155,6 +155,36 @@ const handleMemberOnboarding = async ({ user, payload }) => {
     },
   };
 
+  const primaryOccupant = await MemberUnit.findOne({
+    societyId: society._id,
+    wingNameLower: user.wingName.toLowerCase(),
+    unitNumberLower: user.unitNumber.toLowerCase(),
+    occupantType: { $in: ['unit_owner', 'tenant'] },
+  }).lean();
+
+  if (user.occupantType === 'unit_owner' || user.occupantType === 'tenant') {
+    if (primaryOccupant) {
+      throw createHttpError(
+        'A primary occupant already exists for this unit. Choose unit_owner_family_member or tenant_family_member.',
+        409
+      );
+    }
+  } else if (user.occupantType === 'unit_owner_family_member') {
+    if (!primaryOccupant || primaryOccupant.occupantType !== 'unit_owner') {
+      throw createHttpError(
+        'Unit owner must be registered for this unit before adding owner family members',
+        400
+      );
+    }
+  } else if (user.occupantType === 'tenant_family_member') {
+    if (!primaryOccupant || primaryOccupant.occupantType !== 'tenant') {
+      throw createHttpError(
+        'Tenant must be registered for this unit before adding tenant family members',
+        400
+      );
+    }
+  }
+
   const exists = await MemberUnit.exists({
     memberId: user._id,
     societyId: society._id,
@@ -163,7 +193,7 @@ const handleMemberOnboarding = async ({ user, payload }) => {
   });
 
   if (!exists) {
-    await MemberUnit.create({
+    const payload = {
       memberId: user._id,
       societyId: society._id,
       wingName: user.wingName,
@@ -172,7 +202,15 @@ const handleMemberOnboarding = async ({ user, payload }) => {
       unitNumberLower: user.unitNumber.toLowerCase(),
       occupantType: user.occupantType,
       occupancyStatus: user.occupancyStatus,
-    });
+      ...(user.occupantType === 'unit_owner_family_member' && primaryOccupant
+        ? { primaryMemberId: primaryOccupant.memberId }
+        : {}),
+      ...(user.occupantType === 'tenant_family_member' && primaryOccupant
+        ? { primaryMemberId: primaryOccupant.memberId }
+        : {}),
+    };
+
+    await MemberUnit.create(payload);
   }
 
   const upgradeResult = maybeUpgradeSocietyAdmin(user, society);

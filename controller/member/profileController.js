@@ -13,14 +13,14 @@ const generateStableMemberCode = (userId) => {
 
 const buildQrPayload = ({ user, society, memberCode }) => {
   const payload = {
-    t: 'gatepal_member',
-    mc: memberCode,
-    uid: String(user._id),
+    type: 'gatepal_member',
+    memberId: memberCode,
+    userId: String(user._id),
     role: user.role,
-    sid: society ? String(society._id) : null,
-    sn: society ? society.societyName : user.societyName,
-    wi: user.wingName || null,
-    un: user.unitNumber || null,
+    societyId: society ? String(society._id) : null,
+    societyName: society ? society.societyName : user.societyName,
+    wingName: user.wingName || null,
+    unitNumber: user.unitNumber || null,
   };
   return JSON.stringify(payload);
 };
@@ -47,7 +47,8 @@ const getMemberProfile = async (req, res, next) => {
 
     let qrCodeImage = user.qrCodeImage || null;
     if (!qrCodeImage) {
-      const payload = buildQrPayload({ user, society, memberCode });
+      const currentSociety = user.societyId ? societyMap[String(user.societyId)] || null : null;
+      const payload = buildQrPayload({ user, society: currentSociety, memberCode });
       try {
         qrCodeImage = await QRCode.toDataURL(payload, {
           errorCorrectionLevel: 'M',
