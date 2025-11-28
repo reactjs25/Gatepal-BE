@@ -18,7 +18,7 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   const normalizedPhone = normalizePhoneNumber(phoneNumber);
 
   if (!normalizedPhone) {
-    throw createHttpError('Mobile number is required', 400);
+    throw createHttpError('Phone number is required', 400);
   }
 
   const normalizedCountryCode = normalizeCountryCode(countryCode);
@@ -119,7 +119,7 @@ const login = async (req, res, next) => {
     const { role, countryCode, phoneNumber, password } = req.body;
 
     if (!role || !phoneNumber || !password) {
-      throw createHttpError('Role, mobile number, and password are required', 400);
+      throw createHttpError('Role, phone number, and password are required', 400);
     }
 
     const principal = await findPrincipal({ role, countryCode, phoneNumber });

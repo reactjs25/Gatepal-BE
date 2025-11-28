@@ -18,12 +18,12 @@ const mapUserResponse = (user) => ({
   onboardingStatus: user.onboardingStatus,
   phoneNumber: user.phoneNumber,
   countryCode: user.countryCode,
-  fullName: user.fullName,
+  name: user.fullName,
+  imageUrl: user.profilePhoto,
   visitorType: user.visitorType,
   visitorCompanyName: user.visitorCompanyName,
   visitorVehicleNumber: user.visitorVehicleNumber,
   visitorWorkCategory: user.visitorWorkCategory,
-  profilePhoto: user.profilePhoto,
   qrCodeImage: user.qrCodeImage,
   status: user.status,
 });
@@ -52,7 +52,7 @@ const registerUser = async (req, res, next) => {
     } = req.body || {};
 
     if (!phoneNumber || !password || !confirmPassword) {
-      throw createHttpError('Mobile number, password, and confirm password are required', 400);
+      throw createHttpError('Phone number, password, and confirm password are required', 400);
     }
 
     if (password !== confirmPassword) {
@@ -68,7 +68,7 @@ const registerUser = async (req, res, next) => {
     const normalizedPhone = normalizeDigits(normalizePhoneNumber(phoneNumber));
 
     if (!normalizedPhone) {
-      throw createHttpError('Mobile number is required', 400);
+      throw createHttpError('Phone number is required', 400);
     }
 
     const normalizedCountryCode = normalizeCountryCode(countryCode);
@@ -83,7 +83,7 @@ const registerUser = async (req, res, next) => {
     }
 
     if (user && user.status !== 'pending_otp') {
-      throw createHttpError('An account with this mobile number already exists', 409);
+      throw createHttpError('An account with this phone number already exists', 409);
     }
 
     if (!user) {

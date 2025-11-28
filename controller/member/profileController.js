@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const QRCode = require('qrcode');
 const Society = require('../../model/societySchema');
 const MemberUnit = require('../../model/memberUnitSchema');
+const User = require('../../model/userSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 
@@ -70,6 +71,8 @@ const getMemberProfile = async (req, res, next) => {
         id: String(user._id),
         memberId: memberCode,
         name: user.fullName || null,
+        imageUrl: user.profilePhoto || null,
+        phoneNumber: user.phoneNumber,
         role: effectiveRole,
         units: unitsFromDb.map((u) => {
           const s = societyMap[String(u.societyId)] || null;
@@ -101,6 +104,95 @@ const getMemberProfile = async (req, res, next) => {
   }
 };
 
+const normalizeString = (value) => (value || '').toString().trim();
+const toCanonicalEnum = (value, allowed) => {
+  const normalized = normalizeString(value);
+  if (!normalized) return '';
+  const title = normalized
+    .toLowerCase()
+    .replace(/[_\s-]+/g, '')
+    .replace(/^(currentlyresiding)$/, 'currentlyresiding')
+    .replace(/^(unitrented|rented)$/, 'unitrented')
+    .replace(/^(unitvacant|vacant)$/, 'unitvacant')
+    .replace(/^occupied$/, 'currentlyresiding');
+
+  const mapping = {
+    currentlyresiding: 'currently_residing',
+    unitrented: 'unit_rented',
+    unitvacant: 'unit_vacant',
+  };
+
+  const canonical = mapping[title] || value;
+  return allowed.has(canonical) ? canonical : '';
+};
+
+const ALLOWED_OCCUPANCY_STATUSES = new Set([
+  'currently_residing',
+  'unit_rented',
+  'unit_vacant',
+]);
+
+const updateMemberProfile = async (req, res, next) => {
+  try {
+    const user = req.appUser;
+    if (!user) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    const { imageUrl, phoneNumber, name, fullName } = req.body || {};
+
+    const updates = {};
+
+    if (imageUrl !== undefined) {
+      const photo = normalizeString(imageUrl);
+      updates.profilePhoto = photo || null;
+    }
+
+    if (name !== undefined || fullName !== undefined) {
+      const candidateName = normalizeString(fullName !== undefined ? fullName : name);
+      if (!candidateName) {
+        return next(createHttpError('Name cannot be empty', 400));
+      }
+      updates.fullName = candidateName;
+    }
+
+    if (phoneNumber !== undefined) {
+      const digits = String(phoneNumber).replace(/\D/g, '');
+      if (!digits || digits.length < 10) {
+        return next(createHttpError('phoneNumber must contain at least 10 digits', 400));
+      }
+      const already = await User.exists({ phoneNumber: digits, _id: { $ne: user._id } });
+      if (already) {
+        return next(createHttpError('An account with this phone number already exists', 409));
+      }
+      updates.phoneNumber = digits;
+    }
+
+    if (req.body && req.body.occupancyStatus !== undefined) {
+      return next(createHttpError('occupancyStatus cannot be edited via profile', 400));
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return sendSuccessResponse(res, 200, 'No changes provided');
+    }
+
+    Object.assign(user, updates);
+    await user.save();
+
+    return sendSuccessResponse(res, 200, 'Member profile updated successfully', {
+      data: {
+        id: String(user._id),
+        name: user.fullName || null,
+        phoneNumber: user.phoneNumber,
+        imageUrl: user.profilePhoto || null,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update member profile'));
+  }
+};
+
 module.exports = {
   getMemberProfile,
+  updateMemberProfile,
 };
