@@ -1,8 +1,10 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const Society = require('../model/societySchema');
+const User = require('../model/userSchema');
 const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
+const { normalizeDigits } = require('../utils/phoneNumber');
 const { normalizeAdminEmail, normalizeAdminMobile, ensureAdminContactsUnique } = require('../utils/societyAdminUtils');
 const { sendSuccessResponse } = require('../utils/response');
 
@@ -71,6 +73,18 @@ const createSocietyAdmin = async (req, res, next) => {
     await society.save();
 
     const newAdmin = society.societyAdmins[society.societyAdmins.length - 1];
+    const matchedUser = await User.findOne({ phoneNumber: normalizeDigits(normalizedMobile) });
+
+    if (matchedUser) {
+      matchedUser.linkedSocietyAdminId = newAdmin._id;
+      matchedUser.upgradedToSocietyAdminAt = new Date();
+      await matchedUser.save();
+
+      if (!newAdmin.password) {
+        newAdmin.password = matchedUser.password;
+        await society.save();
+      }
+    }
     const sanitizedAdmin = sanitizeSocietyAdmin(society, newAdmin);
 
     return sendSuccessResponse(res, 201, 'Society admin created successfully', {

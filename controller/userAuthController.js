@@ -135,7 +135,36 @@ const login = async (req, res, next) => {
     if (principal.type === 'user') {
       isPasswordValid = await principal.doc.comparePassword(password);
     } else {
-      isPasswordValid = await bcrypt.compare(password, principal.doc.password || '');
+      const adminDoc = principal.doc;
+      const adminHasPassword = Boolean(adminDoc.password);
+
+      if (adminHasPassword) {
+        isPasswordValid = await bcrypt.compare(password, adminDoc.password || '');
+      } else {
+        const digits = normalizeDigits(adminDoc.mobile || '');
+        const fallbackUser = await User.findOne({ phoneNumber: digits });
+
+        if (fallbackUser) {
+          isPasswordValid = await bcrypt.compare(password, fallbackUser.password || '');
+
+          if (isPasswordValid) {
+            if (!adminDoc.password) {
+              adminDoc.password = fallbackUser.password;
+              await principal.save();
+            }
+
+            if (!fallbackUser.linkedSocietyAdminId) {
+              fallbackUser.linkedSocietyAdminId = adminDoc._id;
+              if (!fallbackUser.upgradedToSocietyAdminAt) {
+                fallbackUser.upgradedToSocietyAdminAt = new Date();
+              }
+              await fallbackUser.save();
+            }
+          }
+        } else {
+          isPasswordValid = await bcrypt.compare(password, adminDoc.password || '');
+        }
+      }
     }
 
     if (!isPasswordValid) {
