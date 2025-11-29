@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const FamilyMember = require('../../model/familyMemberSchema');
 const MemberUnit = require('../../model/memberUnitSchema');
 const User = require('../../model/userSchema');
-const { normalizeDigits, normalizeCountryCode } = require('../../utils/phoneNumber');
+const { normalizeDigits, normalizeCountryCode, getComparablePhoneNumber } = require('../../utils/phoneNumber');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { sendSuccessResponse } = require('../../utils/response');
 
@@ -231,8 +231,223 @@ const getFamilyMembersByUnit = async (req, res, next) => {
   }
 };
 
+const updateFamilyMember = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+
+  const memberId = normalizeString((req.params && req.params.memberId) || '');
+    if (!memberId) return next(createHttpError('memberId path parameter is required', 400));
+    if (!mongoose.Types.ObjectId.isValid(memberId)) {
+      return next(createHttpError('Invalid member ID format', 400));
+    }
+
+    const doc = await FamilyMember.findById(memberId);
+    if (!doc) return next(createHttpError('Family member not found', 404));
+
+    const unitDoc = await MemberUnit.findById(doc.unitId);
+    if (!unitDoc) return next(createHttpError('Unit not found', 404));
+    if (String(unitDoc.memberId) !== String(authUser._id)) {
+      return next(createHttpError('Forbidden: you do not own this unit', 403));
+    }
+
+    const { image, phone, phoneNumber, category, name, countryCode } = req.body || {};
+    const phoneRaw = phoneNumber !== undefined ? phoneNumber : phone;
+
+    const updates = {};
+
+    if (countryCode !== undefined) {
+      updates.countryCode = normalizeCountryCode(countryCode);
+    }
+
+    if (category !== undefined) {
+      const normalizedCategory = normalizeString(category).toLowerCase();
+      if (!ALLOWED_CATEGORIES.has(normalizedCategory)) {
+        return next(createHttpError('category must be one of adult, child', 400));
+      }
+      updates.category = normalizedCategory;
+    }
+
+    if (name !== undefined) {
+      const nm = normalizeString(name);
+      if (!nm) return next(createHttpError('name cannot be empty', 400));
+      updates.name = nm;
+    }
+
+    if (image !== undefined) {
+      const imageUrl = ensureBase64ImageDataUrl({ value: image, fieldLabel: 'Image' });
+      updates.imageUrl = imageUrl;
+    }
+
+    if (phoneRaw !== undefined) {
+      const digits = normalizeDigits(phoneRaw || '');
+      if (digits && digits.length !== 10) {
+        return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+      }
+
+      const effectiveCode = updates.countryCode || doc.countryCode || '+91';
+      const comparable = digits ? getComparablePhoneNumber({ countryCode: effectiveCode, phoneNumber: digits }) : null;
+
+      const effectiveCategory = updates.category || doc.category;
+      if (effectiveCategory === 'adult' && !digits) {
+        return next(createHttpError('phoneNumber is required for adult', 400));
+      }
+
+      if (digits) {
+        const existingUser = await User.exists({ phoneNumber: digits });
+        if (existingUser) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const SuperAdmin = require('../../model/superAdminSchema');
+        const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+
+        const fmExists = await FamilyMember.exists({ phoneDigits: digits, _id: { $ne: doc._id } });
+        if (fmExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const saExists = await SuperAdmin.exists({ phoneNumber: digits });
+        if (saExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const adminExists = await lookupSocietyAdminByMobile(digits);
+        if (adminExists) return next(createHttpError('This phone number already exists in the system', 409));
+      }
+
+      if (comparable) {
+        const dupComparable = await FamilyMember.exists({ comparablePhone: comparable, _id: { $ne: doc._id } });
+        if (dupComparable) return next(createHttpError('This phone number already exists in the system', 409));
+      }
+
+      updates.phoneNumber = digits ? phoneRaw : null;
+      updates.phoneDigits = digits || null;
+      updates.comparablePhone = comparable || null;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return sendSuccessResponse(res, 200, 'No changes provided', {
+        data: {
+          id: String(doc._id),
+          unitId: String(doc.unitId),
+          category: doc.category,
+          name: doc.name,
+          countryCode: doc.countryCode,
+          phoneNumber: doc.phoneNumber,
+          imageUrl: doc.imageUrl,
+          status: doc.status,
+          createdAt: doc.createdAt,
+          updatedAt: doc.updatedAt,
+        },
+      });
+    }
+
+    Object.assign(doc, updates);
+
+    const digitsNow = doc.phoneDigits || null;
+    if (digitsNow) {
+      const matchedUser = await User.findOne({ phoneNumber: digitsNow });
+      if (matchedUser) {
+        doc.status = 'Active on GatePal';
+        doc.linkedUserId = matchedUser._id;
+      } else {
+        doc.status = 'Inactive on GatePal';
+        doc.linkedUserId = null;
+      }
+    } else {
+      doc.status = 'Inactive on GatePal';
+      doc.linkedUserId = null;
+    }
+
+    await doc.save();
+
+    return sendSuccessResponse(res, 200, 'Family member updated successfully', {
+      data: {
+        id: String(doc._id),
+        unitId: String(doc.unitId),
+        category: doc.category,
+        name: doc.name,
+        countryCode: doc.countryCode,
+        phoneNumber: doc.phoneNumber,
+        imageUrl: doc.imageUrl,
+        status: doc.status,
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update family member'));
+  }
+};
+
+const deleteFamilyMember = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+
+  const memberId = normalizeString((req.params && req.params.memberId) || '');
+    if (!memberId) return next(createHttpError('memberId path parameter is required', 400));
+    if (!mongoose.Types.ObjectId.isValid(memberId)) {
+      return next(createHttpError('Invalid member ID format', 400));
+    }
+
+    const doc = await FamilyMember.findById(memberId);
+    if (!doc) return next(createHttpError('Family member not found', 404));
+
+    const unitDoc = await MemberUnit.findById(doc.unitId);
+    if (!unitDoc) return next(createHttpError('Unit not found', 404));
+    if (String(unitDoc.memberId) !== String(authUser._id)) {
+      return next(createHttpError('Forbidden: you do not own this unit', 403));
+    }
+
+    await doc.deleteOne();
+
+    return sendSuccessResponse(res, 200, 'Family member deleted successfully');
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to delete family member'));
+  }
+};
+
+const getFamilyMemberById = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+
+    const memberId = normalizeString((req.params && req.params.memberId) || '');
+    if (!memberId) return next(createHttpError('memberId path parameter is required', 400));
+    if (!mongoose.Types.ObjectId.isValid(memberId)) {
+      return next(createHttpError('Invalid member ID format', 400));
+    }
+
+    const doc = await FamilyMember.findById(memberId).lean();
+    if (!doc) return next(createHttpError('Family member not found', 404));
+
+    const unitDoc = await MemberUnit.findById(doc.unitId).lean();
+    if (!unitDoc) return next(createHttpError('Unit not found', 404));
+    if (String(unitDoc.memberId) !== String(authUser._id)) {
+      return next(createHttpError('Forbidden: you do not own this unit', 403));
+    }
+
+    return sendSuccessResponse(res, 200, 'Family member fetched successfully', {
+      data: {
+        id: String(doc._id),
+        unitId: String(doc.unitId),
+        category: doc.category,
+        name: doc.name,
+        countryCode: doc.countryCode,
+        phoneNumber: doc.phoneNumber,
+        imageUrl: doc.imageUrl,
+        occupantType: unitDoc.occupantType || null,
+        status: doc.status,
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch family member'));
+  }
+};
+
 module.exports = {
   addFamilyMember,
   validateAddFamilyInput,
   getFamilyMembersByUnit,
+  updateFamilyMember,
+  deleteFamilyMember,
+  getFamilyMemberById,
 };

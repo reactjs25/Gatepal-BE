@@ -1,7 +1,7 @@
 const express = require('express');
 const { addMemberUnit, updateUnitOccupancyStatus, getUnitById } = require('../controller/member/unitController');
 const { getMemberProfile, updateMemberProfile } = require('../controller/member/profileController');
-const { addFamilyMember, getFamilyMembersByUnit } = require('../controller/member/familyController');
+const { addFamilyMember, getFamilyMembersByUnit, updateFamilyMember, deleteFamilyMember, getFamilyMemberById } = require('../controller/member/familyController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const router = express.Router();
 
@@ -12,6 +12,9 @@ router.get('/units/:id', userAuthMiddleware, getUnitById);
 router.patch('/profile', userAuthMiddleware, updateMemberProfile);
 router.post('/addFamily/:id', userAuthMiddleware, addFamilyMember);
 router.get('/getFamily/:id', userAuthMiddleware, getFamilyMembersByUnit);
+router.get('/getFamilyMember/:memberId', userAuthMiddleware, getFamilyMemberById);
+router.patch('/updateFamily/:memberId', userAuthMiddleware, updateFamilyMember);
+router.delete('/deleteFamily/:memberId', userAuthMiddleware, deleteFamilyMember);
 
 
 module.exports = router;
