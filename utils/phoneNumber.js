@@ -11,6 +11,11 @@ const normalizeCountryCode = (value) => {
 
 const normalizeDigits = (value = '') => value.replace(/\D/g, '');
 
+const isTenDigitPhone = (value = '') => {
+  const digits = normalizeDigits(value);
+  return digits.length === 10;
+};
+
 const getComparablePhoneNumber = ({ countryCode, phoneNumber }) => {
   const digits = normalizeDigits(phoneNumber);
   const normalizedCode = normalizeCountryCode(countryCode).replace(/\D/g, '');
@@ -22,5 +27,6 @@ module.exports = {
   normalizeCountryCode,
   normalizeDigits,
   getComparablePhoneNumber,
+  isTenDigitPhone,
 };
 

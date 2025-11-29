@@ -20,7 +20,7 @@ const gateSchema = new mongoose.Schema({
 const societyAdminSchema = new mongoose.Schema(
     {
         name: { type: String, required: true, trim: true, maxlength: 150 },
-        mobile: { type: String, required: true, unique: true },
+        mobile: { type: String, required: true, unique: true, minlength: 10, maxlength: 10, match: /^\d{10}$/ },
         countryCode: { type: String, trim: true, default: '+91' },
         email: { type: String, required: true, unique: true },
         status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },

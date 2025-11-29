@@ -158,13 +158,33 @@ const updateMemberProfile = async (req, res, next) => {
 
     if (phoneNumber !== undefined) {
       const digits = String(phoneNumber).replace(/\D/g, '');
-      if (!digits || digits.length < 10) {
-        return next(createHttpError('phoneNumber must contain at least 10 digits', 400));
+      if (!digits || digits.length !== 10) {
+        return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
       }
-      const already = await User.exists({ phoneNumber: digits, _id: { $ne: user._id } });
-      if (already) {
-        return next(createHttpError('An account with this phone number already exists', 409));
+      const alreadyUser = await User.exists({ phoneNumber: digits, _id: { $ne: user._id } });
+      if (alreadyUser) {
+        return next(createHttpError('This phone number already exists in the system', 409));
       }
+
+      const FamilyMember = require('../../model/familyMemberSchema');
+      const SuperAdmin = require('../../model/superAdminSchema');
+      const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+
+      const fmExists = await FamilyMember.exists({ phoneDigits: digits });
+      if (fmExists) {
+        return next(createHttpError('This phone number already exists in the system', 409));
+      }
+
+      const saExists = await SuperAdmin.exists({ phoneNumber: digits });
+      if (saExists) {
+        return next(createHttpError('This phone number already exists in the system', 409));
+      }
+
+      const adminExists = await lookupSocietyAdminByMobile(digits);
+      if (adminExists) {
+        return next(createHttpError('This phone number already exists in the system', 409));
+      }
+
       updates.phoneNumber = digits;
     }
 

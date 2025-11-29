@@ -2,6 +2,10 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const SuperAdmin = require('../model/superAdminSchema');
 const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
+const { normalizeDigits, normalizeCountryCode } = require('../utils/phoneNumber');
+const User = require('../model/userSchema');
+const FamilyMember = require('../model/familyMemberSchema');
+const { lookupSocietyAdminByMobile } = require('../utils/societyAdminUtils');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { sendSuccessResponse } = require('../utils/response');
 
@@ -35,11 +39,31 @@ const signUp = async (req, res, next) => {
       return next(createHttpError('A super admin with this email already exists', 409));
     }
 
+    const digits = normalizeDigits(phoneNumber);
+    if (digits.length !== 10) {
+      return next(createHttpError('Phone number must contain exactly 10 digits', 400));
+    }
+
+    const dupUser = await User.exists({ phoneNumber: digits });
+    if (dupUser) {
+      return next(createHttpError('This phone number already exists in the system', 409));
+    }
+
+    const dupFamily = await FamilyMember.exists({ phoneDigits: digits });
+    if (dupFamily) {
+      return next(createHttpError('This phone number already exists in the system', 409));
+    }
+
+    const dupSocietyAdmin = await lookupSocietyAdminByMobile(digits);
+    if (dupSocietyAdmin) {
+      return next(createHttpError('This phone number already exists in the system', 409));
+    }
+
     const superAdmin = new SuperAdmin({
       fullName,
       email,
       password,
-      phoneNumber,
+      phoneNumber: digits,
     });
 
     await superAdmin.save();

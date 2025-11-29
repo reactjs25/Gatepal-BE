@@ -69,7 +69,7 @@ const createSocietyAdmin = async (req, res, next) => {
       {}
     );
 
-    society.societyAdmins.push({ name, email: normalizedEmail, mobile: mobile.trim() });
+    society.societyAdmins.push({ name, email: normalizedEmail, mobile: normalizedMobile });
     await society.save();
 
     const newAdmin = society.societyAdmins[society.societyAdmins.length - 1];
@@ -188,7 +188,7 @@ const updateSocietyAdmin = async (req, res, next) => {
         },
         { excludeSocietyId: societyId, excludeAdminId: adminId }
       );
-      admin.mobile = mobile.trim();
+      admin.mobile = normalizedMobile;
     }
 
     if (name !== undefined) admin.name = name;

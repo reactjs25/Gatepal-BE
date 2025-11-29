@@ -10,7 +10,15 @@ const familyMemberSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     countryCode: { type: String, default: '+91', trim: true },
     phoneNumber: { type: String, default: null, trim: true },
-    phoneDigits: { type: String, default: null, index: true },
+    phoneDigits: {
+      type: String,
+      default: null,
+      index: true,
+      validate: {
+        validator: (v) => v == null || /^\d{10}$/.test(v),
+        message: 'phoneNumber must contain exactly 10 digits',
+      },
+    },
     comparablePhone: { type: String, default: null, index: true },
     imageUrl: { type: String, default: null },
     status: { type: String, enum: ['Active on GatePal', 'Inactive on GatePal'], default: 'Inactive on GatePal' },
@@ -19,9 +27,9 @@ const familyMemberSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-familyMemberSchema.index({ unitId: 1, comparablePhone: 1 }, {
+familyMemberSchema.index({ comparablePhone: 1 }, {
   unique: true,
-  name: 'uniq_phone_per_unit',
+  name: 'uniq_family_comparable_phone_global',
   partialFilterExpression: { comparablePhone: { $type: 'string' } },
 });
 

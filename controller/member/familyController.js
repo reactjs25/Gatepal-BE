@@ -46,9 +46,13 @@ const validateAddFamilyInput = (input = {}) => {
   if (!category || !ALLOWED_CATEGORIES.has(category)) throw createHttpError('category must be one of adult, child', 400);
   if (!name) throw createHttpError('name is required', 400);
   if (category === 'adult') {
-    if (!phoneDigits || phoneDigits.length < 10) {
-      throw createHttpError('phoneNumber is required for adult and must contain at least 10 digits', 400);
+    if (!phoneDigits) {
+      throw createHttpError('phoneNumber is required for adult', 400);
     }
+  }
+
+  if (phoneDigits && phoneDigits.length !== 10) {
+    throw createHttpError('phoneNumber must contain exactly 10 digits', 400);
   }
 
   return { unitId, category, name, countryCode, phoneDigits, imageUrl, rawPhone: input.phoneNumber };
@@ -78,9 +82,14 @@ const addFamilyMember = async (req, res, next) => {
       ? `${normalizeCountryCode(validated.countryCode).replace(/\D/g, '')}${validated.phoneDigits}`
       : null;
 
+    if (validated.phoneDigits) {
+      const existsUser = await User.exists({ phoneNumber: validated.phoneDigits });
+      if (existsUser) return next(createHttpError('This phone number already exists in the system', 409));
+    }
+
     if (comparablePhone) {
-      const duplicate = await FamilyMember.exists({ unitId: unitDoc._id, comparablePhone });
-      if (duplicate) return next(createHttpError('A family member with this phone already exists in this unit', 409));
+      const duplicate = await FamilyMember.exists({ comparablePhone });
+      if (duplicate) return next(createHttpError('This phone number already exists in the system', 409));
     }
 
     const payload = {
@@ -143,9 +152,60 @@ const getFamilyMembersByUnit = async (req, res, next) => {
       return next(createHttpError('Forbidden: you do not own this unit', 403));
     }
 
-    const members = await FamilyMember.find({ unitId: unitDoc._id })
+    const peers = await MemberUnit.find({
+      societyId: unitDoc.societyId,
+      wingNameLower: unitDoc.wingNameLower,
+      unitNumberLower: unitDoc.unitNumberLower,
+    }).lean();
+
+    const scope = normalizeString((req.query && req.query.scope) || '');
+
+    let targetUnitIds = peers.map((p) => p._id);
+    if (scope === 'self') {
+      targetUnitIds = [unitDoc._id];
+    } else if (scope === 'all') {
+      targetUnitIds = targetUnitIds;
+    } else {
+      targetUnitIds = targetUnitIds.filter((id) => String(id) !== String(unitDoc._id));
+    }
+
+    const members = await FamilyMember.find({ unitId: { $in: targetUnitIds } })
       .sort({ createdAt: -1 })
       .lean();
+
+    const unitTypeMap = peers.reduce((acc, p) => {
+      acc[String(p._id)] = p.occupantType;
+      return acc;
+    }, {});
+
+    const primaryPeers = peers.filter((p) => p && (p.occupantType === 'unit_owner' || p.occupantType === 'tenant'));
+    let occupantPeers;
+    if (scope === 'self') {
+      occupantPeers = primaryPeers.filter((p) => String(p.memberId) === String(authUser._id));
+    } else if (scope === 'all') {
+      occupantPeers = primaryPeers;
+    } else {
+      occupantPeers = primaryPeers.filter((p) => String(p.memberId) !== String(authUser._id));
+    }
+
+    const occupantItems = [];
+    for (const p of occupantPeers) {
+      const u = await User.findById(p.memberId).lean();
+      if (!u) continue;
+      occupantItems.push({
+        id: String(u._id),
+        unitId: String(p._id),
+        category: 'adult',
+        name: u.fullName || null,
+        countryCode: u.countryCode || '+91',
+        phoneNumber: u.phoneNumber || null,
+        imageUrl: u.profilePhoto || null,
+        occupantType: p.occupantType,
+        status: 'Active on GatePal',
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+      });
+    }
 
     const data = members.map((m) => ({
       id: String(m._id),
@@ -155,12 +215,17 @@ const getFamilyMembersByUnit = async (req, res, next) => {
       countryCode: m.countryCode,
       phoneNumber: m.phoneNumber,
       imageUrl: m.imageUrl,
+      occupantType: unitTypeMap[String(m.unitId)] || null,
       status: m.status,
       createdAt: m.createdAt,
       updatedAt: m.updatedAt,
-    }));
+    })).concat(occupantItems);
 
-    return sendSuccessResponse(res, 200, 'Family members fetched successfully', { data });
+    const authPhone = normalizeDigits(authUser.phoneNumber || '');
+    const filtered = data.filter((item) => normalizeDigits(item.phoneNumber || '') !== authPhone);
+
+    return sendSuccessResponse(res, 200, 'Family members fetched successfully', { data: filtered });
+    
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch family members'));
   }

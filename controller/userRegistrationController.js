@@ -1,13 +1,16 @@
 const User = require('../model/userSchema');
+const FamilyMember = require('../model/familyMemberSchema');
 const { generateNumericOtp, sendOtpToPhone } = require('../utils/otpService');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ROLE_TYPES, normalizeRole, resolveOnboardingFlow } = require('../utils/userRoleUtils');
-const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require('../utils/phoneNumber');
+const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits, getComparablePhoneNumber } = require('../utils/phoneNumber');
 const { generateUserAuthToken } = require('../utils/authToken');
 const { handleMemberOnboarding } = require('./onboarding/memberOnboardingController');
 const { handleGuardOnboarding } = require('./onboarding/guardOnboardingController');
 const { handleVisitorOnboarding } = require('./onboarding/visitorOnboardingController');
 const { sendSuccessResponse } = require('../utils/response');
+const SuperAdmin = require('../model/superAdminSchema');
+const { lookupSocietyAdminByMobile } = require('../utils/societyAdminUtils');
 
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10);
 const buildPlaceholderEmail = (phoneNumber) => `pending+${phoneNumber}@gatepal.local`;
@@ -71,10 +74,13 @@ const registerUser = async (req, res, next) => {
       throw createHttpError('Phone number is required', 400);
     }
 
+    if (normalizedPhone.length !== 10) {
+      throw createHttpError('Phone number must contain exactly 10 digits', 400);
+    }
+
     const normalizedCountryCode = normalizeCountryCode(countryCode);
 
     let user = await User.findOne({
-      role: storedRole,
       phoneNumber: normalizedPhone,
     });
 
@@ -83,7 +89,23 @@ const registerUser = async (req, res, next) => {
     }
 
     if (user && user.status !== 'pending_otp') {
-      throw createHttpError('An account with this phone number already exists', 409);
+      throw createHttpError('This phone number already exists in the system', 409);
+    }
+
+    const comparablePhone = getComparablePhoneNumber({ countryCode: normalizedCountryCode, phoneNumber: normalizedPhone });
+    const fmExists = await FamilyMember.exists({ comparablePhone });
+    if (fmExists) {
+      throw createHttpError('This phone number already exists in the system', 409);
+    }
+
+    const saExists = await SuperAdmin.exists({ phoneNumber: normalizedPhone });
+    if (saExists) {
+      throw createHttpError('This phone number already exists in the system', 409);
+    }
+
+    const adminExists = await lookupSocietyAdminByMobile(normalizedPhone);
+    if (adminExists) {
+      throw createHttpError('This phone number already exists in the system', 409);
     }
 
     if (!user) {

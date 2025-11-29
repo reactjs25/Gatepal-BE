@@ -34,6 +34,7 @@ const userSchema = new mongoose.Schema(
       trim: true,
       unique: true,
       minlength: 10,
+      maxlength: 10,
     },
     password: {
       type: String,
@@ -196,7 +197,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-userSchema.index({ phoneNumber: 1, role: 1 }, { unique: true });
 
 userSchema.pre('save', async function hashPassword(next) {
   if (!this.isModified('password')) {
@@ -242,6 +242,5 @@ userSchema.methods.verifyOtp = function verifyOtp(otp) {
 };
 
 module.exports = mongoose.model('User', userSchema);
-
 
 
