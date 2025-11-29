@@ -163,10 +163,10 @@ const getFamilyMembersByUnit = async (req, res, next) => {
     let targetUnitIds = peers.map((p) => p._id);
     if (scope === 'self') {
       targetUnitIds = [unitDoc._id];
-    } else if (scope === 'all') {
-      targetUnitIds = targetUnitIds;
-    } else {
+    } else if (scope === 'others') {
       targetUnitIds = targetUnitIds.filter((id) => String(id) !== String(unitDoc._id));
+    } else {
+      targetUnitIds = targetUnitIds;
     }
 
     const members = await FamilyMember.find({ unitId: { $in: targetUnitIds } })
@@ -225,7 +225,7 @@ const getFamilyMembersByUnit = async (req, res, next) => {
     const filtered = data.filter((item) => normalizeDigits(item.phoneNumber || '') !== authPhone);
 
     return sendSuccessResponse(res, 200, 'Family members fetched successfully', { data: filtered });
-    
+
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch family members'));
   }
