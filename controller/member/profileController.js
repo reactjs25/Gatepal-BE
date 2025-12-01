@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const QRCode = require('qrcode');
+const validator = require('validator');
 const Society = require('../../model/societySchema');
 const MemberUnit = require('../../model/memberUnitSchema');
 const User = require('../../model/userSchema');
@@ -139,7 +140,7 @@ const updateMemberProfile = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    const { imageUrl, phoneNumber, name, fullName } = req.body || {};
+    const { imageUrl, phoneNumber, name, fullName, email } = req.body || {};
 
     const updates = {};
 
@@ -156,6 +157,14 @@ const updateMemberProfile = async (req, res, next) => {
       updates.fullName = candidateName;
     }
 
+    if (email !== undefined) {
+      const candidateEmail = normalizeString(email).toLowerCase();
+      if (candidateEmail && !validator.isEmail(candidateEmail)) {
+        return next(createHttpError('Invalid email address', 400));
+      }
+      updates.email = candidateEmail || null;
+    }
+
     if (phoneNumber !== undefined) {
       const digits = String(phoneNumber).replace(/\D/g, '');
       if (!digits || digits.length !== 10) {
@@ -166,14 +175,8 @@ const updateMemberProfile = async (req, res, next) => {
         return next(createHttpError('This phone number already exists in the system', 409));
       }
 
-      const FamilyMember = require('../../model/familyMemberSchema');
       const SuperAdmin = require('../../model/superAdminSchema');
       const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
-
-      const fmExists = await FamilyMember.exists({ phoneDigits: digits });
-      if (fmExists) {
-        return next(createHttpError('This phone number already exists in the system', 409));
-      }
 
       const saExists = await SuperAdmin.exists({ phoneNumber: digits });
       if (saExists) {

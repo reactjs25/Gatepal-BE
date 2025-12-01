@@ -8,6 +8,8 @@ const { sendSuccessResponse } = require('../../utils/response');
 
 const ALLOWED_CATEGORIES = new Set(['adult', 'child']);
 const SUPPORTED_IMAGE_MIME_TYPES = new Set(['png', 'jpg', 'jpeg', 'webp']);
+const FAMILY_LIST_CACHE_TTL_MS = 20000;
+const familyListCache = new Map();
 
 const normalizeString = (v) => (v || '').toString().trim();
 
@@ -152,6 +154,12 @@ const getFamilyMembersByUnit = async (req, res, next) => {
       return next(createHttpError('Forbidden: you do not own this unit', 403));
     }
 
+    const cacheKey = `${String(authUser._id)}:${String(unitDoc._id)}:${String((req.query && req.query.scope) || '')}`;
+    const cached = familyListCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return sendSuccessResponse(res, 200, 'Family members fetched successfully', { data: cached.data });
+    }
+
     const peers = await MemberUnit.find({
       societyId: unitDoc.societyId,
       wingNameLower: unitDoc.wingNameLower,
@@ -236,8 +244,9 @@ const getFamilyMembersByUnit = async (req, res, next) => {
     })).concat(occupantItems);
 
     const authPhone = normalizeDigits(authUser.phoneNumber || '');
-    const filtered = data.filter((item) => normalizeDigits(item.phoneNumber || '') !== authPhone);
+    const filtered = data.filter((item) => normalizeDigits(item.phoneNumber || '') !== authPhone && String(item.id) !== String(authUser._id));
 
+    familyListCache.set(cacheKey, { data: filtered, expiresAt: Date.now() + FAMILY_LIST_CACHE_TTL_MS });
     return sendSuccessResponse(res, 200, 'Family members fetched successfully', { data: filtered });
 
   } catch (error) {
