@@ -174,11 +174,25 @@ const getFamilyMembersByUnit = async (req, res, next) => {
       .lean();
 
     const unitTypeMap = peers.reduce((acc, p) => {
-      acc[String(p._id)] = p.occupantType;
+      const famType = p.occupantType === 'unit_owner'
+        ? 'unit_owner_family_member'
+        : p.occupantType === 'tenant'
+        ? 'tenant_family_member'
+        : p.occupantType;
+      acc[String(p._id)] = famType;
       return acc;
     }, {});
 
-    const primaryPeers = peers.filter((p) => p && (p.occupantType === 'unit_owner' || p.occupantType === 'tenant'));
+    const primaryPeers = peers.filter(
+      (p) =>
+        p &&
+        (
+          p.occupantType === 'unit_owner' ||
+          p.occupantType === 'tenant' ||
+          p.occupantType === 'unit_owner_family_member' ||
+          p.occupantType === 'tenant_family_member'
+        )
+    );
     let occupantPeers;
     if (scope === 'self') {
       occupantPeers = primaryPeers.filter((p) => String(p.memberId) === String(authUser._id));

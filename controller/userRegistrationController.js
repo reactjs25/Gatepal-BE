@@ -80,15 +80,13 @@ const registerUser = async (req, res, next) => {
 
     const normalizedCountryCode = normalizeCountryCode(countryCode);
 
-    let user = await User.findOne({
-      phoneNumber: normalizedPhone,
-    });
+    let user = await User.findOne({ phoneNumber: normalizedPhone });
 
     if (user && user.status === 'blocked') {
       throw createHttpError('This account has been blocked. Contact support.', 403);
     }
 
-    if (user && user.status !== 'pending_otp') {
+    if (user && user.onboardingStatus === 'completed') {
       throw createHttpError('This phone number already exists in the system', 409);
     }
 
@@ -111,15 +109,11 @@ const registerUser = async (req, res, next) => {
         phoneNumber: normalizedPhone,
         role: storedRole,
       });
-    } else {
-      user.countryCode = normalizedCountryCode;
-      user.phoneNumber = normalizedPhone;
     }
 
-    if (!user.email) {
-      user.email = buildPlaceholderEmail(normalizedPhone);
-    }
-
+    user.countryCode = normalizedCountryCode;
+    user.phoneNumber = normalizedPhone;
+    user.email = user.email || buildPlaceholderEmail(normalizedPhone);
     user.password = password;
     user.intendedRole = normalizedRole;
     user.onboardingFlow = resolveOnboardingFlow(normalizedRole);

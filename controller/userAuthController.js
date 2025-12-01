@@ -106,6 +106,10 @@ const ensureAccountIsActive = (principal) => {
       throw createHttpError('Please verify the OTP sent to your number before logging in.', 403);
     }
 
+    if (principal.doc.onboardingStatus !== 'completed') {
+      throw createHttpError('Please complete onboarding before logging in.', 403);
+    }
+
     return;
   }
 

@@ -2,6 +2,7 @@ const http = require('http');
 const app = require('./app');
 const config = require('./config/appConfig');
 const connectToDb = require('./connectToDb/connectToDb');
+const MemberUnit = require('./model/memberUnitSchema');
 
 const startServer = async () => {
   try {
@@ -10,6 +11,7 @@ const startServer = async () => {
       alertDebounceMs: config.database.alertDebounceMs,
     });
 
+    await MemberUnit.syncIndexes();
     const server = http.createServer(app);
 
     server.listen(config.server.port, () => {
@@ -22,4 +24,3 @@ const startServer = async () => {
 };
 
 startServer();
-

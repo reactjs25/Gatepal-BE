@@ -206,7 +206,17 @@ const handleMemberOnboarding = async ({ user, payload }) => {
         : {}),
     };
 
-    await MemberUnit.create(payload);
+    try {
+      await MemberUnit.create(payload);
+    } catch (err) {
+      if (err && err.code === 11000) {
+        if (user.occupantType === 'tenant') {
+          throw createHttpError('A tenant is already registered for this unit.', 409);
+        }
+        throw createHttpError('You already registered this unit for this society and wing.', 409);
+      }
+      throw err;
+    }
   }
 
   const upgradeResult = maybeUpgradeSocietyAdmin(user, society);
