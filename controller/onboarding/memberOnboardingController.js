@@ -95,7 +95,7 @@ const handleMemberOnboarding = async ({ user, payload }) => {
     payload.occupantType ?? payload.occupancyType ?? payload.occupanytype,
     MEMBER_OCCUPANT_TYPES
   );
-  const occupancyStatus = toCanonicalEnum(payload.occupancyStatus, MEMBER_OCCUPANCY_STATUSES);
+  let occupancyStatus = toCanonicalEnum(payload.occupancyStatus, MEMBER_OCCUPANCY_STATUSES);
 
   if (!fullName || !email || !societyName || !societyPin || !wingName || !unitNumber) {
     throw createHttpError(
@@ -113,7 +113,11 @@ const handleMemberOnboarding = async ({ user, payload }) => {
   }
 
   if (!MEMBER_OCCUPANCY_STATUSES.has(occupancyStatus)) {
-    throw createHttpError('Invalid occupancy status provided', 400);
+    if (occupantType === 'tenant' || occupantType === 'tenant_family_member') {
+      occupancyStatus = 'unit_rented';
+    } else {
+      throw createHttpError('Invalid occupancy status provided', 400);
+    }
   }
 
   const normalizedSocietyName = societyName;
@@ -155,33 +159,25 @@ const handleMemberOnboarding = async ({ user, payload }) => {
     },
   };
 
-  const primaryOccupant = await MemberUnit.findOne({
+  const primaryOwner = await MemberUnit.findOne({
     societyId: society._id,
     wingNameLower: user.wingName.toLowerCase(),
     unitNumberLower: user.unitNumber.toLowerCase(),
-    occupantType: { $in: ['unit_owner', 'tenant'] },
+    occupantType: 'unit_owner',
+  })
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const primaryTenant = await MemberUnit.findOne({
+    societyId: society._id,
+    wingNameLower: user.wingName.toLowerCase(),
+    unitNumberLower: user.unitNumber.toLowerCase(),
+    occupantType: 'tenant',
   }).lean();
 
-  if (user.occupantType === 'unit_owner' || user.occupantType === 'tenant') {
-    if (primaryOccupant) {
-      throw createHttpError(
-        'A primary occupant already exists for this unit. Choose unit_owner_family_member or tenant_family_member.',
-        409
-      );
-    }
-  } else if (user.occupantType === 'unit_owner_family_member') {
-    if (!primaryOccupant || primaryOccupant.occupantType !== 'unit_owner') {
-      throw createHttpError(
-        'Unit owner must be registered for this unit before adding owner family members',
-        400
-      );
-    }
-  } else if (user.occupantType === 'tenant_family_member') {
-    if (!primaryOccupant || primaryOccupant.occupantType !== 'tenant') {
-      throw createHttpError(
-        'Tenant must be registered for this unit before adding tenant family members',
-        400
-      );
+  if (user.occupantType === 'tenant') {
+    if (primaryTenant) {
+      throw createHttpError('A tenant is already registered for this unit.', 409);
     }
   }
 
@@ -202,11 +198,11 @@ const handleMemberOnboarding = async ({ user, payload }) => {
       unitNumberLower: user.unitNumber.toLowerCase(),
       occupantType: user.occupantType,
       occupancyStatus: user.occupancyStatus,
-      ...(user.occupantType === 'unit_owner_family_member' && primaryOccupant
-        ? { primaryMemberId: primaryOccupant.memberId }
+      ...(user.occupantType === 'unit_owner_family_member' && primaryOwner
+        ? { primaryMemberId: primaryOwner.memberId }
         : {}),
-      ...(user.occupantType === 'tenant_family_member' && primaryOccupant
-        ? { primaryMemberId: primaryOccupant.memberId }
+      ...(user.occupantType === 'tenant_family_member' && primaryTenant
+        ? { primaryMemberId: primaryTenant.memberId }
         : {}),
     };
 

@@ -103,10 +103,7 @@ const registerUser = async (req, res, next) => {
       throw createHttpError('This phone number already exists in the system', 409);
     }
 
-    const adminExists = await lookupSocietyAdminByMobile(normalizedPhone);
-    if (adminExists) {
-      throw createHttpError('This phone number already exists in the system', 409);
-    }
+    
 
     if (!user) {
       user = new User({

@@ -144,39 +144,25 @@ const addMemberUnit = async (req, res, next) => {
       return next(createHttpError('Unit not found in the specified wing', 404));
     }
 
-    const primaryOccupant = await MemberUnit.findOne({
+    const primaryOwner = await MemberUnit.findOne({
       societyId: society._id,
       wingNameLower: wingName.toLowerCase(),
       unitNumberLower: unitNumber.toLowerCase(),
-      occupantType: { $in: ['unit_owner', 'tenant'] },
+      occupantType: 'unit_owner',
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const primaryTenant = await MemberUnit.findOne({
+      societyId: society._id,
+      wingNameLower: wingName.toLowerCase(),
+      unitNumberLower: unitNumber.toLowerCase(),
+      occupantType: 'tenant',
     }).lean();
 
-    if (occupantType === 'unit_owner' || occupantType === 'tenant') {
-      if (primaryOccupant) {
-        return next(
-          createHttpError(
-            'A primary occupant already exists for this unit. Choose unit_owner_family_member or tenant_family_member.',
-            409
-          )
-        );
-      }
-    } else if (occupantType === 'unit_owner_family_member') {
-      if (!primaryOccupant || primaryOccupant.occupantType !== 'unit_owner') {
-        return next(
-          createHttpError(
-            'Unit owner must be registered for this unit before adding owner family members.',
-            400
-          )
-        );
-      }
-    } else if (occupantType === 'tenant_family_member') {
-      if (!primaryOccupant || primaryOccupant.occupantType !== 'tenant') {
-        return next(
-          createHttpError(
-            'Tenant must be registered for this unit before adding tenant family members.',
-            400
-          )
-        );
+    if (occupantType === 'tenant') {
+      if (primaryTenant) {
+        return next(createHttpError('A tenant is already registered for this unit.', 409));
       }
     }
 
@@ -200,11 +186,11 @@ const addMemberUnit = async (req, res, next) => {
       unitNumberLower: unitNumber.toLowerCase(),
       occupantType,
       occupancyStatus,
-      ...(occupantType === 'unit_owner_family_member' && primaryOccupant
-        ? { primaryMemberId: primaryOccupant.memberId }
+      ...(occupantType === 'unit_owner_family_member' && primaryOwner
+        ? { primaryMemberId: primaryOwner.memberId }
         : {}),
-      ...(occupantType === 'tenant_family_member' && primaryOccupant
-        ? { primaryMemberId: primaryOccupant.memberId }
+      ...(occupantType === 'tenant_family_member' && primaryTenant
+        ? { primaryMemberId: primaryTenant.memberId }
         : {}),
     };
 

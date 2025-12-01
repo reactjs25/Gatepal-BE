@@ -32,8 +32,8 @@ memberUnitSchema.index(
   { societyId: 1, wingNameLower: 1, unitNumberLower: 1 },
   {
     unique: true,
-    name: 'uniq_primary_occupant_per_unit_across_owner_or_tenant',
-    partialFilterExpression: { occupantType: { $in: ['unit_owner', 'tenant'] } },
+    name: 'uniq_primary_tenant_per_unit',
+    partialFilterExpression: { occupantType: 'tenant' },
   }
 );
 
