@@ -256,8 +256,109 @@ const updateFamilyMember = async (req, res, next) => {
       return next(createHttpError('Invalid member ID format', 400));
     }
 
-    const doc = await FamilyMember.findById(memberId);
-    if (!doc) return next(createHttpError('Family member not found', 404));
+    let doc = await FamilyMember.findById(memberId);
+    if (!doc) {
+      const targetUser = await User.findById(memberId);
+      if (!targetUser) return next(createHttpError('Family member not found', 404));
+
+      const authUnits = await MemberUnit.find({ memberId: authUser._id }).lean();
+      const userUnits = await MemberUnit.find({ memberId: targetUser._id }).lean();
+
+      const matchingUnit = userUnits.find((uu) =>
+        authUnits.some(
+          (au) =>
+            String(au.societyId) === String(uu.societyId) &&
+            au.wingNameLower === uu.wingNameLower &&
+            au.unitNumberLower === uu.unitNumberLower
+        )
+      );
+
+      if (!matchingUnit) return next(createHttpError('Forbidden: you do not own this unit', 403));
+
+      const { imageUrl, phone, phoneNumber, name, countryCode } = req.body || {};
+      const phoneRaw = phoneNumber !== undefined ? phoneNumber : phone;
+
+      const updates = {};
+
+      if (countryCode !== undefined) {
+        updates.countryCode = normalizeCountryCode(countryCode);
+      }
+
+      if (name !== undefined) {
+        const nm = normalizeString(name);
+        if (!nm) return next(createHttpError('name cannot be empty', 400));
+        updates.fullName = nm;
+      }
+
+      if (imageUrl !== undefined) {
+        const formatted = ensureBase64ImageDataUrl({ value: imageUrl, fieldLabel: 'Image' });
+        updates.profilePhoto = formatted;
+        updates.profilePhotoCapturedAt = new Date();
+      }
+
+      if (phoneRaw !== undefined) {
+        const digits = normalizeDigits(phoneRaw || '');
+        if (digits && digits.length !== 10) {
+          return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+        }
+
+        if (!digits) {
+          return next(createHttpError('phoneNumber is required for adult', 400));
+        }
+
+        const SuperAdmin = require('../../model/superAdminSchema');
+        const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+
+        const existingUser = await User.exists({ phoneNumber: digits, _id: { $ne: targetUser._id } });
+        if (existingUser) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const fmExists = await FamilyMember.exists({ phoneDigits: digits });
+        if (fmExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const saExists = await SuperAdmin.exists({ phoneNumber: digits });
+        if (saExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const adminExists = await lookupSocietyAdminByMobile(digits);
+        if (adminExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+        updates.phoneNumber = digits;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return sendSuccessResponse(res, 200, 'No changes provided', {
+          data: {
+            id: String(targetUser._id),
+            unitId: String(matchingUnit._id),
+            category: 'adult',
+            name: targetUser.fullName || null,
+            countryCode: targetUser.countryCode || '+91',
+            phoneNumber: targetUser.phoneNumber || null,
+            imageUrl: targetUser.profilePhoto || null,
+            status: 'Active on GatePal',
+            createdAt: targetUser.createdAt,
+            updatedAt: targetUser.updatedAt,
+          },
+        });
+      }
+
+      Object.assign(targetUser, updates);
+      await targetUser.save();
+
+      return sendSuccessResponse(res, 200, 'Family member updated successfully', {
+        data: {
+          id: String(targetUser._id),
+          unitId: String(matchingUnit._id),
+          category: 'adult',
+          name: targetUser.fullName || null,
+          countryCode: targetUser.countryCode || '+91',
+          phoneNumber: targetUser.phoneNumber || null,
+          imageUrl: targetUser.profilePhoto || null,
+          status: 'Active on GatePal',
+          createdAt: targetUser.createdAt,
+          updatedAt: targetUser.updatedAt,
+        },
+      });
+    }
 
     const unitDoc = await MemberUnit.findById(doc.unitId);
     if (!unitDoc) return next(createHttpError('Unit not found', 404));
@@ -265,7 +366,7 @@ const updateFamilyMember = async (req, res, next) => {
       return next(createHttpError('Forbidden: you do not own this unit', 403));
     }
 
-    const { image, phone, phoneNumber, category, name, countryCode } = req.body || {};
+    const { imageUrl, phone, phoneNumber, category, name, countryCode } = req.body || {};
     const phoneRaw = phoneNumber !== undefined ? phoneNumber : phone;
 
     const updates = {};
@@ -288,9 +389,9 @@ const updateFamilyMember = async (req, res, next) => {
       updates.name = nm;
     }
 
-    if (image !== undefined) {
-      const imageUrl = ensureBase64ImageDataUrl({ value: image, fieldLabel: 'Image' });
-      updates.imageUrl = imageUrl;
+    if (imageUrl !== undefined) {
+      const formatted = ensureBase64ImageDataUrl({ value: imageUrl, fieldLabel: 'Image' });
+      updates.imageUrl = formatted;
     }
 
     if (phoneRaw !== undefined) {
@@ -401,7 +502,33 @@ const deleteFamilyMember = async (req, res, next) => {
     }
 
     const doc = await FamilyMember.findById(memberId);
-    if (!doc) return next(createHttpError('Family member not found', 404));
+    if (!doc) {
+      const targetUser = await User.findById(memberId);
+      if (!targetUser) return next(createHttpError('Family member not found', 404));
+
+      const authUnits = await MemberUnit.find({ memberId: authUser._id }).lean();
+      const userUnits = await MemberUnit.find({ memberId: targetUser._id }).lean();
+
+      const overlapping = userUnits.filter(
+        (uu) =>
+          (uu.occupantType === 'unit_owner_family_member' || uu.occupantType === 'tenant_family_member') &&
+          authUnits.some(
+            (au) =>
+              String(au.societyId) === String(uu.societyId) &&
+              au.wingNameLower === uu.wingNameLower &&
+              au.unitNumberLower === uu.unitNumberLower
+          )
+      );
+
+      if (overlapping.length === 0) {
+        return next(createHttpError('Forbidden: you do not own this unit', 403));
+      }
+
+      const idsToDelete = overlapping.map((u) => u._id);
+      await MemberUnit.deleteMany({ _id: { $in: idsToDelete } });
+
+      return sendSuccessResponse(res, 200, 'Family member deleted successfully');
+    }
 
     const unitDoc = await MemberUnit.findById(doc.unitId);
     if (!unitDoc) return next(createHttpError('Unit not found', 404));
@@ -428,28 +555,68 @@ const getFamilyMemberById = async (req, res, next) => {
       return next(createHttpError('Invalid member ID format', 400));
     }
 
-    const doc = await FamilyMember.findById(memberId).lean();
-    if (!doc) return next(createHttpError('Family member not found', 404));
+    // Try to fetch a FamilyMember document first
+    const fm = await FamilyMember.findById(memberId).lean();
+    if (fm) {
+      const unitDoc = await MemberUnit.findById(fm.unitId).lean();
+      if (!unitDoc) return next(createHttpError('Unit not found', 404));
+      if (String(unitDoc.memberId) !== String(authUser._id)) {
+        return next(createHttpError('Forbidden: you do not own this unit', 403));
+      }
 
-    const unitDoc = await MemberUnit.findById(doc.unitId).lean();
-    if (!unitDoc) return next(createHttpError('Unit not found', 404));
-    if (String(unitDoc.memberId) !== String(authUser._id)) {
-      return next(createHttpError('Forbidden: you do not own this unit', 403));
+      return sendSuccessResponse(res, 200, 'Family member fetched successfully', {
+        data: {
+          id: String(fm._id),
+          unitId: String(fm.unitId),
+          category: fm.category,
+          name: fm.name,
+          countryCode: fm.countryCode,
+          phoneNumber: fm.phoneNumber,
+          imageUrl: fm.imageUrl,
+          occupantType: unitDoc.occupantType || null,
+          status: fm.status,
+          createdAt: fm.createdAt,
+          updatedAt: fm.updatedAt,
+        },
+      });
+    }
+
+    // If not found in FamilyMember, treat memberId as a User occupant id
+    const targetUser = await User.findById(memberId).lean();
+    if (!targetUser) {
+      return next(createHttpError('Family member not found', 404));
+    }
+
+    // Find a unit occupied by both authUser and targetUser (same wing/unit in a society)
+    const authUnits = await MemberUnit.find({ memberId: authUser._id }).lean();
+    const userUnits = await MemberUnit.find({ memberId: targetUser._id }).lean();
+
+    const matchingUnit = userUnits.find((uu) =>
+      authUnits.some(
+        (au) =>
+          String(au.societyId) === String(uu.societyId) &&
+          au.wingNameLower === uu.wingNameLower &&
+          au.unitNumberLower === uu.unitNumberLower
+      )
+    );
+
+    if (!matchingUnit) {
+      return next(createHttpError('Forbidden: member is not part of your unit', 403));
     }
 
     return sendSuccessResponse(res, 200, 'Family member fetched successfully', {
       data: {
-        id: String(doc._id),
-        unitId: String(doc.unitId),
-        category: doc.category,
-        name: doc.name,
-        countryCode: doc.countryCode,
-        phoneNumber: doc.phoneNumber,
-        imageUrl: doc.imageUrl,
-        occupantType: unitDoc.occupantType || null,
-        status: doc.status,
-        createdAt: doc.createdAt,
-        updatedAt: doc.updatedAt,
+        id: String(targetUser._id),
+        unitId: String(matchingUnit._id),
+        category: 'adult',
+        name: targetUser.fullName || null,
+        countryCode: targetUser.countryCode || '+91',
+        phoneNumber: targetUser.phoneNumber || null,
+        imageUrl: targetUser.profilePhoto || null,
+        occupantType: matchingUnit.occupantType || null,
+        status: 'Active on GatePal',
+        createdAt: targetUser.createdAt,
+        updatedAt: targetUser.updatedAt,
       },
     });
   } catch (error) {

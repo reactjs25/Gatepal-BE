@@ -90,12 +90,7 @@ const registerUser = async (req, res, next) => {
       throw createHttpError('This phone number already exists in the system', 409);
     }
 
-    const comparablePhone = getComparablePhoneNumber({ countryCode: normalizedCountryCode, phoneNumber: normalizedPhone });
-    const fmExists = await FamilyMember.exists({ comparablePhone });
-    if (fmExists) {
-      throw createHttpError('This phone number already exists in the system', 409);
-    }
-
+  
     const saExists = await SuperAdmin.exists({ phoneNumber: normalizedPhone });
     if (saExists) {
       throw createHttpError('This phone number already exists in the system', 409);
