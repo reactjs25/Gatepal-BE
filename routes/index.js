@@ -7,6 +7,7 @@ const systemRoutes = require('./systemRoutes');
 const visitorRoutes = require('./visitorRoute');
 const guardRoutes = require('./guardRoutes');
 const memberRoutes = require('./memberRoutes');
+const vehicleRoutes = require('./vehicleRoute');
 
 
 const router = express.Router();
@@ -19,7 +20,7 @@ router.use('/system', systemRoutes);
 router.use('/visitor', visitorRoutes);
 router.use('/guard', guardRoutes);
 router.use('/member', memberRoutes);
+router.use('/vehicle', vehicleRoutes);
 
 
 module.exports = router;
-
