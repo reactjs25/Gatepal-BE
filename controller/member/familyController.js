@@ -41,7 +41,8 @@ const validateAddFamilyInput = (input = {}) => {
   const name = normalizeString(input.name);
   const countryCode = normalizeCountryCode(input.countryCode);
   const phoneDigits = normalizeDigits(input.phoneNumber || '');
-  const imageUrl = input.image !== undefined ? ensureBase64ImageDataUrl({ value: input.image, fieldLabel: 'Image' }) : null;
+  const incomingImage = input.imageUrl !== undefined ? input.imageUrl : input.image;
+  const imageUrl = incomingImage !== undefined ? ensureBase64ImageDataUrl({ value: incomingImage, fieldLabel: 'Image' }) : null;
 
   if (!unitId) throw createHttpError('unitId path parameter is required', 400);
   if (!mongoose.Types.ObjectId.isValid(unitId)) throw createHttpError('Invalid unit ID format', 400);
