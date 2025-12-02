@@ -3,10 +3,10 @@ const { addVehicle, getVehiclesByUnit, editVehicle, deleteVehicle, getVehicleByI
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const router = express.Router();
 
-router.post('/units/:unitId', userAuthMiddleware, addVehicle);
-router.get('/units/:unitId', userAuthMiddleware, getVehiclesByUnit);
-router.get('/units/:unitId/:vehicleId', userAuthMiddleware, getVehicleById);
-router.patch('/units/:unitId/:vehicleId', userAuthMiddleware, editVehicle);
-router.delete('/units/:unitId/:vehicleId', userAuthMiddleware, deleteVehicle);
+router.post('/:unitId', userAuthMiddleware, addVehicle);
+router.get('/:unitId', userAuthMiddleware, getVehiclesByUnit);
+router.get('/:unitId/:vehicleId', userAuthMiddleware, getVehicleById);
+router.patch('/:unitId/:vehicleId', userAuthMiddleware, editVehicle);
+router.delete('/:unitId/:vehicleId', userAuthMiddleware, deleteVehicle);
 
 module.exports = router;

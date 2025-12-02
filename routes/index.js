@@ -8,6 +8,7 @@ const visitorRoutes = require('./visitorRoute');
 const guardRoutes = require('./guardRoutes');
 const memberRoutes = require('./memberRoutes');
 const vehicleRoutes = require('./vehicleRoute');
+const petRoutes = require('./petRoute');
 
 
 const router = express.Router();
@@ -21,6 +22,7 @@ router.use('/visitor', visitorRoutes);
 router.use('/guard', guardRoutes);
 router.use('/member', memberRoutes);
 router.use('/vehicle', vehicleRoutes);
+router.use('/pets', petRoutes);
 
 
 module.exports = router;
