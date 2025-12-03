@@ -231,9 +231,16 @@ const editPet = async (req, res, next) => {
 
     let validated;
     try {
-      validated = validatePetPayload(req.body || {});
+      validated = validatePetPatchPayload(req.body || {});
     } catch (e) {
       return next(e);
+    }
+
+    if (validated.vaccinationStatus !== undefined) {
+      const vs = validated.vaccinationStatus;
+      if ((vs === 'Fully Vaccinated' || vs === 'Partially Vaccinated') && validated.lastVaccinationDate === undefined && !doc.lastVaccinationDate) {
+        return next(createHttpError('lastVaccinationDate is required for the selected vaccinationStatus', 400));
+      }
     }
 
     const nextName = validated.name !== undefined ? validated.name : doc.name;
