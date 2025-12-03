@@ -9,17 +9,7 @@ const getCountryCityOptions = async (req, res) => {
     });
 };
 
-const normalizeLabel = (value, fallback = 'Unknown') => {
-    if (!value || typeof value !== 'string') {
-        return fallback;
-    }
 
-    const trimmed = value.trim();
-    return trimmed || fallback;
-};
-
-const toCityKey = (countryName, cityName) =>
-    `${countryName.toLowerCase()}::${cityName.toLowerCase()}`;
 
 const mapUnits = (units = []) =>
     units

@@ -3,47 +3,9 @@ const Society = require('../../model/societySchema');
 const MemberUnit = require('../../model/memberUnitSchema');
 const { ROLE_TYPES } = require('../../utils/userRoleUtils');
 const { normalizeDigits } = require('../../utils/phoneNumber');
+const { normalizeString } = require('../../utils/strings');
+const { OCCUPANT_TYPES, OCCUPANCY_STATUSES, toCanonicalOccupantType, toCanonicalOccupancyStatus } = require('../../utils/enums/memberEnums');
 
-const MEMBER_OCCUPANT_TYPES = new Set([
-  'unit_owner',
-  'unit_owner_family_member',
-  'tenant',
-  'tenant_family_member',
-]);
-
-const MEMBER_OCCUPANCY_STATUSES = new Set(['currently_residing', 'unit_rented', 'unit_vacant']);
-
-const normalizeString = (value) => (value || '').toString().trim();
-const toCanonicalEnum = (value, allowed) => {
-  const normalized = normalizeString(value);
-  if (!normalized) return '';
-  const title = normalized
-    .toLowerCase()
-    .replace(/[_\s-]+/g, '')
-    .replace(/^o(wner)?$/, 'owner')
-    .replace(/^unitowner$/, 'unitowner')
-    .replace(/^(ownerfamily|ownerfamilymember|unitownerfamilymember)$/, 'ownerfamilymember')
-    .replace(/^t(enant)?$/, 'tenant')
-    .replace(/^(tenantfamily|tenantfamilymember)$/, 'tenantfamilymember')
-    .replace(/^(currentlyresiding)$/, 'currentlyresiding')
-    .replace(/^(unitrented|rented)$/, 'unitrented')
-    .replace(/^(unitvacant|vacant)$/, 'unitvacant')
-    .replace(/^occupied$/, 'currentlyresiding');
-
-  const mapping = {
-    owner: 'unit_owner',
-    unitowner: 'unit_owner',
-    ownerfamilymember: 'unit_owner_family_member',
-    tenant: 'tenant',
-    tenantfamilymember: 'tenant_family_member',
-    currentlyresiding: 'currently_residing',
-    unitrented: 'unit_rented',
-    unitvacant: 'unit_vacant',
-  };
-
-  const canonical = mapping[title] || value;
-  return allowed.has(canonical) ? canonical : '';
-};
 
 const maybeUpgradeSocietyAdmin = (user, society) => {
   if (!user || !society || user.role === ROLE_TYPES.SOCIETY_ADMIN) {
@@ -91,11 +53,10 @@ const handleMemberOnboarding = async ({ user, payload }) => {
   const societyPin = normalizeString(payload.societyPin);
   const wingName = normalizeString(payload.wingName ?? payload.wing);
   const unitNumber = normalizeString(payload.unitNumber ?? payload.unnitNumber ?? payload.unit);
-  const occupantType = toCanonicalEnum(
-    payload.occupantType ?? payload.occupancyType ?? payload.occupanytype,
-    MEMBER_OCCUPANT_TYPES
+  const occupantType = toCanonicalOccupantType(
+    payload.occupantType ?? payload.occupancyType ?? payload.occupanytype
   );
-  let occupancyStatus = toCanonicalEnum(payload.occupancyStatus, MEMBER_OCCUPANCY_STATUSES);
+  let occupancyStatus = toCanonicalOccupancyStatus(payload.occupancyStatus);
 
   if (!fullName || !email || !societyName || !societyPin || !wingName || !unitNumber) {
     throw createHttpError(
@@ -108,11 +69,11 @@ const handleMemberOnboarding = async ({ user, payload }) => {
     throw createHttpError('Country and city are required for onboarding', 400);
   }
 
-  if (!MEMBER_OCCUPANT_TYPES.has(occupantType)) {
+  if (!OCCUPANT_TYPES.has(occupantType)) {
     throw createHttpError('Invalid occupant type provided', 400);
   }
 
-  if (!MEMBER_OCCUPANCY_STATUSES.has(occupancyStatus)) {
+  if (!OCCUPANCY_STATUSES.has(occupancyStatus)) {
     if (occupantType === 'tenant' || occupantType === 'tenant_family_member') {
       occupancyStatus = 'unit_rented';
     } else {
@@ -159,21 +120,22 @@ const handleMemberOnboarding = async ({ user, payload }) => {
     },
   };
 
-  const primaryOwner = await MemberUnit.findOne({
-    societyId: society._id,
-    wingNameLower: user.wingName.toLowerCase(),
-    unitNumberLower: user.unitNumber.toLowerCase(),
-    occupantType: 'unit_owner',
-  })
-    .sort({ createdAt: 1 })
-    .lean();
-
-  const primaryTenant = await MemberUnit.findOne({
-    societyId: society._id,
-    wingNameLower: user.wingName.toLowerCase(),
-    unitNumberLower: user.unitNumber.toLowerCase(),
-    occupantType: 'tenant',
-  }).lean();
+  const [primaryOwner, primaryTenant] = await Promise.all([
+    MemberUnit.findOne({
+      societyId: society._id,
+      wingNameLower: user.wingName.toLowerCase(),
+      unitNumberLower: user.unitNumber.toLowerCase(),
+      occupantType: 'unit_owner',
+    })
+      .sort({ createdAt: 1 })
+      .lean(),
+    MemberUnit.findOne({
+      societyId: society._id,
+      wingNameLower: user.wingName.toLowerCase(),
+      unitNumberLower: user.unitNumber.toLowerCase(),
+      occupantType: 'tenant',
+    }).lean(),
+  ]);
 
   if (user.occupantType === 'tenant') {
     if (primaryTenant) {

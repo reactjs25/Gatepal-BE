@@ -1,4 +1,4 @@
-const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
@@ -23,39 +23,33 @@ const getDeliveryCompanies = async (req, res, next) => {
 
     let files = [];
     try {
-      files = fs.readdirSync(assetsDirPath, { withFileTypes: true })
-        .filter((entry) => entry.isFile())
-        .map((entry) => entry.name);
+      const dirEntries = await fsPromises.readdir(assetsDirPath, { withFileTypes: true });
+      files = dirEntries.filter((entry) => entry.isFile()).map((entry) => entry.name);
     } catch (readErr) {
       files = [];
     }
 
     let defaultBuffer;
     try {
-      defaultBuffer = fs.readFileSync(defaultLogoPath);
+      defaultBuffer = await fsPromises.readFile(defaultLogoPath);
     } catch (e) {
       defaultBuffer = null;
     }
 
-    const companies = files
-      .filter((name) => ALLOWED_IMAGE_EXTENSIONS.has(path.extname(name).toLowerCase()))
-      .map((name) => {
-        const base = path.basename(name, path.extname(name));
-        let imageUrl = `/assets/${name}`;
-        if (defaultBuffer) {
-          try {
-            const candidateBuffer = fs.readFileSync(path.join(assetsDirPath, name));
-            if (candidateBuffer && candidateBuffer.length === defaultBuffer.length && candidateBuffer.equals(defaultBuffer)) {
-              imageUrl = `/assets/Default.png`;
-            }
-          } catch (e) {}
-        }
-        return {
-          id: base.toLowerCase(),
-          name: toDisplayName(base),
-          imageUrl,
-        };
-      });
+    const companies = [];
+    for (const name of files.filter((n) => ALLOWED_IMAGE_EXTENSIONS.has(path.extname(n).toLowerCase()))) {
+      const base = path.basename(name, path.extname(name));
+      let imageUrl = `/assets/${name}`;
+      if (defaultBuffer) {
+        try {
+          const candidateBuffer = await fsPromises.readFile(path.join(assetsDirPath, name));
+          if (candidateBuffer && candidateBuffer.length === defaultBuffer.length && candidateBuffer.equals(defaultBuffer)) {
+            imageUrl = `/assets/Default.png`;
+          }
+        } catch (e) {}
+      }
+      companies.push({ id: base.toLowerCase(), name: toDisplayName(base), imageUrl });
+    }
 
     if (companies.length > 0) {
       try {

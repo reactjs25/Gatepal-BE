@@ -3,6 +3,8 @@ const User = require('../../model/userSchema');
 const MemberUnit = require('../../model/memberUnitSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
+const { normalizeString } = require('../../utils/strings');
+const { toCanonicalOccupantType, toCanonicalOccupancyStatus, mapUiToCanonicalOccupancy } = require('../../utils/enums/memberEnums');
 
 const OCCUPANT_TYPES = new Set([
   'unit_owner',
@@ -20,46 +22,6 @@ const UI_OCCUPANCY_ALLOWED = new Set([
   'unit_is_rented_out',
 ]);
 
-const mapUiToCanonicalOccupancy = (value) => {
-  const v = normalizeString(value).toLowerCase();
-  if (v === 'owner_is_residing') return 'currently_residing';
-  if (v === 'unit_is_empty') return 'unit_vacant';
-  if (v === 'unit_is_rented_out') return 'unit_rented';
-  return '';
-};
-
-const normalizeString = (value) => (value || '').toString().trim();
-
-const toCanonicalEnum = (value, allowed) => {
-  const normalized = normalizeString(value);
-  if (!normalized) return '';
-  const title = normalized
-    .toLowerCase()
-    .replace(/[_\s-]+/g, '')
-    .replace(/^o(wner)?$/, 'owner')
-    .replace(/^unitowner$/, 'unitowner')
-    .replace(/^(ownerfamily|ownerfamilymember|unitownerfamilymember)$/, 'ownerfamilymember')
-    .replace(/^t(enant)?$/, 'tenant')
-    .replace(/^(tenantfamily|tenantfamilymember)$/, 'tenantfamilymember')
-    .replace(/^(currentlyresiding)$/, 'currentlyresiding')
-    .replace(/^(unitrented|rented)$/, 'unitrented')
-    .replace(/^(unitvacant|vacant)$/, 'unitvacant')
-    .replace(/^occupied$/, 'currentlyresiding');
-
-  const mapping = {
-    owner: 'unit_owner',
-    unitowner: 'unit_owner',
-    ownerfamilymember: 'unit_owner_family_member',
-    tenant: 'tenant',
-    tenantfamilymember: 'tenant_family_member',
-    currentlyresiding: 'currently_residing',
-    unitrented: 'unit_rented',
-    unitvacant: 'unit_vacant',
-  };
-
-  const canonical = mapping[title] || value;
-  return allowed.has(canonical) ? canonical : '';
-};
 
 const validateMemberUnitPayload = (payload = {}) => {
   const city = normalizeString(payload.city);
@@ -70,8 +32,8 @@ const validateMemberUnitPayload = (payload = {}) => {
   const unitNumber = normalizeString(payload.unitNumber ?? payload.unnitNumber ?? payload.unit);
 
   const rawOccupantType = payload.occupantType ?? payload.occupancyType;
-  const occupantType = toCanonicalEnum(rawOccupantType, OCCUPANT_TYPES);
-  const occupancyStatus = toCanonicalEnum(payload.occupancyStatus, OCCUPANCY_STATUSES);
+  const occupantType = toCanonicalOccupantType(rawOccupantType);
+  const occupancyStatus = toCanonicalOccupancyStatus(payload.occupancyStatus);
 
   if (!societyPin) {
     throw createHttpError('societyPin is required', 400);

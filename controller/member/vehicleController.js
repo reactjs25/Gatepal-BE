@@ -1,58 +1,11 @@
-const mongoose = require('mongoose');
 const Vehicle = require('../../model/vehicleSchema');
-const MemberUnit = require('../../model/memberUnitSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
+const { normalizeString } = require('../../utils/strings');
+const { buildCanonicalUnitId, assertUnitAccess } = require('../../utils/unitAccess');
 
 const ALLOWED_TYPES = new Set(['Two-Wheeler', 'Four-Wheeler', 'Other']);
 
-const normalizeString = (v) => (v || '').toString().trim();
-
-const buildCanonicalUnitId = (unitDoc) =>
-  `${String(unitDoc.societyId)}:${unitDoc.wingNameLower}:${unitDoc.unitNumberLower}`;
-
-const assertUnitAccess = async ({ unitId, authUser }) => {
-  const id = normalizeString(unitId);
-  if (!id) throw createHttpError('unitId path parameter is required', 400);
-  if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError('Invalid unit ID format', 400);
-  const unitDoc = await MemberUnit.findById(id);
-  if (!unitDoc) throw createHttpError('Unit not found', 404);
-
-  const hasAccess = await MemberUnit.exists({
-    societyId: unitDoc.societyId,
-    wingNameLower: unitDoc.wingNameLower,
-    unitNumberLower: unitDoc.unitNumberLower,
-    memberId: authUser._id,
-  });
-
-  if (!hasAccess) {
-    throw createHttpError('Forbidden: you do not have access to this unit', 403);
-  }
-
-  return unitDoc;
-};
-
-const assertMemberUnitOwnership = async ({ unitId, authUser }) => {
-  const id = normalizeString(unitId);
-  if (!id) throw createHttpError('unitId path parameter is required', 400);
-  if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError('Invalid unit ID format', 400);
-  const unitDoc = await MemberUnit.findById(id);
-  if (!unitDoc) throw createHttpError('Unit not found', 404);
-
-  const isOwner = await MemberUnit.exists({
-    societyId: unitDoc.societyId,
-    wingNameLower: unitDoc.wingNameLower,
-    unitNumberLower: unitDoc.unitNumberLower,
-    memberId: authUser._id,
-    occupantType: 'unit_owner',
-  });
-
-  if (!isOwner) {
-    throw createHttpError('Forbidden: only unit owner can delete vehicles', 403);
-  }
-
-  return unitDoc;
-};
 
 const validateVehiclePayload = (payload = {}) => {
   const vehicleType = normalizeString(payload.vehicleType);
@@ -114,7 +67,7 @@ const addVehicle = async (req, res, next) => {
     return sendSuccessResponse(res, 201, 'Vehicle added successfully', {
       data: {
         vehicleId: doc.vehicleId,
-        unitId: doc.unitId,
+        unitId: String(unitDoc._id),
         memberId: String(doc.memberId),
         vehicleType: doc.vehicleType,
         name: doc.name,
@@ -149,7 +102,7 @@ const getVehiclesByUnit = async (req, res, next) => {
     return sendSuccessResponse(res, 200, 'Vehicles fetched successfully', {
       data: items.map((v) => ({
         vehicleId: v.vehicleId,
-        unitId: v.unitId,
+        unitId: String(unitDoc._id),
         memberId: String(v.memberId),
         vehicleType: v.vehicleType,
         name: v.name,
@@ -210,7 +163,7 @@ const editVehicle = async (req, res, next) => {
     return sendSuccessResponse(res, 200, 'Vehicle updated successfully', {
       data: {
         vehicleId: doc.vehicleId,
-        unitId: doc.unitId,
+        unitId: String(unitDoc._id),
         memberId: String(doc.memberId),
         vehicleType: doc.vehicleType,
         name: doc.name,
@@ -255,7 +208,7 @@ const getVehicleById = async (req, res, next) => {
     return sendSuccessResponse(res, 200, 'Vehicle fetched successfully', {
       data: {
         vehicleId: doc.vehicleId,
-        unitId: doc.unitId,
+        unitId: String(unitDoc._id),
         memberId: String(doc.memberId),
         vehicleType: doc.vehicleType,
         name: doc.name,
@@ -302,7 +255,7 @@ const deleteVehicle = async (req, res, next) => {
     );
 
     return sendSuccessResponse(res, 200, 'Vehicle deleted successfully', {
-      data: { vehicleId, unitId: canonicalUnitId, deletedAt },
+      data: { vehicleId, unitId: String(unitDoc._id), deletedAt },
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to delete vehicle'));

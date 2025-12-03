@@ -1,8 +1,8 @@
-const mongoose = require('mongoose');
 const Pet = require('../../model/petSchema');
-const MemberUnit = require('../../model/memberUnitSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
+const { normalizeString } = require('../../utils/strings');
+const { buildCanonicalUnitId, assertUnitAccess, assertUnitResidentAccess } = require('../../utils/unitAccess');
 
 const ALLOWED_PET_TYPES = new Set(['Dog', 'Cat', 'Parrot', 'Rabbit', 'Hamsters', 'Others']);
 const ALLOWED_VACCINATION_STATUSES = new Set([
@@ -13,75 +13,6 @@ const ALLOWED_VACCINATION_STATUSES = new Set([
 ]);
 
 
-const normalizeString = (v) => (v || '').toString().trim();
-
-const buildCanonicalUnitId = (unitDoc) =>
-  `${String(unitDoc.societyId)}:${unitDoc.wingNameLower}:${unitDoc.unitNumberLower}`;
-
-const assertUnitAccess = async ({ unitId, authUser }) => {
-  const id = normalizeString(unitId);
-  if (!id) throw createHttpError('unitId path parameter is required', 400);
-  if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError('Invalid unit ID format', 400);
-  const unitDoc = await MemberUnit.findById(id);
-  if (!unitDoc) throw createHttpError('Unit not found', 404);
-
-  const hasAccess = await MemberUnit.exists({
-    societyId: unitDoc.societyId,
-    wingNameLower: unitDoc.wingNameLower,
-    unitNumberLower: unitDoc.unitNumberLower,
-    memberId: authUser._id,
-  });
-
-  if (!hasAccess) {
-    throw createHttpError('Forbidden: you do not have access to this unit', 403);
-  }
-
-  return unitDoc;
-};
-
-const assertMemberUnitOwnership = async ({ unitId, authUser }) => {
-  const id = normalizeString(unitId);
-  if (!id) throw createHttpError('unitId path parameter is required', 400);
-  if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError('Invalid unit ID format', 400);
-  const unitDoc = await MemberUnit.findById(id);
-  if (!unitDoc) throw createHttpError('Unit not found', 404);
-
-  const isOwner = await MemberUnit.exists({
-    societyId: unitDoc.societyId,
-    wingNameLower: unitDoc.wingNameLower,
-    unitNumberLower: unitDoc.unitNumberLower,
-    memberId: authUser._id,
-    occupantType: 'unit_owner',
-  });
-
-  if (!isOwner) {
-    throw createHttpError('Forbidden: only unit owner can delete pets', 403);
-  }
-
-  return unitDoc;
-};
-
-const assertUnitResidentAccess = async ({ unitId, authUser }) => {
-  const id = normalizeString(unitId);
-  if (!id) throw createHttpError('unitId path parameter is required', 400);
-  if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError('Invalid unit ID format', 400);
-  const unitDoc = await MemberUnit.findById(id);
-  if (!unitDoc) throw createHttpError('Unit not found', 404);
-
-  const isResident = await MemberUnit.exists({
-    societyId: unitDoc.societyId,
-    wingNameLower: unitDoc.wingNameLower,
-    unitNumberLower: unitDoc.unitNumberLower,
-    memberId: authUser._id,
-    occupancyStatus: 'currently_residing',
-  });
-
-  if (!isResident) {
-    throw createHttpError('Forbidden: only residents of this unit can delete pets', 403);
-  }
-
-  return unitDoc;
-};
 
 const toDateOrNull = (value) => {
   if (!value) return null;
@@ -207,7 +138,7 @@ const addPet = async (req, res, next) => {
     return sendSuccessResponse(res, 201, 'Pet added successfully', {
       data: {
         petId: doc.petId,
-        unitId: doc.unitId,
+        unitId: String(unitDoc._id),
         memberId: String(doc.memberId),
         petType: doc.petType,
         name: doc.name,
@@ -256,7 +187,7 @@ const getPetsByUnit = async (req, res, next) => {
     return sendSuccessResponse(res, 200, 'Pets fetched successfully', {
       data: items.map((p) => ({
         petId: p.petId,
-        unitId: p.unitId,
+        unitId: String(unitDoc._id),
         memberId: String(p.memberId),
         petType: p.petType,
         name: p.name,
@@ -267,7 +198,6 @@ const getPetsByUnit = async (req, res, next) => {
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
       })),
-
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch pets'));
@@ -325,7 +255,7 @@ const editPet = async (req, res, next) => {
     return sendSuccessResponse(res, 200, 'Pet updated successfully', {
       data: {
         petId: doc.petId,
-        unitId: doc.unitId,
+        unitId: String(unitDoc._id),
         memberId: String(doc.memberId),
         petType: doc.petType,
         name: doc.name,
@@ -373,7 +303,7 @@ const getPetById = async (req, res, next) => {
     return sendSuccessResponse(res, 200, 'Pet fetched successfully', {
       data: {
         petId: doc.petId,
-        unitId: doc.unitId,
+        unitId: String(unitDoc._id),
         memberId: String(doc.memberId),
         petType: doc.petType,
         name: doc.name,
@@ -423,7 +353,7 @@ const deletePet = async (req, res, next) => {
     );
 
     return sendSuccessResponse(res, 200, 'Pet deleted successfully', {
-      data: { petId, unitId: canonicalUnitId, deletedAt },
+      data: { petId, unitId: String(unitDoc._id), deletedAt },
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to delete pet'));

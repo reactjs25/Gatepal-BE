@@ -1,4 +1,5 @@
 const { createHttpError } = require('../../utils/httpError');
+const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 
 const VISITOR_TYPES = {
   GUEST: 'guest',
@@ -14,45 +15,12 @@ const VEHICLE_REQUIRED_VISITOR_TYPES = new Set([
   VISITOR_TYPES.OTHER_VISITOR,
 ]);
 
-const SUPPORTED_IMAGE_MIME_TYPES = new Set(['png', 'jpg', 'jpeg', 'webp']);
-
-const ensureBase64ImageDataUrl = ({ value, fieldLabel, minBytes = 1024 }) => {
-  const trimmed = (value || '').trim();
-
-  if (!trimmed) {
-    throw createHttpError(`${fieldLabel} is required to continue onboarding`, 400);
-  }
-
-  const dataUrlMatch = trimmed.match(/^data:image\/([a-z+]+);base64,/i);
-
-  if (!dataUrlMatch) {
-    throw createHttpError(`${fieldLabel} must be a base64 encoded image data URL`, 400);
-  }
-
-  const mimeType = dataUrlMatch[1]?.toLowerCase();
-
-  if (!SUPPORTED_IMAGE_MIME_TYPES.has(mimeType)) {
-    throw createHttpError(`${fieldLabel} must be PNG, JPG, JPEG, or WEBP`, 400);
-  }
-
-  const payload = trimmed.substring(trimmed.indexOf(',') + 1).replace(/\s+/g, '');
-
-  if (!payload) {
-    throw createHttpError(`${fieldLabel} payload is empty`, 400);
-  }
-
-  let decoded;
+const ensureImage = ({ value, fieldLabel, minBytes = 1024 }) => {
   try {
-    decoded = Buffer.from(payload, 'base64');
-  } catch (error) {
-    throw createHttpError(`${fieldLabel} payload is not valid base64 data`, 400);
+    return ensureBase64ImageDataUrl({ value, fieldLabel, minBytes });
+  } catch (e) {
+    throw createHttpError(e.message, 400);
   }
-
-  if (!decoded || decoded.length < minBytes) {
-    throw createHttpError(`${fieldLabel} appears invalid or too small`, 400);
-  }
-
-  return trimmed;
 };
 
 const handleVisitorOnboarding = async ({ user, payload }) => {
@@ -89,14 +57,14 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
   let sanitizedQrCodeImage = null;
 
   if (hasProfilePhoto) {
-    sanitizedPhoto = ensureBase64ImageDataUrl({
+    sanitizedPhoto = ensureImage({
       value: profilePhoto,
       fieldLabel: 'Visitor photo',
     });
   }
 
   if (hasQrCodeImage) {
-    sanitizedQrCodeImage = ensureBase64ImageDataUrl({
+    sanitizedQrCodeImage = ensureImage({
       value: qrCodeImage,
       fieldLabel: 'Visitor QR code',
       minBytes: 512,

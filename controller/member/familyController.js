@@ -2,37 +2,24 @@ const mongoose = require('mongoose');
 const FamilyMember = require('../../model/familyMemberSchema');
 const MemberUnit = require('../../model/memberUnitSchema');
 const User = require('../../model/userSchema');
-const { normalizeDigits, normalizeCountryCode, getComparablePhoneNumber } = require('../../utils/phoneNumber');
+const { normalizeDigits, normalizeCountryCode } = require('../../utils/phoneNumber');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { sendSuccessResponse } = require('../../utils/response');
+const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeString } = require('../../utils/strings');
 
 const ALLOWED_CATEGORIES = new Set(['adult', 'child']);
-const SUPPORTED_IMAGE_MIME_TYPES = new Set(['png', 'jpg', 'jpeg', 'webp']);
 const FAMILY_LIST_CACHE_TTL_MS = 20000;
 const familyListCache = new Map();
 
-const normalizeString = (v) => (v || '').toString().trim();
-
-const ensureBase64ImageDataUrl = ({ value, fieldLabel, minBytes = 512 }) => {
+const ensureImageMaybe = ({ value, fieldLabel, minBytes = 512 }) => {
   const trimmed = normalizeString(value);
   if (!trimmed) return null;
-  const match = trimmed.match(/^data:image\/([a-z+]+);base64,/i);
-  if (!match) throw createHttpError(`${fieldLabel} must be a base64 encoded image data URL`, 400);
-  const mime = match[1]?.toLowerCase();
-  if (!SUPPORTED_IMAGE_MIME_TYPES.has(mime)) {
-    throw createHttpError(`${fieldLabel} must be PNG, JPG, JPEG, or WEBP`, 400);
-  }
-  const payload = trimmed.substring(trimmed.indexOf(',') + 1).replace(/\s+/g, '');
-  let buf;
   try {
-    buf = Buffer.from(payload, 'base64');
+    return ensureBase64ImageDataUrl({ value: trimmed, fieldLabel, minBytes });
   } catch (e) {
-    throw createHttpError(`${fieldLabel} payload is not valid base64 data`, 400);
+    throw createHttpError(e.message, 400);
   }
-  if (!buf || buf.length < minBytes) {
-    throw createHttpError(`${fieldLabel} appears invalid or too small`, 400);
-  }
-  return trimmed;
 };
 
 const validateAddFamilyInput = (input = {}) => {
@@ -42,7 +29,7 @@ const validateAddFamilyInput = (input = {}) => {
   const countryCode = normalizeCountryCode(input.countryCode);
   const phoneDigits = normalizeDigits(input.phoneNumber || '');
   const incomingImage = input.imageUrl !== undefined ? input.imageUrl : input.image;
-  const imageUrl = incomingImage !== undefined ? ensureBase64ImageDataUrl({ value: incomingImage, fieldLabel: 'Image' }) : null;
+  const imageUrl = incomingImage !== undefined ? ensureImageMaybe({ value: incomingImage, fieldLabel: 'Image' }) : null;
 
   if (!unitId) throw createHttpError('unitId path parameter is required', 400);
   if (!mongoose.Types.ObjectId.isValid(unitId)) throw createHttpError('Invalid unit ID format', 400);

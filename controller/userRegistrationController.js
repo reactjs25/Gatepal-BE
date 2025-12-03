@@ -1,16 +1,14 @@
 const User = require('../model/userSchema');
-const FamilyMember = require('../model/familyMemberSchema');
 const { generateNumericOtp, sendOtpToPhone } = require('../utils/otpService');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ROLE_TYPES, normalizeRole, resolveOnboardingFlow } = require('../utils/userRoleUtils');
-const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits, getComparablePhoneNumber } = require('../utils/phoneNumber');
+const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require('../utils/phoneNumber');
 const { generateUserAuthToken } = require('../utils/authToken');
 const { handleMemberOnboarding } = require('./onboarding/memberOnboardingController');
 const { handleGuardOnboarding } = require('./onboarding/guardOnboardingController');
 const { handleVisitorOnboarding } = require('./onboarding/visitorOnboardingController');
 const { sendSuccessResponse } = require('../utils/response');
 const SuperAdmin = require('../model/superAdminSchema');
-const { lookupSocietyAdminByMobile } = require('../utils/societyAdminUtils');
 
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10);
 const buildPlaceholderEmail = (phoneNumber) => `pending+${phoneNumber}@gatepal.local`;

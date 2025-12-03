@@ -106,32 +106,6 @@ const getMemberProfile = async (req, res, next) => {
 };
 
 const normalizeString = (value) => (value || '').toString().trim();
-const toCanonicalEnum = (value, allowed) => {
-  const normalized = normalizeString(value);
-  if (!normalized) return '';
-  const title = normalized
-    .toLowerCase()
-    .replace(/[_\s-]+/g, '')
-    .replace(/^(currentlyresiding)$/, 'currentlyresiding')
-    .replace(/^(unitrented|rented)$/, 'unitrented')
-    .replace(/^(unitvacant|vacant)$/, 'unitvacant')
-    .replace(/^occupied$/, 'currentlyresiding');
-
-  const mapping = {
-    currentlyresiding: 'currently_residing',
-    unitrented: 'unit_rented',
-    unitvacant: 'unit_vacant',
-  };
-
-  const canonical = mapping[title] || value;
-  return allowed.has(canonical) ? canonical : '';
-};
-
-const ALLOWED_OCCUPANCY_STATUSES = new Set([
-  'currently_residing',
-  'unit_rented',
-  'unit_vacant',
-]);
 
 const updateMemberProfile = async (req, res, next) => {
   try {

@@ -86,4 +86,9 @@ const societySchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+societySchema.index(
+  { 'societyAdmins.resetPasswordToken': 1, 'societyAdmins.resetPasswordExpires': 1 },
+  { partialFilterExpression: { 'societyAdmins.resetPasswordToken': { $type: 'string' } } }
+);
+
 module.exports = mongoose.model('Society', societySchema);
