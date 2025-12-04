@@ -53,8 +53,11 @@ const userAuthMiddleware = async (req, res, next) => {
         phoneNumber: linkedUser.phoneNumber,
         effectiveRole: 'society_admin',
         scope: 'app_user',
+        societyId: society._id,
       };
       req.appUser = linkedUser;
+      req.appUser.adminSocietyId = society._id;
+      req.appUser.linkedSocietyAdminId = admin._id;
       return next();
     }
 
@@ -78,4 +81,3 @@ const userAuthMiddleware = async (req, res, next) => {
 };
 
 module.exports = userAuthMiddleware;
-

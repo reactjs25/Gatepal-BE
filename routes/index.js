@@ -5,6 +5,8 @@ const societyRoutes = require('./societyRoutes');
 const societyAdminRoutes = require('./societyAdminRoutes');
 const systemRoutes = require('./systemRoutes');
 const visitorRoutes = require('./visitorRoute');
+const dailyHelpRoutes = require('./dailyHelpRoute');
+const dailyHelpAdminRoutes = require('./dailyHelpAdminRoute');
 const guardRoutes = require('./guardRoutes');
 const memberRoutes = require('./memberRoutes');
 const vehicleRoutes = require('./vehicleRoute');
@@ -23,6 +25,8 @@ router.use('/guard', guardRoutes);
 router.use('/member', memberRoutes);
 router.use('/vehicle', vehicleRoutes);
 router.use('/pets', petRoutes);
+router.use('/dailyHelp/admin', dailyHelpAdminRoutes);
+router.use('/dailyHelp', dailyHelpRoutes);
 
 
 module.exports = router;
