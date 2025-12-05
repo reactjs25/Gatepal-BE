@@ -173,8 +173,8 @@ const getFamilyMembersByUnit = async (req, res, next) => {
       const famType = p.occupantType === 'unit_owner'
         ? 'unit_owner_family_member'
         : p.occupantType === 'tenant'
-        ? 'tenant_family_member'
-        : p.occupantType;
+          ? 'tenant_family_member'
+          : p.occupantType;
       acc[String(p._id)] = famType;
       return acc;
     }, {});
@@ -247,7 +247,7 @@ const updateFamilyMember = async (req, res, next) => {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
 
-  const memberId = normalizeString((req.params && req.params.memberId) || '');
+    const memberId = normalizeString((req.params && req.params.memberId) || '');
     if (!memberId) return next(createHttpError('memberId path parameter is required', 400));
     if (!mongoose.Types.ObjectId.isValid(memberId)) {
       return next(createHttpError('Invalid member ID format', 400));
@@ -359,8 +359,14 @@ const updateFamilyMember = async (req, res, next) => {
 
     const unitDoc = await MemberUnit.findById(doc.unitId);
     if (!unitDoc) return next(createHttpError('Unit not found', 404));
-    if (String(unitDoc.memberId) !== String(authUser._id)) {
-      return next(createHttpError('Forbidden: you do not own this unit', 403));
+    const hasAccess = await MemberUnit.exists({
+      societyId: unitDoc.societyId,
+      wingNameLower: unitDoc.wingNameLower,
+      unitNumberLower: unitDoc.unitNumberLower,
+      memberId: authUser._id,
+    });
+    if (!hasAccess) {
+      return next(createHttpError('Forbidden: member is not part of your unit', 403));
     }
 
     const { imageUrl, phone, phoneNumber, category, name, countryCode } = req.body || {};
@@ -492,7 +498,7 @@ const deleteFamilyMember = async (req, res, next) => {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
 
-  const memberId = normalizeString((req.params && req.params.memberId) || '');
+    const memberId = normalizeString((req.params && req.params.memberId) || '');
     if (!memberId) return next(createHttpError('memberId path parameter is required', 400));
     if (!mongoose.Types.ObjectId.isValid(memberId)) {
       return next(createHttpError('Invalid member ID format', 400));
@@ -552,13 +558,18 @@ const getFamilyMemberById = async (req, res, next) => {
       return next(createHttpError('Invalid member ID format', 400));
     }
 
-    // Try to fetch a FamilyMember document first
     const fm = await FamilyMember.findById(memberId).lean();
     if (fm) {
       const unitDoc = await MemberUnit.findById(fm.unitId).lean();
       if (!unitDoc) return next(createHttpError('Unit not found', 404));
-      if (String(unitDoc.memberId) !== String(authUser._id)) {
-        return next(createHttpError('Forbidden: you do not own this unit', 403));
+      const hasAccess = await MemberUnit.exists({
+        societyId: unitDoc.societyId,
+        wingNameLower: unitDoc.wingNameLower,
+        unitNumberLower: unitDoc.unitNumberLower,
+        memberId: authUser._id,
+      });
+      if (!hasAccess) {
+        return next(createHttpError('Forbidden: member is not part of your unit', 403));
       }
 
       return sendSuccessResponse(res, 200, 'Family member fetched successfully', {
