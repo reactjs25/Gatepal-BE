@@ -65,12 +65,56 @@ const sanitizePayload = (payload = {}) => {
 
 const sendSuccessResponse = (res, statusCode = 200, message = 'OK', payload = {}) => {
   const safeStatus = Number.isInteger(statusCode) ? statusCode : 200;
+  const sanitized = sanitizePayload(payload);
+
+  const isEmptyData = (val) => {
+    if (val === null || val === undefined) return true;
+    if (Array.isArray(val)) return val.length === 0;
+    if (typeof val === 'object') return Object.keys(val).length === 0;
+    return false;
+  };
+
+  const formatDataField = (val) => {
+    if (val === null || val === undefined) return '';
+    if (Array.isArray(val)) return val.map((item) => formatDataField(item));
+    if (val instanceof Date) return val.toISOString();
+    if (typeof val === 'object') {
+      if (typeof val.toHexString === 'function') {
+        return val.toHexString();
+      }
+
+      if (typeof Buffer !== 'undefined' && Buffer.isBuffer && Buffer.isBuffer(val)) {
+        return val.toString('base64');
+      }
+
+      if (typeof val.toJSON === 'function' && !isPlainObject(val)) {
+        return formatDataField(val.toJSON());
+      }
+
+      const out = {};
+      for (const [k, v] of Object.entries(val)) {
+        if (v === null || v === undefined) {
+          out[k] = '';
+        } else {
+          out[k] = formatDataField(v);
+        }
+      }
+      return out;
+    }
+    return val;
+  };
+
+  const hasDataKey = Object.prototype.hasOwnProperty.call(payload || {}, 'data');
+  if (hasDataKey) {
+    sanitized.data = isEmptyData(payload.data) ? null : formatDataField(payload.data);
+  }
+
   const responseBody = {
     statusCode: safeStatus,
     success: true,
     message,
     timestamp: new Date().toISOString(),
-    ...sanitizePayload(payload),
+    ...sanitized,
   };
 
   return res.status(safeStatus).json(responseBody);

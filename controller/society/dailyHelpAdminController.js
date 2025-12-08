@@ -7,7 +7,8 @@ const { sendSuccessResponse } = require('../../utils/response');
 const User = require('../../model/userSchema');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
-const { normalizeDigits } = require('../../utils/phoneNumber');
+const { normalizeDigits, normalizeCountryCode } = require('../../utils/phoneNumber');
+const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
  
 
@@ -62,6 +63,21 @@ const mapUiStatusToCanonical = (value) => {
   return '';
 };
 
+const ALLOWED_WORK_CATEGORY_IDS = new Set([
+  'appliance_repair',
+  'beautician',
+  'car_cleaner',
+  'construction_work',
+  'cook',
+  'furniture_work',
+  'internet_repair',
+  'laundry',
+  'maid',
+  'milkman',
+  'newspaper',
+  'others',
+]);
+
 const listSocietyDailyHelp = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -74,7 +90,7 @@ const listSocietyDailyHelp = async (req, res, next) => {
       occupancyStatus: 'currently_residing',
     });
 
-    const query = { societyId: society._id, createdByRole: 'member', createdByUserId: { $in: residentIds } };
+    const query = { societyId: society._id };
     if (statusCanonical) query.status = statusCanonical;
     if (category) query.category = category.toLowerCase().replace(/\s+/g, '_');
 
@@ -139,27 +155,110 @@ const listSocietyDailyHelp = async (req, res, next) => {
       return acc;
     }, {});
 
+    const records = items.map((d) => ({
+      id: String(d._id),
+      societyId: String(d.societyId),
+      name: d.name,
+      category: d.category,
+      countryCode: d.countryCode || '+91',
+      phoneNumber: d.phoneNumber || null,
+      imageUrl: d.imageUrl || null,
+      status: d.status,
+      createdByRole: d.createdByRole,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      requests: assignmentsByHelp[String(d._id)] || [],
+    }));
+
     return sendSuccessResponse(res, 200, 'Society daily help fetched successfully', {
-      data: items.map((d) => ({
-        id: String(d._id),
-        societyId: String(d.societyId),
-        name: d.name,
-        category: d.category,
-        countryCode: d.countryCode || '+91',
-        phoneNumber: d.phoneNumber || null,
-        imageUrl: d.imageUrl || null,
-        status: d.status,
-        createdByRole: d.createdByRole,
-        createdAt: d.createdAt,
-        updatedAt: d.updatedAt,
-        requests: assignmentsByHelp[String(d._id)] || [],
-      })),
+      data: records.length > 0 ? { items: records } : null,
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch society daily help'));
   }
 };
 
+
+const addSocietyDailyHelp = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    const society = await resolveAdminSociety(authUser);
+
+    const { category, name, countryCode, phoneNumber, imageUrl, complianceConfirmed } = req.body || {};
+    const nm = normalizeString(name);
+    if (!nm) return next(createHttpError('name is required', 400));
+
+    const canonicalCategory = normalizeString(category).toLowerCase().replace(/\s+/g, '_');
+    if (!canonicalCategory || !ALLOWED_WORK_CATEGORY_IDS.has(canonicalCategory)) {
+      return next(createHttpError('Invalid category', 400));
+    }
+
+    if (!complianceConfirmed) {
+      return next(createHttpError('Compliance confirmation is required', 400));
+    }
+
+    const normalizedCode = normalizeCountryCode(countryCode || '+91');
+    const digits = normalizeDigits(phoneNumber || '');
+    if (!digits || digits.length !== 10) {
+      return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+    }
+
+    const formattedImage = imageUrl !== undefined
+      ? ensureBase64ImageDataUrl({ value: imageUrl, fieldLabel: 'Image' })
+      : null;
+
+    const comparable = `${normalizedCode.replace(/\D/g, '')}${digits}`;
+
+    const existsUser = await User.exists({ phoneNumber: digits });
+    if (existsUser) return next(createHttpError('This phone number already exists in the system', 409));
+
+    const FamilyMember = require('../../model/familyMemberSchema');
+    const fmExists = await FamilyMember.exists({ phoneDigits: digits });
+    if (fmExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+    const SuperAdmin = require('../../model/superAdminSchema');
+    const saExists = await SuperAdmin.exists({ phoneNumber: digits });
+    if (saExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+    const adminExists = await lookupSocietyAdminByMobile(digits);
+    if (adminExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+    let person = await DailyHelp.findOne({ societyId: society._id, category: canonicalCategory, phoneDigits: digits });
+
+    if (!person) {
+      person = await DailyHelp.create({
+        societyId: society._id,
+        category: canonicalCategory,
+        name: nm,
+        countryCode: normalizedCode,
+        phoneNumber: phoneNumber,
+        phoneDigits: digits,
+        comparablePhone: comparable,
+        imageUrl: formattedImage,
+        status: 'PENDING',
+        createdByUserId: authUser._id,
+        createdByRole: 'society_admin',
+      });
+    }
+
+    return sendSuccessResponse(res, 201, 'Society daily help added successfully', {
+      data: {
+        id: String(person._id),
+        societyId: String(person.societyId),
+        name: person.name,
+        category: person.category,
+        countryCode: person.countryCode || '+91',
+        phoneNumber: person.phoneNumber || null,
+        imageUrl: person.imageUrl || null,
+        status: person.status,
+        createdAt: person.createdAt,
+        updatedAt: person.updatedAt,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to add daily help'));
+  }
+};
 
 const getSocietyDailyHelpProfileById = async (req, res, next) => {
   try {
@@ -381,11 +480,13 @@ const rejectDailyHelp = async (req, res, next) => {
       return next(createHttpError('Invalid dailyHelpId', 400));
     }
 
-    const { reasonCode, reasonText, unitId, unitNumber, name, category, phoneNumber, imageUrl } = req.body || {};
-    const rc = normalizeString(reasonCode);
+    const { rejectReason, description, reasonCode, reasonText, unitId, unitNumber, name, category, phoneNumber, imageUrl } = req.body || {};
+    const rc = normalizeString(rejectReason !== undefined ? rejectReason : reasonCode);
     if (!rc) return next(createHttpError('Reject reason is mandatory', 400));
-    if (rc.toLowerCase() === 'other' && !normalizeString(reasonText)) {
-      return next(createHttpError('Reject reason text is mandatory for Other', 400));
+    const rcLower = rc.toLowerCase();
+    const desc = normalizeString(description !== undefined ? description : reasonText);
+    if ((rcLower === 'other' || rcLower === 'others') && !desc) {
+      return next(createHttpError('Reject reason description is mandatory when reason is others', 400));
     }
 
     const doc = await DailyHelp.findById(dailyHelpId);
@@ -461,7 +562,7 @@ const rejectDailyHelp = async (req, res, next) => {
     doc.status = 'REJECTED';
     doc.rejectedAt = new Date();
     doc.rejectReasonCode = rc;
-    doc.rejectReasonText = normalizeString(reasonText) || null;
+    doc.rejectReasonText = desc || null;
     doc.approvedAt = null;
     await doc.save();
 
@@ -539,4 +640,5 @@ module.exports = {
   removeDailyHelpFromSociety,
   listSocietyDailyHelp,
   getSocietyDailyHelpProfileById,
+  addSocietyDailyHelp,
 };
