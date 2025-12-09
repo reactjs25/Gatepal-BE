@@ -235,10 +235,25 @@ const addSocietyDailyHelp = async (req, res, next) => {
         phoneDigits: digits,
         comparablePhone: comparable,
         imageUrl: formattedImage,
-        status: 'PENDING',
+        status: 'APPROVED',
+        approvedAt: new Date(),
+        rejectedAt: null,
+        rejectReasonCode: null,
+        rejectReasonText: null,
         createdByUserId: authUser._id,
         createdByRole: 'society_admin',
       });
+    } else if (person.status !== 'APPROVED') {
+      person.status = 'APPROVED';
+      person.approvedAt = new Date();
+      person.rejectedAt = null;
+      person.rejectReasonCode = null;
+      person.rejectReasonText = null;
+      await person.save();
+      await DailyHelpAssignment.updateMany(
+        { dailyHelpId: person._id, status: 'PENDING' },
+        { $set: { status: 'APPROVED' } }
+      );
     }
 
     return sendSuccessResponse(res, 201, 'Society daily help added successfully', {
