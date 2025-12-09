@@ -169,11 +169,8 @@ const getDailyHelpByStatus = async (req, res, next) => {
       return next(e);
     }
 
-    const canonicalStatus = mapUiStatusToCanonical((req.query || {}).status || 'pending');
-    if (!canonicalStatus) return next(createHttpError('Invalid status filter', 400));
-
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
-    const assignments = await DailyHelpAssignment.find({ unitId: canonicalUnitId, status: canonicalStatus }).sort({ createdAt: -1 }).lean();
+    const assignments = await DailyHelpAssignment.find({ unitId: canonicalUnitId, status: { $in: ['APPROVED', 'PENDING'] } }).sort({ createdAt: -1 }).lean();
 
     const ids = assignments.map((a) => a.dailyHelpId);
     const persons = await DailyHelp.find({ _id: { $in: ids } }).lean();
@@ -196,6 +193,52 @@ const getDailyHelpByStatus = async (req, res, next) => {
           updatedAt: a.updatedAt,
         };
       }),
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch daily help'));
+  }
+};
+
+
+const searchApprovedSocietyDailyHelp = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member') return next(createHttpError('Only members can view daily help', 403));
+
+    const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.query || {}).unitId);
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitAccess({ unitId: unitIdCandidate, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const categoryRaw = (req.params && req.params.category) || '';
+    if (!categoryRaw) return next(createHttpError('category path parameter is required', 400));
+    const canonicalCategory = toCanonicalCategory(categoryRaw);
+    if (!canonicalCategory || !ALLOWED_WORK_CATEGORY_IDS.has(canonicalCategory)) {
+      return next(createHttpError('Invalid category', 400));
+    }
+
+    const docs = await DailyHelp.find({ societyId: unitDoc.societyId, status: 'APPROVED', category: canonicalCategory })
+      .sort({ name: 1 })
+      .lean();
+
+    return sendSuccessResponse(res, 200, 'Daily help fetched successfully', {
+      data: docs.map((d) => ({
+        id: String(d._id),
+        societyId: String(d.societyId),
+        name: d.name,
+        category: d.category,
+        countryCode: d.countryCode || '+91',
+        phoneNumber: d.phoneNumber || null,
+        imageUrl: d.imageUrl || null,
+        status: d.status,
+        approvedAt: d.approvedAt || null,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      })),
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch daily help'));
@@ -464,10 +507,110 @@ const getDailyHelpProfileById = async (req, res, next) => {
   }
 };
 
+const assignExistingDailyHelpToUnit = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member') return next(createHttpError('Only members can add daily help', 403));
+
+    const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.body || {}).unitId);
+    const dailyHelpIdCandidate = normalizeString((req.params && (req.params.dailyHelpId || req.params.id)) || (req.body || {}).dailyHelpId);
+
+    if (!unitIdCandidate) return next(createHttpError('unitId path parameter is required', 400));
+    if (!dailyHelpIdCandidate) return next(createHttpError('dailyHelpId path parameter is required', 400));
+    if (!mongoose.Types.ObjectId.isValid(dailyHelpIdCandidate)) {
+      return next(createHttpError('Invalid dailyHelpId', 400));
+    }
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitAccess({ unitId: unitIdCandidate, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const person = await DailyHelp.findById(dailyHelpIdCandidate);
+    if (!person) return next(createHttpError('Daily help not found', 404));
+    if (String(person.societyId) !== String(unitDoc.societyId)) {
+      return next(createHttpError('Forbidden: daily help does not belong to this society', 403));
+    }
+    if (person.status !== 'APPROVED') {
+      return next(createHttpError('Daily help must be approved to add directly', 400));
+    }
+
+    const canonicalUnitId = buildCanonicalUnitId(unitDoc);
+    let existing = await DailyHelpAssignment.findOne({ dailyHelpId: person._id, unitId: canonicalUnitId });
+    if (existing) {
+      if (existing.status === 'REMOVED') {
+        existing.status = 'APPROVED';
+        existing.removedAt = null;
+        await existing.save();
+        return sendSuccessResponse(res, 200, 'Daily help re-added to unit successfully', {
+          data: {
+            id: String(existing._id),
+            unitId: String(unitDoc._id),
+            dailyHelpId: String(person._id),
+            name: person.name,
+            category: person.category,
+            countryCode: person.countryCode || '+91',
+            phoneNumber: person.phoneNumber || null,
+            imageUrl: person.imageUrl || null,
+            status: existing.status,
+            createdAt: existing.createdAt,
+            updatedAt: existing.updatedAt,
+          },
+        });
+      }
+      return sendSuccessResponse(res, 200, 'Daily help already added for unit', {
+        data: {
+          id: String(existing._id),
+          unitId: String(unitDoc._id),
+          dailyHelpId: String(person._id),
+          name: person.name,
+          category: person.category,
+          countryCode: person.countryCode || '+91',
+          phoneNumber: person.phoneNumber || null,
+          imageUrl: person.imageUrl || null,
+          status: existing.status,
+          createdAt: existing.createdAt,
+          updatedAt: existing.updatedAt,
+        },
+      });
+    }
+
+    const assignment = await DailyHelpAssignment.create({
+      dailyHelpId: person._id,
+      unitId: canonicalUnitId,
+      memberId: authUser._id,
+      status: 'APPROVED',
+    });
+
+    return sendSuccessResponse(res, 201, 'Daily help added to unit successfully', {
+      data: {
+        id: String(assignment._id),
+        unitId: String(unitDoc._id),
+        dailyHelpId: String(person._id),
+        name: person.name,
+        category: person.category,
+        countryCode: person.countryCode || '+91',
+        phoneNumber: person.phoneNumber || null,
+        imageUrl: person.imageUrl || null,
+        status: assignment.status,
+        createdAt: assignment.createdAt,
+        updatedAt: assignment.updatedAt,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to add daily help to unit'));
+  }
+};
+
 module.exports = {
   addDailyHelp,
   getDailyHelpByStatus,
   removeDailyHelpFromUnit,
   editDailyHelpProfile,
   getDailyHelpProfileById,
+  searchApprovedSocietyDailyHelp,
+  assignExistingDailyHelpToUnit,
 };

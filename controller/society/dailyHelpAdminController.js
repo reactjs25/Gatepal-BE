@@ -634,6 +634,136 @@ const removeDailyHelpFromSociety = async (req, res, next) => {
   }
 };
 
+const editSocietyDailyHelpProfile = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    const dailyHelpId = normalizeString((req.params && (req.params.dailyHelpId || req.params.id)) || (req.body || {}).dailyHelpId);
+    if (!dailyHelpId || !mongoose.Types.ObjectId.isValid(dailyHelpId)) {
+      return next(createHttpError('Invalid dailyHelpId', 400));
+    }
+
+    const payload = req.body || {};
+    const { category, name, phoneNumber, imageUrl, countryCode } = payload;
+    if (category !== undefined && typeof category !== 'string') {
+      return next(createHttpError('category must be a string', 400));
+    }
+    if (name !== undefined && typeof name !== 'string') {
+      return next(createHttpError('name must be a string', 400));
+    }
+    if (phoneNumber !== undefined && typeof phoneNumber !== 'string') {
+      return next(createHttpError('phoneNumber must be a string', 400));
+    }
+    if (imageUrl !== undefined && typeof imageUrl !== 'string') {
+      return next(createHttpError('imageUrl must be a string', 400));
+    }
+
+    const doc = await DailyHelp.findById(dailyHelpId);
+    if (!doc) return next(createHttpError('Daily help not found', 404));
+
+    await assertAdminAccessForDailyHelp({ authUser, dailyHelp: doc });
+
+    const updates = {};
+
+    if (category !== undefined) {
+      const canonicalCategory = normalizeString(category).toLowerCase().replace(/\s+/g, '_');
+      if (!canonicalCategory || !ALLOWED_WORK_CATEGORY_IDS.has(canonicalCategory)) {
+        return next(createHttpError('Invalid category', 400));
+      }
+      updates.category = canonicalCategory;
+    }
+
+    if (name !== undefined) {
+      const nm = normalizeString(name);
+      if (!nm) return next(createHttpError('name cannot be empty', 400));
+      if (nm.length < 2 || nm.length > 50) {
+        return next(createHttpError('name must be between 2 and 50 characters', 400));
+      }
+      updates.name = nm;
+    }
+
+    if (imageUrl !== undefined) {
+      const formatted = ensureBase64ImageDataUrl({ value: imageUrl, fieldLabel: 'Image' });
+      updates.imageUrl = formatted;
+    }
+
+    if (phoneNumber !== undefined) {
+      const digits = normalizeDigits(phoneNumber || '');
+      if (digits && digits.length !== 10) {
+        return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+      }
+
+      const normalizedCode = normalizeCountryCode(countryCode || doc.countryCode || '+91');
+      const comparable = digits ? `${normalizedCode.replace(/\D/g, '')}${digits}` : null;
+
+      if (digits) {
+        const existsUser = await User.exists({ phoneNumber: digits });
+        if (existsUser) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const FamilyMember = require('../../model/familyMemberSchema');
+        const fmExists = await FamilyMember.exists({ phoneDigits: digits });
+        if (fmExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const SuperAdmin = require('../../model/superAdminSchema');
+        const saExists = await SuperAdmin.exists({ phoneNumber: digits });
+        if (saExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const adminExists = await lookupSocietyAdminByMobile(digits);
+        if (adminExists) return next(createHttpError('This phone number already exists in the system', 409));
+
+        const nextCategory = updates.category !== undefined ? updates.category : doc.category;
+        const dup = await DailyHelp.exists({ societyId: doc.societyId, category: nextCategory, phoneDigits: digits, _id: { $ne: doc._id } });
+        if (dup) return next(createHttpError('A daily help with this category and phone number already exists', 409));
+
+        updates.countryCode = normalizedCode;
+        updates.phoneNumber = phoneNumber;
+        updates.phoneDigits = digits;
+        updates.comparablePhone = comparable;
+      } else {
+        updates.phoneNumber = null;
+        updates.phoneDigits = null;
+        updates.comparablePhone = null;
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return sendSuccessResponse(res, 200, 'No changes provided', {
+        data: {
+          id: String(doc._id),
+          societyId: String(doc.societyId),
+          name: doc.name,
+          category: doc.category,
+          countryCode: doc.countryCode || '+91',
+          phoneNumber: doc.phoneNumber || null,
+          imageUrl: doc.imageUrl || null,
+          status: doc.status,
+          createdAt: doc.createdAt,
+          updatedAt: doc.updatedAt,
+        },
+      });
+    }
+
+    Object.assign(doc, updates);
+    await doc.save();
+
+    return sendSuccessResponse(res, 200, 'Daily help profile updated successfully', {
+      data: {
+        id: String(doc._id),
+        societyId: String(doc.societyId),
+        name: doc.name,
+        category: doc.category,
+        countryCode: doc.countryCode || '+91',
+        phoneNumber: doc.phoneNumber || null,
+        imageUrl: doc.imageUrl || null,
+        status: doc.status,
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update daily help profile'));
+  }
+};
+
 module.exports = {
   approveDailyHelp,
   rejectDailyHelp,
@@ -641,4 +771,5 @@ module.exports = {
   listSocietyDailyHelp,
   getSocietyDailyHelpProfileById,
   addSocietyDailyHelp,
+  editSocietyDailyHelpProfile,
 };
