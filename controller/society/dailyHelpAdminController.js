@@ -171,7 +171,7 @@ const listSocietyDailyHelp = async (req, res, next) => {
     }));
 
     return sendSuccessResponse(res, 200, 'Society daily help fetched successfully', {
-      data: records.length > 0 ? { items: records } : null,
+      data: records.length > 0 ? records : null,
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch society daily help'));

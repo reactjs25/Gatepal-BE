@@ -254,11 +254,11 @@ const deleteVehicle = async (req, res, next) => {
       { new: true }
     );
 
-    return sendSuccessResponse(res, 200, 'Vehicle deleted successfully', {
+    return sendSuccessResponse(res, 200, 'Vehicle removed successfully', {
       data: { vehicleId, unitId: String(unitDoc._id), deletedAt },
     });
   } catch (error) {
-    return next(setErrorDefaults(error, 'Failed to delete vehicle'));
+    return next(setErrorDefaults(error, 'Failed to remove vehicle'));
   }
 };
 

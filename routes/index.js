@@ -11,6 +11,8 @@ const guardRoutes = require('./guardRoutes');
 const memberRoutes = require('./memberRoutes');
 const vehicleRoutes = require('./vehicleRoute');
 const petRoutes = require('./petRoute');
+const maintainanceAdminRoutes = require('./maintainanceAdminRoute');
+const maintainanceRoutes = require('./maintainanceRoute');
 
 
 const router = express.Router();
@@ -25,6 +27,8 @@ router.use('/guard', guardRoutes);
 router.use('/member', memberRoutes);
 router.use('/vehicle', vehicleRoutes);
 router.use('/pets', petRoutes);
+router.use('/maintainance/admin', maintainanceAdminRoutes);
+router.use('/maintainance', maintainanceRoutes);
 router.use('/dailyHelp/admin', dailyHelpAdminRoutes);
 router.use('/dailyHelp', dailyHelpRoutes);
 

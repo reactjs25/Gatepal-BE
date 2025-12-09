@@ -65,7 +65,7 @@ const assertUnitResidentAccess = async ({ unitId, authUser }) => {
   });
 
   if (!isResident) {
-    throw createHttpError('Forbidden: only residents of this unit can delete pets', 403);
+    throw createHttpError('Forbidden: only residents of this unit can perform this action', 403);
   }
 
   return unitDoc;
@@ -77,4 +77,3 @@ module.exports = {
   assertMemberUnitOwnership,
   assertUnitResidentAccess,
 };
-

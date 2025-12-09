@@ -359,11 +359,11 @@ const deletePet = async (req, res, next) => {
       { new: true }
     );
 
-    return sendSuccessResponse(res, 200, 'Pet deleted successfully', {
+    return sendSuccessResponse(res, 200, 'Pet removed successfully', {
       data: { petId, unitId: String(unitDoc._id), deletedAt },
     });
   } catch (error) {
-    return next(setErrorDefaults(error, 'Failed to delete pet'));
+    return next(setErrorDefaults(error, 'Failed to remove pet'));
   }
 };
 
