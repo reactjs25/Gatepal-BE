@@ -2,7 +2,8 @@ const Pet = require('../../model/petSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
-const { buildCanonicalUnitId, assertUnitAccess, assertUnitResidentAccess } = require('../../utils/unitAccess');
+const { buildCanonicalUnitId, assertUnitAccess } = require('../../utils/unitAccess');
+const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 
 const ALLOWED_PET_TYPES = new Set(['Dog', 'Cat', 'Parrot', 'Rabbit', 'Hamsters', 'Others']);
 const ALLOWED_VACCINATION_STATUSES = new Set([
@@ -28,6 +29,16 @@ const toDateOnly = (value) => {
   return d.toISOString().split('T')[0];
 };
 
+const ensureCertificateMaybe = ({ value, fieldLabel }) => {
+  const trimmed = normalizeString(value);
+  if (!trimmed) return null;
+  try {
+    return ensureBase64ImageDataUrl({ value: trimmed, fieldLabel });
+  } catch (e) {
+    throw createHttpError(e.message, 400);
+  }
+};
+
 const validatePetPayload = (payload = {}) => {
   const petType = normalizeString(payload.petType);
   const name = normalizeString(payload.name);
@@ -36,7 +47,9 @@ const validatePetPayload = (payload = {}) => {
   const lastVaccinationDate = toDateOrNull(payload.lastVaccinationDate);
   const nextVaccinationDueDate = toDateOrNull(payload.nextVaccinationDueDate);
 
-  const certificateUrl = normalizeString(payload.certificateUrl);
+  const certificateUrl = payload.certificateUrl !== undefined
+    ? ensureCertificateMaybe({ value: payload.certificateUrl, fieldLabel: 'Vaccination certificate' })
+    : null;
 
   if (!petType || !ALLOWED_PET_TYPES.has(petType)) {
     throw createHttpError('petType must be one of Dog, Cat, Parrot, Rabbit, Hamsters, Others', 400);
@@ -56,7 +69,7 @@ const validatePetPayload = (payload = {}) => {
     vaccinationStatus,
     lastVaccinationDate,
     nextVaccinationDueDate,
-    certificateUrl: certificateUrl || null,
+    certificateUrl,
   };
 };
 
@@ -88,7 +101,7 @@ const validatePetPatchPayload = (payload = {}) => {
     out.nextVaccinationDueDate = toDateOrNull(payload.nextVaccinationDueDate);
   }
   if (payload.certificateUrl !== undefined) {
-    out.certificateUrl = normalizeString(payload.certificateUrl) || null;
+    out.certificateUrl = ensureCertificateMaybe({ value: payload.certificateUrl, fieldLabel: 'Vaccination certificate' });
   }
   return out;
 };

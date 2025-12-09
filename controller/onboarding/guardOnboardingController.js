@@ -4,9 +4,9 @@ const Society = require('../../model/societySchema');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 
 
-const ensureBase64ImageDataUrlGuard = ({ value, fieldLabel, minBytes = 1024 }) => {
+const ensureBase64ImageDataUrlGuard = ({ value, fieldLabel }) => {
   try {
-    return ensureBase64ImageDataUrl({ value, fieldLabel, minBytes });
+    return ensureBase64ImageDataUrl({ value, fieldLabel });
   } catch (e) {
     throw createHttpError(e.message, 400);
   }

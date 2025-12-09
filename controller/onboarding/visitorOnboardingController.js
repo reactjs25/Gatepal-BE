@@ -15,9 +15,9 @@ const VEHICLE_REQUIRED_VISITOR_TYPES = new Set([
   VISITOR_TYPES.OTHER_VISITOR,
 ]);
 
-const ensureImage = ({ value, fieldLabel, minBytes = 1024 }) => {
+const ensureImage = ({ value, fieldLabel }) => {
   try {
-    return ensureBase64ImageDataUrl({ value, fieldLabel, minBytes });
+    return ensureBase64ImageDataUrl({ value, fieldLabel });
   } catch (e) {
     throw createHttpError(e.message, 400);
   }
