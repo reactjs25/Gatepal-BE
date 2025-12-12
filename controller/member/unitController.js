@@ -1,10 +1,14 @@
 const Society = require('../../model/societySchema');
 const User = require('../../model/userSchema');
 const MemberUnit = require('../../model/memberUnitSchema');
+const FamilyMember = require('../../model/familyMemberSchema');
+const Vehicle = require('../../model/vehicleSchema');
+const Pet = require('../../model/petSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
 const { toCanonicalOccupantType, toCanonicalOccupancyStatus, mapUiToCanonicalOccupancy } = require('../../utils/enums/memberEnums');
+const { assertUnitAccess, buildCanonicalUnitId } = require('../../utils/unitAccess');
 
 const OCCUPANT_TYPES = new Set([
   'unit_owner',
@@ -310,9 +314,135 @@ const getUnitById = async (req, res, next) => {
   }
 };
 
+const getUnitDashboard = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    const unitIdCandidate = normalizeString((req.query || {}).unitId);
+    if (!unitIdCandidate) {
+      return next(createHttpError('unitId query parameter is required', 400));
+    }
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitAccess({ unitId: unitIdCandidate, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const canonicalUnitId = buildCanonicalUnitId(unitDoc);
+
+    const [familyCount, vehicleCount, petCount] = await Promise.all([
+      FamilyMember.countDocuments({ unitId: unitDoc._id }),
+      Vehicle.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
+      Pet.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
+    ]);
+
+    const addedItems = [familyCount > 0, vehicleCount > 0, petCount > 0].filter(Boolean).length;
+    const progressPercent = Math.round((addedItems / 3) * 100);
+
+    const society_meeting = {
+      id: 'meeting',
+      title: 'Upcoming society meeting',
+      description:
+        'General meeting of society will be held on 13 Sep 2025, Thursday at 10:00 PM in the society hall. All members are requested to attend.',
+      severity: 'success',
+      ctaLabel: 'View Details',
+      titleIcon: '/assets/society_icon.png',
+      ctaLabelIcon: '/assets/view_details.png',
+    };
+
+    const Maintenance_proof = {
+      id: 'maintenance_due',
+      title: 'Upload Maintenance Proof',
+      description:
+        '5 days left to pay maintenance for Aug 2025, Upload maintenance proof on or before 10 Sep 2025.',
+      severity: 'warning',
+      ctaLabel: 'Upload Now',
+      titleIcon: '/assets/maintainance.png',
+      ctaLabelIcon: '/assets/upload.png',
+    };
+
+    const access_expire = {
+      id: 'access_expire',
+      title: 'App access is expiring in 3 months.',
+      description:
+        'Your GatePal app access is about to expire in 3 months, please renew your contract to continue using the app.',
+      severity: 'warning',
+      ctaLabel: 'Please contact your our support team.',
+      titleIcon: '/assets/access_expire.png',
+      ctaLabelIcon: '/assets/contact_support.png',
+    };
+
+    const recent_announcement = {
+      id: 'recent_announcement',
+      title: 'Recent Announcement',
+      description:
+        'Water supply in E-Block will not be available tomorrow, 25 Aug 2025 from 10 AM to 1 PM.',
+      severity: 'success',
+      ctaLabel: 'View Details',
+      titleIcon: '/assets/announcement 1.png',
+      ctaLabelIcon: '/assets/view_details.png',
+    };
+
+    const stableCountSeed = `${unitDoc.wingNameLower}:${unitDoc.unitNumberLower}`.length;
+    const announcementCount = (stableCountSeed % 5) + 1;
+    const meetingCount = ((stableCountSeed * 3) % 12) + 1;
+    const society_rules = ((stableCountSeed * 5) % 7) + 1;
+
+    return sendSuccessResponse(res, 200, 'Unit dashboard fetched successfully', {
+      data: {
+        unit: {
+          id: String(unitDoc._id),
+          wingName: unitDoc.wingName,
+          unitNumber: unitDoc.unitNumber,
+        },
+        completeProfile: {
+          progressPercent,
+          items: {
+            familyMember: {
+              label: 'Family Member',
+              added: familyCount > 0,
+              count: familyCount,
+              statusLabel: familyCount > 0 ? 'Added' : 'Add Now',
+            },
+            vehicles: {
+              label: 'Vehicles',
+              added: vehicleCount > 0,
+              count: vehicleCount,
+              statusLabel: vehicleCount > 0 ? 'Added' : 'Add Now',
+            },
+            pets: {
+              label: 'Pets',
+              added: petCount > 0,
+              count: petCount,
+              statusLabel: petCount > 0 ? 'Added' : 'Add Now',
+            },
+          },
+        },
+        society_meeting,
+        Maintenance_proof,
+        access_expire,
+        recent_announcement,
+        society: {
+          announcementCount,
+          meetingCount,
+          society_rules,
+        },
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch unit dashboard'));
+  }
+};
+
 module.exports = {
   addMemberUnit,
   validateMemberUnitPayload,
   updateUnitOccupancyStatus,
   getUnitById,
+  getUnitDashboard,
 };
