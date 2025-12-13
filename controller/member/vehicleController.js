@@ -64,7 +64,7 @@ const addVehicle = async (req, res, next) => {
       isElectric: validated.isElectric,
     });
 
-    return sendSuccessResponse(res, 201, 'Vehicle added successfully', {
+    return sendSuccessResponse(res, 201, 'Vehicle details saved successfully.', {
       data: {
         vehicleId: doc.vehicleId,
         unitId: String(unitDoc._id),
@@ -254,7 +254,7 @@ const deleteVehicle = async (req, res, next) => {
       { new: true }
     );
 
-    return sendSuccessResponse(res, 200, 'Vehicle removed successfully', {
+    return sendSuccessResponse(res, 200, 'Vehicle removed successfully.', {
       data: { vehicleId, unitId: String(unitDoc._id), deletedAt },
     });
   } catch (error) {

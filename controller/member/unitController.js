@@ -321,9 +321,9 @@ const getUnitDashboard = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    const unitIdCandidate = normalizeString((req.query || {}).unitId);
+    const unitIdCandidate = normalizeString((req.body || {}).unitId);
     if (!unitIdCandidate) {
-      return next(createHttpError('unitId query parameter is required', 400));
+      return next(createHttpError('unitId is required', 400));
     }
 
     let unitDoc;
@@ -393,46 +393,79 @@ const getUnitDashboard = async (req, res, next) => {
     const meetingCount = ((stableCountSeed * 3) % 12) + 1;
     const society_rules = ((stableCountSeed * 5) % 7) + 1;
 
-    return sendSuccessResponse(res, 200, 'Unit dashboard fetched successfully', {
-      data: {
-        unit: {
-          id: String(unitDoc._id),
-          wingName: unitDoc.wingName,
-          unitNumber: unitDoc.unitNumber,
+    const completeProfile = {
+      progressPercent,
+      items: {
+        familyMember: {
+          label: 'Family Member',
+          added: familyCount > 0,
+          count: familyCount,
+          statusLabel: familyCount > 0 ? 'Added' : 'Add Now',
         },
-        completeProfile: {
-          progressPercent,
-          items: {
-            familyMember: {
-              label: 'Family Member',
-              added: familyCount > 0,
-              count: familyCount,
-              statusLabel: familyCount > 0 ? 'Added' : 'Add Now',
-            },
-            vehicles: {
-              label: 'Vehicles',
-              added: vehicleCount > 0,
-              count: vehicleCount,
-              statusLabel: vehicleCount > 0 ? 'Added' : 'Add Now',
-            },
-            pets: {
-              label: 'Pets',
-              added: petCount > 0,
-              count: petCount,
-              statusLabel: petCount > 0 ? 'Added' : 'Add Now',
-            },
-          },
+        vehicles: {
+          label: 'Vehicles',
+          added: vehicleCount > 0,
+          count: vehicleCount,
+          statusLabel: vehicleCount > 0 ? 'Added' : 'Add Now',
         },
-        society_meeting,
-        Maintenance_proof,
-        access_expire,
-        recent_announcement,
-        society: {
-          announcementCount,
-          meetingCount,
-          society_rules,
+        pets: {
+          label: 'Pets',
+          added: petCount > 0,
+          count: petCount,
+          statusLabel: petCount > 0 ? 'Added' : 'Add Now',
         },
       },
+    };
+
+    const unit = {
+      id: String(unitDoc._id),
+      wingName: unitDoc.wingName,
+      unitNumber: unitDoc.unitNumber,
+    };
+
+    const society = {
+      announcementCount,
+      meetingCount,
+      society_rules,
+    };
+
+    const cards = [
+      {
+        unit,
+      },
+      {
+        society,
+      },
+      {
+        actionCardType: 'completeProfile',
+        completeProfile,
+      },
+      {
+        recent_announcement: 'announcement',
+        announcement: [
+          {
+            actionCardType: 'upcomingMeeting',
+            society_meeting: [society_meeting],
+          },
+          {
+            actionCardType: 'uploadMaintenanceProof',
+            Maintenance_proof: [Maintenance_proof],
+          },
+          {
+            actionCardType: 'accessExpiring',
+            access_expire: [access_expire],
+          },
+          {
+            actionCardType: 'announcement',
+            recent_announcement: [recent_announcement],
+          },
+        ],
+      },
+    ];
+
+    return sendSuccessResponse(res, 200, 'Unit dashboard fetched successfully', {
+
+      data: cards,
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch unit dashboard'));
