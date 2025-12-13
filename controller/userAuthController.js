@@ -207,6 +207,8 @@ const requestPasswordOtp = async (req, res, next) => {
       throw createHttpError('Account not found for the provided details', 404);
     }
 
+    ensureAccountIsActive(principal);
+
     const otp = generateNumericOtp(4);
     principal.doc.setOtp(otp);
     principal.doc.resetPasswordToken = null;
@@ -238,6 +240,8 @@ const verifyOtp = async (req, res, next) => {
     if (!principal) {
       throw createHttpError('Account not found for the provided details', 404);
     }
+
+    ensureAccountIsActive(principal);
 
     const isValid = principal.doc.verifyOtp(otp);
 
@@ -277,6 +281,8 @@ const resetPassword = async (req, res, next) => {
     if (!principal) {
       throw createHttpError('Account not found for the provided details', 404);
     }
+
+    ensureAccountIsActive(principal);
 
     const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
     const tokenMatches =

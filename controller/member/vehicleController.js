@@ -14,12 +14,12 @@ const validateVehiclePayload = (payload = {}) => {
   const isElectric = Boolean(payload.isElectric);
 
   if (!vehicleType || !ALLOWED_TYPES.has(vehicleType)) {
-    throw createHttpError('vehicleType must be one of Two-Wheeler, Four-Wheeler, Other', 400);
+    throw createHttpError('Vehicle type must be one of Two-Wheeler, Four-Wheeler, Other.', 400);
   }
-  if (!name) throw createHttpError('name is required', 400);
-  if (!rawNumber) throw createHttpError('vehicleNumber is required', 400);
+  if (!name) throw createHttpError('Vehicle name is required.', 400);
+  if (!rawNumber) throw createHttpError('Vehicle number is required.', 400);
   if (!/^[A-Z0-9]+$/.test(rawNumber)) {
-    throw createHttpError('vehicleNumber must be alphanumeric without spaces, slashes, or dashes', 400);
+    throw createHttpError('Vehicle number must be alphanumeric without spaces, slashes, or dashes.', 400);
   }
 
   return { vehicleType, name, vehicleNumber: rawNumber, isElectric };
@@ -160,7 +160,7 @@ const editVehicle = async (req, res, next) => {
     doc.memberId = authUser._id;
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Vehicle updated successfully', {
+    return sendSuccessResponse(res, 200, 'Vehicle details saved successfully.', {
       data: {
         vehicleId: doc.vehicleId,
         unitId: String(unitDoc._id),
