@@ -216,11 +216,14 @@ userSchema.methods.comparePassword = function comparePassword(candidatePassword)
   return bcrypt.compare(candidatePassword, this.password);
 };
 
-userSchema.methods.setOtp = function setOtp(otp) {
+userSchema.methods.setOtp = function setOtp(otp, options = {}) {
+  const { markPendingStatus = true } = options;
   const hashedOtp = crypto.createHash('sha256').update(String(otp)).digest('hex');
   this.otpCode = hashedOtp;
   this.otpExpiresAt = new Date(Date.now() + OTP_TTL_IN_MS);
-  this.status = 'pending_otp';
+  if (markPendingStatus) {
+    this.status = 'pending_otp';
+  }
 };
 
 userSchema.methods.verifyOtp = function verifyOtp(otp) {
@@ -242,5 +245,4 @@ userSchema.methods.verifyOtp = function verifyOtp(otp) {
 };
 
 module.exports = mongoose.model('User', userSchema);
-
 

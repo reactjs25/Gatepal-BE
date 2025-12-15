@@ -210,7 +210,11 @@ const requestPasswordOtp = async (req, res, next) => {
     ensureAccountIsActive(principal);
 
     const otp = generateNumericOtp(4);
-    principal.doc.setOtp(otp);
+    if (principal.type === 'user') {
+      principal.doc.setOtp(otp, { markPendingStatus: false });
+    } else {
+      principal.doc.setOtp(otp);
+    }
     principal.doc.resetPasswordToken = null;
     principal.doc.resetPasswordExpires = null;
 
