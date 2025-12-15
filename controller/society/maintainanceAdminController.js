@@ -221,7 +221,15 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
     if (includePendingMissing) {
       unitDocs = await MemberUnit.find(
         { societyId: society._id },
-        { wingName: 1, wingNameLower: 1, unitNumber: 1, unitNumberLower: 1, occupantType: 1, memberId: 1 }
+        {
+          wingName: 1,
+          wingNameLower: 1,
+          unitNumber: 1,
+          unitNumberLower: 1,
+          occupantType: 1,
+          occupancyStatus: 1,
+          memberId: 1,
+        }
       ).lean();
     } else {
       const unitKeys = Array.from(
@@ -237,7 +245,15 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
       if (unitQueryOr.length > 0) {
         unitDocs = await MemberUnit.find(
           { $or: unitQueryOr },
-          { wingName: 1, wingNameLower: 1, unitNumber: 1, unitNumberLower: 1, occupantType: 1, memberId: 1 }
+          {
+            wingName: 1,
+            wingNameLower: 1,
+            unitNumber: 1,
+            unitNumberLower: 1,
+            occupantType: 1,
+            occupancyStatus: 1,
+            memberId: 1,
+          }
         ).lean();
       }
     }
@@ -251,7 +267,9 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
     const uploaderIds = Array.from(new Set(items.map((m) => String(m.memberId))));
     const ownerIds = [];
     for (const key of Object.keys(unitGroups)) {
-      const owner = unitGroups[key].find((u) => u.occupantType === 'unit_owner') || unitGroups[key].find((u) => u.occupantType === 'tenant') || null;
+      const owner = unitGroups[key].find(
+        (u) => u.occupantType === 'unit_owner' && u.occupancyStatus === 'currently_residing'
+      );
       if (owner) ownerIds.push(String(owner.memberId));
     }
     const userIds = Array.from(new Set([...uploaderIds, ...ownerIds]));
@@ -262,28 +280,45 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
       const p = parseUnit(doc.unitId);
       const key = `${p.wingLower}:${p.unitLower}`;
       const group = unitGroups[key] || [];
-      const ownerUnit = group.find((u) => u.occupantType === 'unit_owner') || group.find((u) => u.occupantType === 'tenant') || null;
-      const unitNumber = ownerUnit ? ownerUnit.unitNumber : null;
-      const categoryLabel = ownerUnit ? (ownerUnit.occupantType === 'unit_owner' ? 'Owner' : ownerUnit.occupantType === 'tenant' ? 'Tenant' : '') : '';
-      const ownerUser = ownerUnit ? userMap[String(ownerUnit.memberId)] || {} : {};
+
+      const primaryUnit =
+        group.find((u) => u.occupantType === 'unit_owner') ||
+        group.find((u) => u.occupantType === 'tenant') ||
+        group[0] ||
+        null;
+
+      const unitNumber = primaryUnit ? primaryUnit.unitNumber : null;
+      const categoryLabel = primaryUnit
+        ? primaryUnit.occupantType === 'unit_owner'
+          ? 'Owner'
+          : primaryUnit.occupantType === 'tenant'
+          ? 'Tenant'
+          : ''
+        : '';
+
+      const ownerLiving =
+        group.find(
+          (u) => u.occupantType === 'unit_owner' && u.occupancyStatus === 'currently_residing'
+        ) || null;
+      const ownerUser = ownerLiving ? userMap[String(ownerLiving.memberId)] || {} : {};
 
       if (includePendingMissing) {
         return {
-          unitId: ownerUnit ? String(ownerUnit._id) : null,
+          unitId: primaryUnit ? String(primaryUnit._id) : null,
           monthLabel: `${month} ${year}`,
           unitNumber,
           unitCategory: categoryLabel || null,
-          ownerName: ownerUser.fullName || null,
+          ownerName: ownerUser.fullName || '',
         };
       }
 
       return {
         maintenanceId: doc.maintenanceId,
-        unitId: ownerUnit ? String(ownerUnit._id) : null,
+        unitId: primaryUnit ? String(primaryUnit._id) : null,
         monthLabel: `${month} ${year}`,
         unitNumber,
         unitCategory: categoryLabel || null,
-        ownerName: ownerUser.fullName || null,
+        ownerName: ownerUser.fullName || '',
         amount: doc.amount,
         transactionDate: toDateOnly(doc.transactionDate),
         status: doc.status,
