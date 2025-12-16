@@ -6,6 +6,6 @@ const router = express.Router();
 
 router.post('/', userAuthMiddleware, uploadMaintainanceProof);
 router.get('/', userAuthMiddleware, getMaintainancesByUnit);
-router.get('/:unitId/:maintenanceId', userAuthMiddleware, getMaintainanceById);
+router.get('/single', userAuthMiddleware, getMaintainanceById);
 
 module.exports = router;

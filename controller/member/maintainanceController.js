@@ -265,12 +265,8 @@ const getMaintainanceById = async (req, res, next) => {
         if (!authUser) return next(createHttpError('Unauthorized', 401));
         if (authUser.role !== 'member') return next(createHttpError('Only members can view maintenance', 403));
 
-        const unitIdCandidate = normalizeString(
-            (req.body && req.body.unitId) || (req.params && (req.params.unitId || req.params.id)) || ''
-        );
-        const maintenanceId = normalizeString(
-            (req.body && req.body.maintenanceId) || (req.params && req.params.maintenanceId) || ''
-        );
+        const unitIdCandidate = normalizeString((req.body && req.body.unitId) || '');
+        const maintenanceId = normalizeString((req.body && req.body.maintenanceId) || '');
 
         if (!unitIdCandidate) {
             return next(createHttpError('unitId is required', 400));
