@@ -78,6 +78,31 @@ const ALLOWED_WORK_CATEGORY_IDS = new Set([
   'others',
 ]);
 
+const DAILY_HELP_REJECT_REASON_CATEGORIES = [
+  'Incomplete details',
+  'Incorrect details',
+  'Missing ID proof',
+  'Photo mismatch',
+  'Background verification pending',
+  'Police verification not done',
+  'Helper not authorized for that unit',
+  'Owner approval not received',
+  'Helper previously blacklisted',
+  'Complaints against the helper',
+  'Identity mismatch',
+  'Unregistered agency',
+  'Agency not approved',
+  'Security concerns',
+  'Suspicious behaviour',
+  'Not meeting society onboarding rules',
+  'Missing vaccination certificate',
+  'Helper previously terminated',
+  'Attempt to bypass entry process',
+  'Incorrect phone number',
+  'Wrong apartment details',
+  'Others',
+];
+
 const listSocietyDailyHelp = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -649,6 +674,21 @@ const removeDailyHelpFromSociety = async (req, res, next) => {
   }
 };
 
+const getDailyHelpRejectReasonCategories = async (req, res, next) => {
+  try {
+    const categories = DAILY_HELP_REJECT_REASON_CATEGORIES.map((name) => ({
+      id: name.toLowerCase().replace(/\s+/g, '_'),
+      name,
+    }));
+
+    return sendSuccessResponse(res, 200, 'Daily help reject reason categories fetched successfully', {
+      data: categories,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch daily help reject reason categories'));
+  }
+};
+
 const editSocietyDailyHelpProfile = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -787,4 +827,5 @@ module.exports = {
   getSocietyDailyHelpProfileById,
   addSocietyDailyHelp,
   editSocietyDailyHelpProfile,
+  getDailyHelpRejectReasonCategories,
 };
