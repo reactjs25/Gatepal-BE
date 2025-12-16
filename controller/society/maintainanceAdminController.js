@@ -196,7 +196,7 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
           uploaded,
           verified,
           rejected,
-          totalUnits: owner.totalUnits + tenant.totalUnits,
+          totalUnits,
           vacantUnits: vacantCount,
         },
       };
@@ -213,10 +213,10 @@ const getMaintenanceSummaryByMonth = async (req, res, next) => {
     const authUser = req.appUser;
     const society = await resolveAdminSociety(authUser);
 
-    const monthRaw = (req.params && req.params.month) || '';
+    const monthRaw = (req.body && req.body.month) || '';
     const month = toCanonicalMonth(monthRaw);
-    if (!month) return next(createHttpError('Invalid month parameter', 400));
-    const year = Math.round(Number((req.query && req.query.year) || new Date().getFullYear()));
+    if (!month) return next(createHttpError('Invalid month', 400));
+    const year = Math.round(Number((req.body && req.body.year) || new Date().getFullYear()));
     if (!Number.isFinite(year) || String(year).length !== 4) {
       return next(createHttpError('year must be a 4-digit number', 400));
     }
@@ -314,15 +314,15 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
     const authUser = req.appUser;
     const society = await resolveAdminSociety(authUser);
 
-    const monthRaw = (req.params && req.params.month) || '';
+    const monthRaw = (req.body && req.body.month) || '';
     const month = toCanonicalMonth(monthRaw);
     if (!month) return next(createHttpError('Invalid month parameter', 400));
-    const year = Math.round(Number((req.query && req.query.year) || new Date().getFullYear()));
+    const year = Math.round(Number((req.body && req.body.year) || new Date().getFullYear()));
     if (!Number.isFinite(year) || String(year).length !== 4) {
       return next(createHttpError('year must be a 4-digit number', 400));
     }
 
-    const statusRaw = normalizeString((req.query && req.query.status) || '');
+    const statusRaw = normalizeString((req.body && req.body.status) || '');
     let statusQuery = null;
     let includePendingMissing = false;
     if (statusRaw) {
@@ -516,8 +516,8 @@ const verifyMaintenance = async (req, res, next) => {
     const authUser = req.appUser;
     const society = await resolveAdminSociety(authUser);
 
-    const maintenanceId = normalizeString((req.params && req.params.maintenanceId) || '');
-    if (!maintenanceId) return next(createHttpError('maintenanceId path parameter is required', 400));
+    const maintenanceId = normalizeString((req.body && req.body.maintenanceId) || '');
+    if (!maintenanceId) return next(createHttpError('maintenanceId is required', 400));
 
     const doc = await Maintenance.findOne({ maintenanceId });
     if (!doc) return next(createHttpError('Maintenance not found', 404));
@@ -638,8 +638,8 @@ const rejectMaintenance = async (req, res, next) => {
     const authUser = req.appUser;
     const society = await resolveAdminSociety(authUser);
 
-    const maintenanceId = normalizeString((req.params && req.params.maintenanceId) || '');
-    if (!maintenanceId) return next(createHttpError('maintenanceId path parameter is required', 400));
+    const maintenanceId = normalizeString((req.body && req.body.maintenanceId) || '');
+    if (!maintenanceId) return next(createHttpError('maintenanceId is required', 400));
 
     const { unitId, rejectReason, description } = req.body || {};
     const reason = normalizeString(rejectReason);

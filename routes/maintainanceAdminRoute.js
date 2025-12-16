@@ -4,10 +4,14 @@ const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 
 const router = express.Router();
 
+router.get('/', userAuthMiddleware, listUploadedMaintenanceByMonth);
+
 router.get('/summary/yearly', userAuthMiddleware, getMaintenanceYearlySummary);
-router.get('/summary/:month', userAuthMiddleware, getMaintenanceSummaryByMonth);
-router.get('/:month', userAuthMiddleware, listUploadedMaintenanceByMonth);
-router.post('/verify/:maintenanceId', userAuthMiddleware, verifyMaintenance);
-router.post('/reject/:maintenanceId', userAuthMiddleware, rejectMaintenance);
+
+router.get('/summary', userAuthMiddleware, getMaintenanceSummaryByMonth);
+
+router.post('/verify', userAuthMiddleware, verifyMaintenance);
+
+router.post('/reject', userAuthMiddleware, rejectMaintenance);
 
 module.exports = router;
