@@ -9,6 +9,21 @@ const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { toDateOnly, toISTDateLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 
+const MONTH_LABELS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
 const resolveAdminSociety = async (authUser) => {
   if (!authUser) throw createHttpError('Unauthorized', 401);
   if (authUser.adminSocietyId) {
@@ -58,6 +73,139 @@ const toCanonicalMonthLabel = (value) => {
   const y = Math.round(Number(parts[parts.length - 1]));
   if (!m || !Number.isFinite(y) || String(y).length !== 4) return '';
   return `${m} ${y}`;
+};
+
+const getMaintenanceYearlySummary = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    const society = await resolveAdminSociety(authUser);
+
+    const year = Math.round(Number((req.query && req.query.year) || new Date().getFullYear()));
+    if (!Number.isFinite(year) || String(year).length !== 4) {
+      return next(createHttpError('year must be a 4-digit number', 400));
+    }
+
+    const wings = Array.isArray(society.structure) ? society.structure : [];
+    const totalUnits = wings.reduce((sum, w) => {
+      const units = Array.isArray(w.units) ? w.units.length : 0;
+      const declared = typeof w.totalUnits === 'number' ? w.totalUnits : 0;
+      return sum + (declared || units);
+    }, 0);
+
+    const occupants = await MemberUnit.find(
+      { societyId: society._id },
+      { wingNameLower: 1, unitNumberLower: 1, occupantType: 1, occupancyStatus: 1 }
+    ).lean();
+    const unitGroups = occupants.reduce((acc, u) => {
+      const key = `${u.wingNameLower}:${u.unitNumberLower}`;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(u);
+      return acc;
+    }, {});
+
+    const groupKeys = Object.keys(unitGroups);
+    const classify = (items) => {
+      const types = new Set(items.map((x) => x.occupantType));
+      const statuses = new Set(items.map((x) => x.occupancyStatus));
+      if (types.has('tenant') || types.has('tenant_family_member') || statuses.has('unit_rented')) return 'tenant';
+      if (statuses.has('unit_vacant') && !statuses.has('currently_residing')) return 'vacant';
+      if (types.has('unit_owner') || types.has('unit_owner_family_member')) return 'owner';
+      return 'owner';
+    };
+
+    const ownerUnitKeys = groupKeys.filter((k) => classify(unitGroups[k]) === 'owner');
+    const tenantUnitKeys = groupKeys.filter((k) => classify(unitGroups[k]) === 'tenant');
+    const occupiedCount = ownerUnitKeys.length + tenantUnitKeys.length;
+    const vacantCount = Math.max(0, totalUnits - occupiedCount);
+
+    const prefix = `${String(society._id)}:`;
+    const maintDocsYear = await Maintenance.find(
+      { unitId: { $regex: `^${prefix}` }, year, deletedAt: null },
+      { unitId: 1, month: 1, status: 1 }
+    ).lean();
+
+    const docsByMonth = maintDocsYear.reduce((acc, d) => {
+      const m = d.month || '';
+      if (!acc[m]) acc[m] = [];
+      acc[m].push(d);
+      return acc;
+    }, {});
+
+    const parseUnit = (u) => {
+      const parts = String(u || '').split(':');
+      return { wingLower: parts[1] || '', unitLower: parts[2] || '' };
+    };
+
+    const data = MONTH_LABELS.map((month) => {
+      const maintDocs = docsByMonth[month] || [];
+
+      const statusMap = maintDocs.reduce((acc, d) => {
+        const p = parseUnit(d.unitId);
+        const key = `${p.wingLower}:${p.unitLower}`;
+        const s = normalizeString(d.status).toLowerCase();
+        const canonical = s === 'verified' ? 'verified' : s === 'rejected' ? 'rejected' : 'uploaded';
+        acc[key] = canonical;
+        return acc;
+      }, {});
+
+      let owner = { totalUnits: ownerUnitKeys.length, pending: 0, uploaded: 0, verified: 0, rejected: 0 };
+      let tenant = { totalUnits: tenantUnitKeys.length, pending: 0, uploaded: 0, verified: 0, rejected: 0 };
+
+      for (const key of ownerUnitKeys) {
+        const st = statusMap[key];
+        if (!st) owner.pending += 1; else if (st === 'verified') owner.verified += 1; else if (st === 'rejected') owner.rejected += 1; else owner.uploaded += 1;
+      }
+      for (const key of tenantUnitKeys) {
+        const st = statusMap[key];
+        if (!st) tenant.pending += 1; else if (st === 'verified') tenant.verified += 1; else if (st === 'rejected') tenant.rejected += 1; else tenant.uploaded += 1;
+      }
+
+      const totals = maintDocs.reduce(
+        (acc, d) => {
+          const s = normalizeString(d.status).toLowerCase();
+          if (s === 'verified') acc.verified += 1; else if (s === 'rejected') acc.rejected += 1; else acc.uploaded += 1;
+          return acc;
+        },
+        { pending: owner.pending + tenant.pending, uploaded: 0, verified: 0, rejected: 0 }
+      );
+
+      const pendingUnits = owner.pending + tenant.pending;
+      const uploaded = totals.uploaded;
+      const verified = totals.verified;
+      const rejected = totals.rejected;
+
+      let status = 'Pending';
+      if (uploaded === 0 && pendingUnits === 0 && (verified + rejected > 0)) {
+        status = 'Completed';
+      } else if (verified === 0 && rejected === 0 && uploaded === 0) {
+        status = 'Pending';
+      } else {
+        status = 'Partial';
+      }
+
+      const statusTag = status === 'Completed' ? 'Completed' : `${pendingUnits} Pending`;
+
+      return {
+        month,
+        year,
+        monthLabel: `${month} ${year}`,
+        status,
+        statusTag,
+        counts: {
+          pendingUnits,
+          uploaded,
+          verified,
+          rejected,
+          totalUnits: owner.totalUnits + tenant.totalUnits,
+          vacantUnits: vacantCount,
+        },
+      };
+    });
+
+    return sendSuccessResponse(res, 200, 'Maintenance yearly summary fetched successfully', { data });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch maintenance yearly summary'));
+  }
 };
 
 const getMaintenanceSummaryByMonth = async (req, res, next) => {
@@ -568,6 +716,7 @@ const rejectMaintenance = async (req, res, next) => {
 };
 
 module.exports = {
+  getMaintenanceYearlySummary,
   listUploadedMaintenanceByMonth,
   getMaintenanceSummaryByMonth,
   verifyMaintenance,
