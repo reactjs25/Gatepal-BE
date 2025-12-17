@@ -22,10 +22,19 @@ const ensureImageMaybe = ({ value, fieldLabel, minBytes = 512 }) => {
   }
 };
 
+const toTitleCaseName = (value) => {
+  const s = normalizeString(value);
+  if (!s) return s;
+  return s
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+};
+
 const validateAddFamilyInput = (input = {}) => {
   const unitId = normalizeString(input.unitId);
   const category = normalizeString(input.category).toLowerCase();
-  const name = normalizeString(input.name);
+  const name = toTitleCaseName(input.name);
   const countryCode = normalizeCountryCode(input.countryCode);
   const phoneDigits = normalizeDigits(input.phoneNumber || '');
   const incomingImage = input.imageUrl !== undefined ? input.imageUrl : input.image;
@@ -92,7 +101,7 @@ const addFamilyMember = async (req, res, next) => {
       phoneDigits: validated.phoneDigits || null,
       comparablePhone: comparablePhone || null,
       imageUrl: validated.imageUrl,
-      status: 'Inactive on GatePal',
+      status: 'Inactive on GatePal™',
     };
 
     let doc = await FamilyMember.create(payload);
@@ -100,7 +109,7 @@ const addFamilyMember = async (req, res, next) => {
     if (validated.phoneDigits) {
       const matchedUser = await User.findOne({ phoneNumber: validated.phoneDigits });
       if (matchedUser) {
-        doc.status = 'Active on GatePal';
+        doc.status = 'Active on GatePal™';
         doc.linkedUserId = matchedUser._id;
         await doc.save();
       }
@@ -211,7 +220,7 @@ const getFamilyMembersByUnit = async (req, res, next) => {
         phoneNumber: u.phoneNumber || null,
         imageUrl: u.profilePhoto || null,
         occupantType: p.occupantType,
-        status: 'Active on GatePal',
+        status: 'Active on GatePal™',
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
       });
@@ -331,7 +340,7 @@ const updateFamilyMember = async (req, res, next) => {
             countryCode: targetUser.countryCode || '+91',
             phoneNumber: targetUser.phoneNumber || null,
             imageUrl: targetUser.profilePhoto || null,
-            status: 'Active on GatePal',
+            status: 'Active on GatePal™',
             createdAt: targetUser.createdAt,
             updatedAt: targetUser.updatedAt,
           },
@@ -350,7 +359,7 @@ const updateFamilyMember = async (req, res, next) => {
           countryCode: targetUser.countryCode || '+91',
           phoneNumber: targetUser.phoneNumber || null,
           imageUrl: targetUser.profilePhoto || null,
-          status: 'Active on GatePal',
+          status: 'Active on GatePal™',
           createdAt: targetUser.createdAt,
           updatedAt: targetUser.updatedAt,
         },
@@ -461,14 +470,14 @@ const updateFamilyMember = async (req, res, next) => {
     if (digitsNow) {
       const matchedUser = await User.findOne({ phoneNumber: digitsNow });
       if (matchedUser) {
-        doc.status = 'Active on GatePal';
+        doc.status = 'Active on GatePal™';
         doc.linkedUserId = matchedUser._id;
       } else {
-        doc.status = 'Inactive on GatePal';
+        doc.status = 'Inactive on GatePal™';
         doc.linkedUserId = null;
       }
     } else {
-      doc.status = 'Inactive on GatePal';
+      doc.status = 'Inactive on GatePal™';
       doc.linkedUserId = null;
     }
 
@@ -622,7 +631,7 @@ const getFamilyMemberById = async (req, res, next) => {
         phoneNumber: targetUser.phoneNumber || null,
         imageUrl: targetUser.profilePhoto || null,
         occupantType: matchingUnit.occupantType || null,
-        status: 'Active on GatePal',
+        status: 'Active on GatePal™',
         createdAt: targetUser.createdAt,
         updatedAt: targetUser.updatedAt,
       },
