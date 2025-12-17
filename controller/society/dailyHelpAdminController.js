@@ -102,6 +102,10 @@ const DAILY_HELP_REJECT_REASON_CATEGORIES = [
   'Others',
 ];
 
+const DAILY_HELP_REJECT_REASON_CODES = new Set(
+  DAILY_HELP_REJECT_REASON_CATEGORIES.map((name) => name.toLowerCase().replace(/\s+/g, '_'))
+);
+
 const listSocietyDailyHelp = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -523,8 +527,12 @@ const rejectDailyHelp = async (req, res, next) => {
     const rc = normalizeString(rejectReason !== undefined ? rejectReason : reasonCode);
     if (!rc) return next(createHttpError('Reject reason is mandatory', 400));
     const rcLower = rc.toLowerCase();
+    const reasonCodeCanonical = rcLower.replace(/\s+/g, '_');
+    if (!DAILY_HELP_REJECT_REASON_CODES.has(reasonCodeCanonical)) {
+      return next(createHttpError('Invalid reject reason', 400));
+    }
     const desc = normalizeString(description !== undefined ? description : reasonText);
-    if ((rcLower === 'other' || rcLower === 'others') && !desc) {
+    if (reasonCodeCanonical === 'others' && !desc) {
       return next(createHttpError('Reject reason description is mandatory when reason is others', 400));
     }
 
@@ -600,7 +608,7 @@ const rejectDailyHelp = async (req, res, next) => {
 
     doc.status = 'REJECTED';
     doc.rejectedAt = new Date();
-    doc.rejectReasonCode = rc;
+    doc.rejectReasonCode = reasonCodeCanonical;
     doc.rejectReasonText = desc || null;
     doc.approvedAt = null;
     await doc.save();
@@ -844,6 +852,6 @@ module.exports = {
   getSocietyDailyHelpProfileById,
   addSocietyDailyHelp,
   editSocietyDailyHelpProfile,
-   getDailyHelpCategories,
+  getDailyHelpCategories,
   getDailyHelpRejectReasonCategories,
 };
