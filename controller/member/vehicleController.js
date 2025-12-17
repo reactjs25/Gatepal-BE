@@ -160,7 +160,7 @@ const editVehicle = async (req, res, next) => {
     doc.memberId = authUser._id;
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Vehicle details saved successfully.', {
+    return sendSuccessResponse(res, 200, 'Vehicle details update successfully.', {
       data: {
         vehicleId: doc.vehicleId,
         unitId: String(unitDoc._id),
@@ -254,7 +254,7 @@ const deleteVehicle = async (req, res, next) => {
       { new: true }
     );
 
-    return sendSuccessResponse(res, 200, 'Vehicle removed successfully.', {
+    return sendSuccessResponse(res, 200, 'Vehicle details removed successfully.', {
       data: { vehicleId, unitId: String(unitDoc._id), deletedAt },
     });
   } catch (error) {

@@ -237,7 +237,7 @@ const updateUnitOccupancyStatus = async (req, res, next) => {
 
     const society = await Society.findById(doc.societyId).lean();
 
-    return sendSuccessResponse(res, 200, 'Unit occupancy status updated successfully', {
+    return sendSuccessResponse(res, 200, 'Occupancy status updated successfully.', {
       data: {
         id: String(doc._id),
         wingName: doc.wingName,

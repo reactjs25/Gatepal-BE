@@ -94,7 +94,7 @@ const getRegistrationHierarchy = async (req, res, next) => {
     }
 };
 
-const VALID_LOCATION_TYPES = new Set(['country', 'city', 'society']);
+const VALID_LOCATION_TYPES = new Set(['country', 'city', 'society', 'unit']);
 
 const notifyMissingLocation = async (req, res, next) => {
     try {
@@ -104,6 +104,8 @@ const notifyMissingLocation = async (req, res, next) => {
             name,
             country,
             city,
+            societyName,
+            wingName,
             societyPin,
             notes,
             searchQuery,
@@ -123,6 +125,8 @@ const notifyMissingLocation = async (req, res, next) => {
 
         const normalizedCountry = normalizeString(country);
         const normalizedCity = normalizeString(city);
+        const normalizedSocietyName = normalizeString(societyName);
+        const normalizedWingName = normalizeString(wingName);
         const normalizedSocietyPin = normalizeString(societyPin);
         const normalizedNotes = normalizeString(notes);
 
@@ -141,6 +145,14 @@ const notifyMissingLocation = async (req, res, next) => {
 
         if (normalizedCity) {
             lines.push(`City context: ${normalizedCity}`);
+        }
+
+        if (normalizedSocietyName) {
+            lines.push(`Society name: ${normalizedSocietyName}`);
+        }
+
+        if (normalizedWingName) {
+            lines.push(`Wing name: ${normalizedWingName}`);
         }
 
         if (normalizedSocietyPin) {
@@ -180,6 +192,14 @@ const notifyMissingLocation = async (req, res, next) => {
 
         if (normalizedCity) {
             htmlSections.push(`<li><strong>City context:</strong> ${normalizedCity}</li>`);
+        }
+
+        if (normalizedSocietyName) {
+            htmlSections.push(`<li><strong>Society name:</strong> ${normalizedSocietyName}</li>`);
+        }
+
+        if (normalizedWingName) {
+            htmlSections.push(`<li><strong>Wing name:</strong> ${normalizedWingName}</li>`);
         }
 
         if (normalizedSocietyPin) {

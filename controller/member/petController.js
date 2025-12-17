@@ -272,7 +272,7 @@ const editPet = async (req, res, next) => {
     doc.memberId = authUser._id;
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Pet details saved successfully.', {
+    return sendSuccessResponse(res, 200, 'Pet details update successfully.', {
       data: {
         petId: doc.petId,
         unitId: String(unitDoc._id),
@@ -372,7 +372,7 @@ const deletePet = async (req, res, next) => {
       { new: true }
     );
 
-    return sendSuccessResponse(res, 200, 'Pet removed successfully.', {
+    return sendSuccessResponse(res, 200, 'Pet details removed successfully.', {
       data: { petId, unitId: String(unitDoc._id), deletedAt },
     });
   } catch (error) {

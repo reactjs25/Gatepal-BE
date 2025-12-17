@@ -72,6 +72,7 @@ const getMemberProfile = async (req, res, next) => {
         id: String(user._id),
         memberId: memberCode,
         name: user.fullName || null,
+        countryCode: user.countryCode || '+91',
         imageUrl: user.profilePhoto || null,
         phoneNumber: user.phoneNumber,
         role: effectiveRole,

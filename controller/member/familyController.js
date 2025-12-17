@@ -106,7 +106,7 @@ const addFamilyMember = async (req, res, next) => {
       }
     }
 
-    return sendSuccessResponse(res, 201, 'Family member added successfully', {
+    return sendSuccessResponse(res, 201, 'Family member details saved successfully', {
       data: {
         id: String(doc._id),
         unitId: String(doc.unitId),
@@ -341,7 +341,7 @@ const updateFamilyMember = async (req, res, next) => {
       Object.assign(targetUser, updates);
       await targetUser.save();
 
-      return sendSuccessResponse(res, 200, 'Family member updated successfully', {
+      return sendSuccessResponse(res, 200, 'Family member details update successfully', {
         data: {
           id: String(targetUser._id),
           unitId: String(matchingUnit._id),
