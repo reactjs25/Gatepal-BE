@@ -222,7 +222,7 @@ const completeOnboarding = async (req, res, next) => {
       extraClaims: user.societyId ? { societyId: user.societyId } : {},
     });
 
-    return sendSuccessResponse(res, 200, 'Onboarding completed successfully', {
+    return sendSuccessResponse(res, 200, 'Onboarding completed successfully.', {
       data: mapUserResponse(user),
       meta: {
         flow,
