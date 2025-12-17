@@ -8,6 +8,7 @@ router.post('/create-society', authMiddleware, createSociety);
 router.get('/get-all-societies', authMiddleware, getAllSociety);
 router.get('/locations/country-cities', getCountryCityOptions);
 router.get('/locations/registrationHierarchy', getRegistrationHierarchy);
+
 router.get('/:id', authMiddleware, getSocietyById);
 router.put('/:id', authMiddleware, updateSocietyById);
 router.patch('/:id/toggle-status', authMiddleware, toggleSocietyStatus);

@@ -1,7 +1,8 @@
 const express = require('express');
-const { login, requestPasswordOtp, verifyOtp, resetPassword } = require('../controller/userAuthController');  
+const { login, requestPasswordOtp, verifyOtp, resetPassword } = require('../controller/userAuthController');
 const { registerUser, verifyRegistrationOtp, completeOnboarding } = require('../controller/userRegistrationController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
+const { notifyMissingLocation } = require('../controller/societyHierarchy');
 
 const router = express.Router();
 
@@ -12,6 +13,7 @@ router.post('/login', login);
 router.post('/forgotPassword', requestPasswordOtp);
 router.post('/verifyOtp', verifyOtp);
 router.post('/resetPassword', resetPassword);
+router.post('/notify', userAuthMiddleware, notifyMissingLocation);
 
 module.exports = router;
 

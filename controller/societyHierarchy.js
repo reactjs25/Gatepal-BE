@@ -1,7 +1,9 @@
 const { countryCityData } = require('../utils/countryCityData');
 const Society = require('../model/societySchema');
 const { sendSuccessResponse } = require('../utils/response');
-const { setErrorDefaults } = require('../utils/httpError');
+const { createHttpError, setErrorDefaults } = require('../utils/httpError');
+const { sendSystemAlertEmail } = require('../utils/systemAlertEmail');
+const { normalizeString } = require('../utils/strings');
 
 const getCountryCityOptions = async (req, res) => {
     return sendSuccessResponse(res, 200, 'Country and city options fetched successfully', {
@@ -92,7 +94,137 @@ const getRegistrationHierarchy = async (req, res, next) => {
     }
 };
 
+const VALID_LOCATION_TYPES = new Set(['country', 'city', 'society']);
+
+const notifyMissingLocation = async (req, res, next) => {
+    try {
+        const authUser = req.appUser || null;
+        const {
+            type,
+            name,
+            country,
+            city,
+            societyPin,
+            notes,
+            searchQuery,
+        } = req.body || {};
+
+        const normalizedType = normalizeString(type || '').toLowerCase();
+
+        if (!VALID_LOCATION_TYPES.has(normalizedType)) {
+            throw createHttpError('Invalid location type. Expected country, city, or society.', 400);
+        }
+
+        const normalizedName = normalizeString(name || searchQuery);
+
+        if (!normalizedName) {
+            throw createHttpError('Name is required for the missing location.', 400);
+        }
+
+        const normalizedCountry = normalizeString(country);
+        const normalizedCity = normalizeString(city);
+        const normalizedSocietyPin = normalizeString(societyPin);
+        const normalizedNotes = normalizeString(notes);
+
+        const subject = `Onboarding: missing ${normalizedType} "${normalizedName}"`;
+
+        const lines = [];
+
+        lines.push(`A user reported a missing ${normalizedType} during onboarding.`);
+        lines.push('');
+        lines.push(`Reported type: ${normalizedType}`);
+        lines.push(`Entered name: ${normalizedName}`);
+
+        if (normalizedCountry) {
+            lines.push(`Country context: ${normalizedCountry}`);
+        }
+
+        if (normalizedCity) {
+            lines.push(`City context: ${normalizedCity}`);
+        }
+
+        if (normalizedSocietyPin) {
+            lines.push(`Society PIN: ${normalizedSocietyPin}`);
+        }
+
+        if (normalizedNotes) {
+            lines.push(`Additional notes: ${normalizedNotes}`);
+        }
+
+        if (authUser) {
+            const userName = authUser.fullName || authUser.name || '';
+            lines.push('');
+            lines.push('User details:');
+            lines.push(`User ID: ${String(authUser._id)}`);
+            if (userName) {
+                lines.push(`User name: ${userName}`);
+            }
+            lines.push(`Role: ${authUser.role}`);
+            lines.push(
+                `Phone: ${(authUser.countryCode || '').toString()} ${(authUser.phoneNumber || '').toString()}`
+            );
+        }
+
+        const text = lines.join('\n');
+
+        const htmlSections = [];
+
+        htmlSections.push(`<p>A user reported a missing ${normalizedType} during onboarding.</p>`);
+        htmlSections.push('<ul>');
+        htmlSections.push(`<li><strong>Reported type:</strong> ${normalizedType}</li>`);
+        htmlSections.push(`<li><strong>Entered name:</strong> ${normalizedName}</li>`);
+
+        if (normalizedCountry) {
+            htmlSections.push(`<li><strong>Country context:</strong> ${normalizedCountry}</li>`);
+        }
+
+        if (normalizedCity) {
+            htmlSections.push(`<li><strong>City context:</strong> ${normalizedCity}</li>`);
+        }
+
+        if (normalizedSocietyPin) {
+            htmlSections.push(`<li><strong>Society PIN:</strong> ${normalizedSocietyPin}</li>`);
+        }
+
+        if (normalizedNotes) {
+            htmlSections.push(`<li><strong>Additional notes:</strong> ${normalizedNotes}</li>`);
+        }
+
+        htmlSections.push('</ul>');
+
+        if (authUser) {
+            const userName = authUser.fullName || authUser.name || '';
+            htmlSections.push('<p>User details:</p>');
+            htmlSections.push('<ul>');
+            htmlSections.push(`<li><strong>User ID:</strong> ${String(authUser._id)}</li>`);
+            if (userName) {
+                htmlSections.push(`<li><strong>User name:</strong> ${userName}</li>`);
+            }
+            htmlSections.push(`<li><strong>Role:</strong> ${authUser.role}</li>`);
+            htmlSections.push(
+                `<li><strong>Phone:</strong> ${(authUser.countryCode || '').toString()} ${(authUser.phoneNumber || '').toString()}</li>`
+            );
+            htmlSections.push('</ul>');
+        }
+
+        const html = htmlSections.join('');
+
+        await sendSystemAlertEmail({
+            subject,
+            text,
+            html,
+        });
+
+        return sendSuccessResponse(res, 202, 'Your request has been recorded. We will notify you once this location is available.', {
+            data: null,
+        });
+    } catch (error) {
+        return next(setErrorDefaults(error, 'Failed to submit missing location notification'));
+    }
+};
+
 module.exports = {
     getCountryCityOptions,
     getRegistrationHierarchy,
+    notifyMissingLocation,
 };
