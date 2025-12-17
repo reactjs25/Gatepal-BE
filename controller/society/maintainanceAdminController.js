@@ -24,6 +24,18 @@ const MONTH_LABELS = [
   'December',
 ];
 
+const MAINTENANCE_REJECT_REASON_CATEGORIES = [
+  'Transaction ID is not found in the bank records',
+  'Uploaded proof is not readable',
+  'Uploaded proof is not valid',
+  'Wrong transaction details',
+  'Others',
+];
+
+const MAINTENANCE_REJECT_REASON_CODES = new Set(
+  MAINTENANCE_REJECT_REASON_CATEGORIES.map((name) => name.toLowerCase().replace(/\s+/g, '_'))
+);
+
 const resolveAdminSociety = async (authUser) => {
   if (!authUser) throw createHttpError('Unauthorized', 401);
   if (authUser.adminSocietyId) {
@@ -642,13 +654,16 @@ const rejectMaintenance = async (req, res, next) => {
     if (!maintenanceId) return next(createHttpError('maintenanceId is required', 400));
 
     const { unitId, rejectReason, description } = req.body || {};
-    const reason = normalizeString(rejectReason);
-    if (!reason) return next(createHttpError('rejectReason is required', 400));
-    const allowed = new Set(['Invalid Proof', 'Amount Mismatch', 'Wrong Month', 'Not Society Payment', 'Duplicate', 'other']);
-    if (!allowed.has(reason)) return next(createHttpError('Invalid rejectReason', 400));
-    if (reason === 'other') {
-      const desc = normalizeString(description);
-      if (!desc) return next(createHttpError('description is required when rejectReason is Other', 400));
+    const reasonRaw = normalizeString(rejectReason);
+    if (!reasonRaw) return next(createHttpError('rejectReason is required', 400));
+    const reasonLower = reasonRaw.toLowerCase();
+    const reasonCanonical = reasonLower.replace(/\s+/g, '_');
+    if (!MAINTENANCE_REJECT_REASON_CODES.has(reasonCanonical)) {
+      return next(createHttpError('Invalid rejectReason', 400));
+    }
+    const desc = normalizeString(description);
+    if (reasonCanonical === 'others' && !desc) {
+      return next(createHttpError('description is required when rejectReason is Others', 400));
     }
 
     const doc = await Maintenance.findOne({ maintenanceId });
@@ -682,8 +697,8 @@ const rejectMaintenance = async (req, res, next) => {
     doc.status = 'Rejected';
     doc.rejectedAt = new Date();
     doc.rejectedByUserId = authUser._id || null;
-    doc.rejectionReason = reason;
-    doc.rejectionDescription = reason === 'Other' ? normalizeString(description) : null;
+    doc.rejectionReason = reasonCanonical;
+    doc.rejectionDescription = desc || null;
     await doc.save();
 
     const User = require('../../model/userSchema');
@@ -715,10 +730,29 @@ const rejectMaintenance = async (req, res, next) => {
   }
 };
 
+const getMaintenanceRejectReasonCategories = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    await resolveAdminSociety(authUser);
+
+    const categories = MAINTENANCE_REJECT_REASON_CATEGORIES.map((name) => ({
+      id: name.toLowerCase().replace(/\s+/g, '_'),
+      name,
+    }));
+
+    return sendSuccessResponse(res, 200, 'Maintenance reject reason categories fetched successfully', {
+      data: categories,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch maintenance reject reason categories'));
+  }
+};
+
 module.exports = {
   getMaintenanceYearlySummary,
   listUploadedMaintenanceByMonth,
   getMaintenanceSummaryByMonth,
   verifyMaintenance,
   rejectMaintenance,
+  getMaintenanceRejectReasonCategories,
 };
