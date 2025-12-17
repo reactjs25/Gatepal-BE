@@ -1,8 +1,9 @@
 const express = require('express');
-const { addDailyHelp, getDailyHelpByStatus, removeDailyHelpFromUnit, editDailyHelpProfile, getDailyHelpProfileById, searchApprovedSocietyDailyHelp, assignExistingDailyHelpToUnit } = require('../controller/member/dailyHelpController');
+const { getDailyHelpCategories, addDailyHelp, getDailyHelpByStatus, removeDailyHelpFromUnit, editDailyHelpProfile, getDailyHelpProfileById, searchApprovedSocietyDailyHelp, assignExistingDailyHelpToUnit } = require('../controller/member/dailyHelpController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const router = express.Router();
 
+router.get('/categories', userAuthMiddleware, getDailyHelpCategories);
 router.post('/:unitId', userAuthMiddleware, addDailyHelp);
 router.get('/society/:unitId/:category', userAuthMiddleware, searchApprovedSocietyDailyHelp);
 router.get('/:unitId', userAuthMiddleware, getDailyHelpByStatus);

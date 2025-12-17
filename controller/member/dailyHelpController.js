@@ -12,22 +12,35 @@ const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { assertUnitAccess, buildCanonicalUnitId } = require('../../utils/unitAccess');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 
-const ALLOWED_WORK_CATEGORY_IDS = new Set([
-  'appliance_repair',
-  'beautician',
-  'car_cleaner',
-  'construction_work',
-  'cook',
-  'furniture_work',
-  'internet_repair',
-  'laundry',
-  'maid',
-  'milkman',
-  'newspaper',
-  'others',
-]);
+const DAILY_HELP_CATEGORIES = [
+  { id: 'car_cleaner', name: 'Car Cleaner' },
+  { id: 'cook', name: 'Cook' },
+  { id: 'driver', name: 'Driver' },
+  { id: 'gardener', name: 'Gardener' },
+  { id: 'laundry', name: 'Laundry' },
+  { id: 'maid', name: 'Maid' },
+  { id: 'milkman', name: 'Milkman' },
+  { id: 'nanny_baby_sitter', name: 'Nanny/Baby Sitter' },
+  { id: 'others', name: 'Others' },
+];
+
+const ALLOWED_WORK_CATEGORY_IDS = new Set(DAILY_HELP_CATEGORIES.map((c) => c.id));
 
 const toCanonicalCategory = (value) => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '_');
+
+const getDailyHelpCategories = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'admin') return next(createHttpError('Only members can view daily help', 403));
+
+    return sendSuccessResponse(res, 200, 'Daily help categories fetched successfully', {
+      data: DAILY_HELP_CATEGORIES,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch daily help categories'));
+  }
+};
 
 const addDailyHelp = async (req, res, next) => {
   try {
@@ -606,6 +619,7 @@ const assignExistingDailyHelpToUnit = async (req, res, next) => {
 };
 
 module.exports = {
+  getDailyHelpCategories,
   addDailyHelp,
   getDailyHelpByStatus,
   removeDailyHelpFromUnit,
