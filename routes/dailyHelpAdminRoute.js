@@ -7,12 +7,14 @@ const {
   getSocietyDailyHelpProfileById,
   addSocietyDailyHelp,
   editSocietyDailyHelpProfile,
+  getDailyHelpCategories,
   getDailyHelpRejectReasonCategories,
 } = require('../controller/society/dailyHelpAdminController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const router = express.Router();
 
 router.get('/society', userAuthMiddleware, listSocietyDailyHelp);
+router.get('/categories', userAuthMiddleware, getDailyHelpCategories);
 router.get('/rejectReasonCategories', userAuthMiddleware, getDailyHelpRejectReasonCategories);
 router.get('/:dailyHelpId', userAuthMiddleware, getSocietyDailyHelpProfileById);
 router.post('/add', userAuthMiddleware, addSocietyDailyHelp);

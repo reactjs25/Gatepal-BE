@@ -63,23 +63,19 @@ const mapUiStatusToCanonical = (value) => {
   return '';
 };
 
-const ALLOWED_WORK_CATEGORY_IDS = new Set([
-  'appliance_repair',
-  'beautician',
-  'car_cleaner',
-  'construction_work',
-  'cook',
-  'driver',
-  'furniture_work',
-  'gardener',
-  'internet_repair',
-  'laundry',
-  'maid',
-  'milkman',
-  'nanny_baby_sitter',
-  'newspaper',
-  'others',
-]);
+const DAILY_HELP_CATEGORIES = [
+  { id: 'car_cleaner', name: 'Car Cleaner' },
+  { id: 'cook', name: 'Cook' },
+  { id: 'driver', name: 'Driver' },
+  { id: 'gardener', name: 'Gardener' },
+  { id: 'laundry', name: 'Laundry' },
+  { id: 'maid', name: 'Maid' },
+  { id: 'milkman', name: 'Milkman' },
+  { id: 'nanny_baby_sitter', name: 'Nanny/Baby Sitter' },
+  { id: 'others', name: 'Others' },
+];
+
+const ALLOWED_WORK_CATEGORY_IDS = new Set(DAILY_HELP_CATEGORIES.map((c) => c.id));
 
 const DAILY_HELP_REJECT_REASON_CATEGORIES = [
   'Incomplete details',
@@ -677,6 +673,24 @@ const removeDailyHelpFromSociety = async (req, res, next) => {
   }
 };
 
+const getDailyHelpCategories = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    await resolveAdminSociety(authUser);
+
+    const categories = DAILY_HELP_CATEGORIES.map((c) => ({
+      id: c.id,
+      name: c.name,
+    }));
+
+    return sendSuccessResponse(res, 200, 'Daily help categories fetched successfully', {
+      data: categories,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch daily help categories'));
+  }
+};
+
 const getDailyHelpRejectReasonCategories = async (req, res, next) => {
   try {
     const categories = DAILY_HELP_REJECT_REASON_CATEGORIES.map((name) => ({
@@ -830,5 +844,6 @@ module.exports = {
   getSocietyDailyHelpProfileById,
   addSocietyDailyHelp,
   editSocietyDailyHelpProfile,
+   getDailyHelpCategories,
   getDailyHelpRejectReasonCategories,
 };
