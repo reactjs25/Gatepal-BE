@@ -21,7 +21,7 @@ const familyMemberSchema = new mongoose.Schema(
     },
     comparablePhone: { type: String, default: null, index: true },
     imageUrl: { type: String, default: null },
-    status: { type: String, enum: ['Active on GatePal', 'Inactive on GatePal'], default: 'Inactive on GatePal' },
+    status: { type: String, enum: ['Active on GatePal™', 'Inactive on GatePal™'], default: 'Inactive on GatePal™' },
     linkedUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
