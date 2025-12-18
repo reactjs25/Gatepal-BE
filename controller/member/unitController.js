@@ -26,6 +26,9 @@ const UI_OCCUPANCY_ALLOWED = new Set([
   'unit_is_rented_out',
 ]);
 
+const isMemberOrSocietyAdmin = (authUser) =>
+  authUser && (authUser.role === 'member' || authUser.role === 'society_admin');
+
 
 const validateMemberUnitPayload = (payload = {}) => {
   const city = normalizeString(payload.city);
@@ -83,7 +86,7 @@ const addMemberUnit = async (req, res, next) => {
     const { city, societyName, societyPin, wingName, unitNumber, occupantType, occupancyStatus } =
       validateMemberUnitPayload(req.body || {});
 
-    if (authUser.role !== 'member') {
+    if (!isMemberOrSocietyAdmin(authUser)) {
       return next(createHttpError('Only members can add units to their account', 403));
     }
 
@@ -188,7 +191,7 @@ const updateUnitOccupancyStatus = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'member') {
+    if (!isMemberOrSocietyAdmin(authUser)) {
       return next(createHttpError('Only members can update unit occupancy status', 403));
     }
 

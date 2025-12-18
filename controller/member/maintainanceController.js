@@ -100,11 +100,14 @@ const validateUploadPayload = (payload = {}) => {
     };
 };
 
+const isMemberOrSocietyAdmin = (authUser) =>
+    authUser && (authUser.role === 'member' || authUser.role === 'society_admin');
+
 const uploadMaintainanceProof = async (req, res, next) => {
     try {
         const authUser = req.appUser;
         if (!authUser) return next(createHttpError('Unauthorized', 401));
-        if (authUser.role !== 'member') return next(createHttpError('Only members can upload maintenance proof', 403));
+        if (!isMemberOrSocietyAdmin(authUser)) return next(createHttpError('Only members can upload maintenance proof', 403));
         console.info('[maintainance:upload] invoked', { userId: String(authUser._id) });
 
           const unitIdCandidate = normalizeString(
@@ -173,7 +176,7 @@ const getMaintainancesByUnit = async (req, res, next) => {
     try {
         const authUser = req.appUser;
         if (!authUser) return next(createHttpError('Unauthorized', 401));
-        if (authUser.role !== 'member') return next(createHttpError('Only members can view maintenance', 403));
+        if (!isMemberOrSocietyAdmin(authUser)) return next(createHttpError('Only members can view maintenance', 403));
 
         const unitIdCandidate = normalizeString(
             (req.body && req.body.unitId) || (req.params && (req.params.unitId || req.params.id)) || ''
@@ -263,7 +266,7 @@ const getMaintainanceById = async (req, res, next) => {
     try {
         const authUser = req.appUser;
         if (!authUser) return next(createHttpError('Unauthorized', 401));
-        if (authUser.role !== 'member') return next(createHttpError('Only members can view maintenance', 403));
+        if (!isMemberOrSocietyAdmin(authUser)) return next(createHttpError('Only members can view maintenance', 403));
 
         const unitIdCandidate = normalizeString((req.body && req.body.unitId) || '');
         const maintenanceId = normalizeString((req.body && req.body.maintenanceId) || '');

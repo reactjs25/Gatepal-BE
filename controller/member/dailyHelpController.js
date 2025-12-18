@@ -184,6 +184,8 @@ const getDailyHelpByStatus = async (req, res, next) => {
     }
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.query || {}).unitId);
+    const statusParam = normalizeString((req.query || {}).status);
+    const canonicalStatus = mapUiStatusToCanonical(statusParam);
     let unitDoc;
     try {
       unitDoc = await assertUnitAccess({ unitId: unitIdCandidate, authUser });
@@ -192,7 +194,16 @@ const getDailyHelpByStatus = async (req, res, next) => {
     }
 
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
-    const assignments = await DailyHelpAssignment.find({ unitId: canonicalUnitId, status: { $in: ['APPROVED', 'PENDING'] } }).sort({ createdAt: -1 }).lean();
+    const statusFilter = canonicalStatus
+      ? { status: canonicalStatus }
+      : { status: { $in: ['APPROVED', 'PENDING', 'REJECTED', 'REMOVED'] } };
+
+    const assignments = await DailyHelpAssignment.find({
+      unitId: canonicalUnitId,
+      ...statusFilter,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
     const ids = assignments.map((a) => a.dailyHelpId);
     const persons = await DailyHelp.find({ _id: { $in: ids } }).lean();
@@ -211,6 +222,9 @@ const getDailyHelpByStatus = async (req, res, next) => {
           phoneNumber: p.phoneNumber || null,
           imageUrl: p.imageUrl || null,
           status: a.status,
+          rejectReasonCode: p.rejectReasonCode || null,
+          rejectReasonText: p.rejectReasonText || null,
+          rejectedAt: p.rejectedAt || null,
           createdAt: a.createdAt,
           updatedAt: a.updatedAt,
         };
