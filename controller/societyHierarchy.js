@@ -6,8 +6,21 @@ const { sendSystemAlertEmail } = require('../utils/systemAlertEmail');
 const { normalizeString } = require('../utils/strings');
 
 const getCountryCityOptions = async (req, res) => {
+    const options = countryCityData.map((c) => {
+        const states = Array.isArray(c.states) ? c.states : [];
+        const cities = Array.from(
+            new Set(
+                states.flatMap((st) => (Array.isArray(st.cities) ? st.cities : []))
+            )
+        ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        return {
+            countryCode: c.countryCode || '',
+            countryName: c.countryName || '',
+            cities,
+        };
+    });
     return sendSuccessResponse(res, 200, 'Country and city options fetched successfully', {
-        data: countryCityData,
+        data: options,
     });
 };
 
