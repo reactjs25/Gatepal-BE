@@ -26,13 +26,18 @@ const DAILY_HELP_CATEGORIES = [
 
 const ALLOWED_WORK_CATEGORY_IDS = new Set(DAILY_HELP_CATEGORIES.map((c) => c.id));
 
+const isMemberOrSocietyAdmin = (authUser) =>
+  authUser && (authUser.role === 'member' || authUser.role === 'society_admin');
+
 const toCanonicalCategory = (value) => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '_');
 
 const getDailyHelpCategories = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'member' && authUser.role !== 'admin') return next(createHttpError('Only members can view daily help', 403));
+    if (authUser.role !== 'member' && authUser.role !== 'admin' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can view daily help', 403));
+    }
 
     return sendSuccessResponse(res, 200, 'Daily help categories fetched successfully', {
       data: DAILY_HELP_CATEGORIES,
@@ -46,7 +51,9 @@ const addDailyHelp = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'member') return next(createHttpError('Only members can add daily help', 403));
+    if (!isMemberOrSocietyAdmin(authUser)) {
+      return next(createHttpError('Only members can add daily help', 403));
+    }
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.body || {}).unitId);
     let unitDoc;
@@ -172,7 +179,9 @@ const getDailyHelpByStatus = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'member') return next(createHttpError('Only members can view daily help', 403));
+    if (!isMemberOrSocietyAdmin(authUser)) {
+      return next(createHttpError('Only members can view daily help', 403));
+    }
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.query || {}).unitId);
     let unitDoc;
@@ -217,7 +226,9 @@ const searchApprovedSocietyDailyHelp = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'member') return next(createHttpError('Only members can view daily help', 403));
+    if (!isMemberOrSocietyAdmin(authUser)) {
+      return next(createHttpError('Only members can view daily help', 403));
+    }
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.query || {}).unitId);
     let unitDoc;
@@ -262,7 +273,9 @@ const removeDailyHelpFromUnit = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'member') return next(createHttpError('Only members can remove daily help', 403));
+    if (!isMemberOrSocietyAdmin(authUser)) {
+      return next(createHttpError('Only members can remove daily help', 403));
+    }
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.body || {}).unitId);
     const dailyHelpIdCandidate = normalizeString((req.params && (req.params.dailyHelpId || req.params.id)) || (req.body || {}).dailyHelpId);
@@ -315,7 +328,9 @@ const editDailyHelpProfile = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'member') return next(createHttpError('Only members can edit daily help', 403));
+    if (!isMemberOrSocietyAdmin(authUser)) {
+      return next(createHttpError('Only members can edit daily help', 403));
+    }
 
     const body = req.body || {};
     const unitIdCandidate = normalizeString(
@@ -470,7 +485,9 @@ const getDailyHelpProfileById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'member') return next(createHttpError('Only members can view daily help', 403));
+    if (!isMemberOrSocietyAdmin(authUser)) {
+      return next(createHttpError('Only members can view daily help', 403));
+    }
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.query || {}).unitId);
     const dailyHelpIdCandidate = normalizeString((req.params && (req.params.dailyHelpId || req.params.id)) || (req.query || {}).dailyHelpId);
@@ -524,7 +541,9 @@ const assignExistingDailyHelpToUnit = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'member') return next(createHttpError('Only members can add daily help', 403));
+    if (!isMemberOrSocietyAdmin(authUser)) {
+      return next(createHttpError('Only members can add daily help', 403));
+    }
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.body || {}).unitId);
     const dailyHelpIdCandidate = normalizeString((req.params && (req.params.dailyHelpId || req.params.id)) || (req.body || {}).dailyHelpId);
