@@ -2,74 +2,222 @@ const countryCityData = [
   {
     countryCode: 'IN',
     countryName: 'India',
-    cities: [
-      'Gandhinagar',
-      'Ahmedabad',
-      'Mehsana',
-      'Rajkot',
-      'Surat',
-      'Vadodara',
+    states: [
+      {
+        stateName: 'Gujarat',
+        cities: [
+          'Gandhinagar',
+          'Ahmedabad',
+          'Mehsana',
+          'Rajkot',
+          'Surat',
+          'Vadodara',
+        ],
+      },
     ],
   },
+
   {
     countryCode: 'US',
     countryName: 'United States',
-    cities: [
-      'New York',
-      'Los Angeles',
-      'Chicago',
-      'Houston',
-      'San Francisco',
-      'Seattle',
-      'Boston',
-      'Miami',
+    states: [
+      {
+        stateName: 'New York',
+        cities: ['New York'],
+      },
+      {
+        stateName: 'California',
+        cities: [
+          'Los Angeles',
+          'San Francisco',
+        ],
+      },
+      {
+        stateName: 'Illinois',
+        cities: ['Chicago'],
+      },
+      {
+        stateName: 'Texas',
+        cities: ['Houston'],
+      },
+      {
+        stateName: 'Washington',
+        cities: ['Seattle'],
+      },
+      {
+        stateName: 'Massachusetts',
+        cities: ['Boston'],
+      },
+      {
+        stateName: 'Florida',
+        cities: ['Miami'],
+      },
     ],
   },
+
   {
     countryCode: 'UK',
     countryName: 'United Kingdom',
-    cities: ['London', 'Manchester', 'Birmingham', 'Liverpool', 'Edinburgh'],
+    states: [
+      {
+        stateName: 'England',
+        cities: [
+          'London',
+          'Manchester',
+          'Birmingham',
+          'Liverpool',
+        ],
+      },
+      {
+        stateName: 'Scotland',
+        cities: ['Edinburgh'],
+      },
+    ],
   },
+
   {
     countryCode: 'CA',
     countryName: 'Canada',
-    cities: ['Toronto', 'Vancouver', 'Montreal', 'Calgary', 'Ottawa'],
+    states: [
+      {
+        stateName: 'Ontario',
+        cities: [
+          'Toronto',
+          'Ottawa',
+        ],
+      },
+      {
+        stateName: 'British Columbia',
+        cities: ['Vancouver'],
+      },
+      {
+        stateName: 'Quebec',
+        cities: ['Montreal'],
+      },
+      {
+        stateName: 'Alberta',
+        cities: ['Calgary'],
+      },
+    ],
   },
+
   {
     countryCode: 'AU',
     countryName: 'Australia',
-    cities: ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide'],
+    states: [
+      {
+        stateName: 'New South Wales',
+        cities: ['Sydney'],
+      },
+      {
+        stateName: 'Victoria',
+        cities: ['Melbourne'],
+      },
+      {
+        stateName: 'Queensland',
+        cities: ['Brisbane'],
+      },
+      {
+        stateName: 'Western Australia',
+        cities: ['Perth'],
+      },
+      {
+        stateName: 'South Australia',
+        cities: ['Adelaide'],
+      },
+    ],
   },
+
   {
     countryCode: 'SG',
     countryName: 'Singapore',
-    cities: ['Singapore'],
+    states: [
+      {
+        stateName: 'Singapore',
+        cities: ['Singapore'],
+      },
+    ],
   },
+
   {
     countryCode: 'AE',
     countryName: 'UAE',
-    cities: ['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah'],
+    states: [
+      {
+        stateName: 'Dubai',
+        cities: ['Dubai'],
+      },
+      {
+        stateName: 'Abu Dhabi',
+        cities: ['Abu Dhabi'],
+      },
+      {
+        stateName: 'Sharjah',
+        cities: ['Sharjah'],
+      },
+      {
+        stateName: 'Ajman',
+        cities: ['Ajman'],
+      },
+      {
+        stateName: 'Fujairah',
+        cities: ['Fujairah'],
+      },
+    ],
   },
+
   {
     countryCode: 'DE',
     countryName: 'Germany',
-    cities: ['Berlin', 'Munich', 'Hamburg', 'Frankfurt', 'Stuttgart'],
+    states: [
+      {
+        stateName: 'Germany',
+        cities: [
+          'Berlin',
+          'Munich',
+          'Hamburg',
+          'Frankfurt',
+          'Stuttgart',
+        ],
+      },
+    ],
   },
+
   {
     countryCode: 'FR',
     countryName: 'France',
-    cities: ['Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice'],
+    states: [
+      {
+        stateName: 'France',
+        cities: [
+          'Paris',
+          'Lyon',
+          'Marseille',
+          'Toulouse',
+          'Nice',
+        ],
+      },
+    ],
   },
+
   {
     countryCode: 'JP',
     countryName: 'Japan',
-    cities: ['Tokyo', 'Osaka', 'Yokohama', 'Nagoya', 'Sapporo'],
+    states: [
+      {
+        stateName: 'Japan',
+        cities: [
+          'Tokyo',
+          'Osaka',
+          'Yokohama',
+          'Nagoya',
+          'Sapporo',
+        ],
+      },
+    ],
   },
-
 ];
 
 module.exports = {
   countryCityData,
 };
-
-

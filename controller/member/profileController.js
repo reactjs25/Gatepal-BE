@@ -6,6 +6,34 @@ const MemberUnit = require('../../model/memberUnitSchema');
 const User = require('../../model/userSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
+const { countryCityData } = require('../../utils/countryCityData');
+
+const findStateName = (countryName, cityName) => {
+  const normalizedCountry = (countryName || '').toString().trim().toLowerCase();
+  const normalizedCity = (cityName || '').toString().trim().toLowerCase();
+
+  if (!normalizedCountry || !normalizedCity) {
+    return null;
+  }
+
+  const country = countryCityData.find(
+    (c) => (c.countryName || '').toString().trim().toLowerCase() === normalizedCountry
+  );
+
+  if (!country || !Array.isArray(country.states)) {
+    return null;
+  }
+
+  const state = country.states.find(
+    (st) =>
+      Array.isArray(st.cities) &&
+      st.cities.some(
+        (city) => (city || '').toString().trim().toLowerCase() === normalizedCity
+      )
+  );
+
+  return state && state.stateName ? state.stateName : null;
+};
 
 const generateStableMemberCode = (userId) => {
   const hex = crypto.createHash('sha256').update(String(userId)).digest('hex');
@@ -91,6 +119,7 @@ const getMemberProfile = async (req, res, next) => {
                   pin: s.societyPin,
                   address: s.address,
                   city: s.city,
+                  stateName: findStateName(s.country, s.city),
                   country: s.country,
                 }
               : null,
@@ -99,6 +128,8 @@ const getMemberProfile = async (req, res, next) => {
           };
         }),
         qrCodeImage,
+        message:
+          'Hello, our society is using GatePal™ app to manage our society. It is a wonderful application to manage guest entries and approvals. I strongly recommend for your society. You can download it from https://maplink.com',
       },
     });
   } catch (error) {
