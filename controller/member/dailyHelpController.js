@@ -130,7 +130,7 @@ const addDailyHelp = async (req, res, next) => {
           countryCode: person.countryCode,
           phoneNumber: person.phoneNumber,
           imageUrl: person.imageUrl,
-          status: existingAssignment.status,
+          status: formatStatusForClient(existingAssignment.status),
           createdAt: existingAssignment.createdAt,
           updatedAt: existingAssignment.updatedAt,
         },
@@ -155,7 +155,7 @@ const addDailyHelp = async (req, res, next) => {
         countryCode: person.countryCode,
         phoneNumber: person.phoneNumber,
         imageUrl: person.imageUrl,
-        status: assignment.status,
+        status: formatStatusForClient(assignment.status),
         createdAt: assignment.createdAt,
         updatedAt: assignment.updatedAt,
       },
@@ -172,6 +172,17 @@ const mapUiStatusToCanonical = (value) => {
   if (v === 'approved') return 'APPROVED';
   if (v === 'rejected') return 'REJECTED';
   return '';
+};
+
+const formatStatusForClient = (value) => {
+  const v = normalizeString(value);
+  if (!v) return v;
+  const upper = v.toUpperCase();
+  if (upper === 'PENDING') return 'Pending';
+  if (upper === 'APPROVED') return 'Verified';
+  if (upper === 'REJECTED') return 'Rejected';
+  if (upper === 'REMOVED') return 'Removed';
+  return v;
 };
 
 const getDailyHelpByStatus = async (req, res, next) => {
@@ -222,7 +233,7 @@ const getDailyHelpByStatus = async (req, res, next) => {
           countryCode: p.countryCode || '+91',
           phoneNumber: p.phoneNumber || null,
           imageUrl: p.imageUrl || null,
-          status: a.status,
+          status: formatStatusForClient(a.status),
           rejectReasonCode: p.rejectReasonCode || null,
           rejectReasonText: p.rejectReasonText || null,
           rejectedAt: p.rejectedAt || null,
@@ -273,7 +284,7 @@ const searchApprovedSocietyDailyHelp = async (req, res, next) => {
         countryCode: d.countryCode || '+91',
         phoneNumber: d.phoneNumber || null,
         imageUrl: d.imageUrl || null,
-        status: d.status,
+        status: formatStatusForClient(d.status),
         approvedAt: d.approvedAt || null,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
@@ -313,7 +324,7 @@ const removeDailyHelpFromUnit = async (req, res, next) => {
         data: {
           id: String(assignment._id),
           unitId: String(unitDoc._id),
-          status: assignment.status,
+          status: formatStatusForClient(assignment.status),
           removedAt: assignment.removedAt,
           updatedAt: assignment.updatedAt,
         },
@@ -328,7 +339,7 @@ const removeDailyHelpFromUnit = async (req, res, next) => {
       data: {
         id: String(assignment._id),
         unitId: String(unitDoc._id),
-        status: assignment.status,
+        status: formatStatusForClient(assignment.status),
         removedAt: assignment.removedAt,
         updatedAt: assignment.updatedAt,
       },
@@ -467,7 +478,7 @@ const editDailyHelpProfile = async (req, res, next) => {
           countryCode: doc.countryCode || '+91',
           phoneNumber: doc.phoneNumber || null,
           imageUrl: doc.imageUrl || null,
-          status: doc.status,
+          status: formatStatusForClient(doc.status),
           createdAt: doc.createdAt,
           updatedAt: doc.updatedAt,
         },
@@ -486,7 +497,7 @@ const editDailyHelpProfile = async (req, res, next) => {
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
-        status: doc.status,
+        status: formatStatusForClient(doc.status),
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -542,7 +553,7 @@ const getDailyHelpProfileById = async (req, res, next) => {
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
-        status: assignment.status,
+        status: formatStatusForClient(assignment.status),
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -602,7 +613,7 @@ const assignExistingDailyHelpToUnit = async (req, res, next) => {
             countryCode: person.countryCode || '+91',
             phoneNumber: person.phoneNumber || null,
             imageUrl: person.imageUrl || null,
-            status: existing.status,
+            status: formatStatusForClient(existing.status),
             createdAt: existing.createdAt,
             updatedAt: existing.updatedAt,
           },
@@ -618,7 +629,7 @@ const assignExistingDailyHelpToUnit = async (req, res, next) => {
           countryCode: person.countryCode || '+91',
           phoneNumber: person.phoneNumber || null,
           imageUrl: person.imageUrl || null,
-          status: existing.status,
+          status: formatStatusForClient(existing.status),
           createdAt: existing.createdAt,
           updatedAt: existing.updatedAt,
         },
@@ -642,7 +653,7 @@ const assignExistingDailyHelpToUnit = async (req, res, next) => {
         countryCode: person.countryCode || '+91',
         phoneNumber: person.phoneNumber || null,
         imageUrl: person.imageUrl || null,
-        status: assignment.status,
+        status: formatStatusForClient(assignment.status),
         createdAt: assignment.createdAt,
         updatedAt: assignment.updatedAt,
       },

@@ -63,6 +63,17 @@ const mapUiStatusToCanonical = (value) => {
   return '';
 };
 
+const formatStatusForClient = (value) => {
+  const v = normalizeString(value);
+  if (!v) return v;
+  const upper = v.toUpperCase();
+  if (upper === 'PENDING') return 'Pending';
+  if (upper === 'APPROVED') return 'Verified';
+  if (upper === 'REJECTED') return 'Rejected';
+  if (upper === 'REMOVED') return 'Removed';
+  return v;
+};
+
 const DAILY_HELP_CATEGORIES = [
   { id: 'car_cleaner', name: 'Car Cleaner' },
   { id: 'cook', name: 'Cook' },
@@ -191,7 +202,7 @@ const listSocietyDailyHelp = async (req, res, next) => {
       countryCode: d.countryCode || '+91',
       phoneNumber: d.phoneNumber || null,
       imageUrl: d.imageUrl || null,
-      status: d.status,
+      status: formatStatusForClient(d.status),
       createdByRole: d.createdByRole,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
@@ -293,7 +304,7 @@ const addSocietyDailyHelp = async (req, res, next) => {
         countryCode: person.countryCode || '+91',
         phoneNumber: person.phoneNumber || null,
         imageUrl: person.imageUrl || null,
-        status: person.status,
+        status: person.status === 'APPROVED' ? 'Verified' : formatStatusForClient(person.status),
         createdAt: person.createdAt,
         updatedAt: person.updatedAt,
       },
@@ -380,7 +391,7 @@ const getSocietyDailyHelpProfileById = async (req, res, next) => {
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
-        status: doc.status,
+        status: doc.status === 'APPROVED' ? 'Verified' : formatStatusForClient(doc.status),
         createdByRole: doc.createdByRole,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
@@ -504,7 +515,7 @@ const approveDailyHelp = async (req, res, next) => {
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
-        status: doc.status,
+        status: doc.status === 'APPROVED' ? 'Verified' : doc.status,
         approvedAt: doc.approvedAt,
         updatedAt: doc.updatedAt,
         complianceConfirmed: true,
@@ -627,7 +638,7 @@ const rejectDailyHelp = async (req, res, next) => {
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
-        status: doc.status,
+        status: formatStatusForClient(doc.status),
         rejectedAt: doc.rejectedAt,
         rejectReasonCode: doc.rejectReasonCode,
         rejectReasonText: doc.rejectReasonText,
@@ -654,7 +665,7 @@ const removeDailyHelpFromSociety = async (req, res, next) => {
 
     if (doc.status === 'REMOVED') {
       return sendSuccessResponse(res, 200, 'Daily help already removed from society', {
-        data: { id: String(doc._id), status: doc.status, removedAt: doc.removedAt, updatedAt: doc.updatedAt },
+        data: { id: String(doc._id), status: formatStatusForClient(doc.status), removedAt: doc.removedAt, updatedAt: doc.updatedAt },
       });
     }
 
@@ -671,7 +682,7 @@ const removeDailyHelpFromSociety = async (req, res, next) => {
       data: {
         id: String(doc._id),
         societyId: String(doc.societyId),
-        status: doc.status,
+        status: formatStatusForClient(doc.status),
         removedAt: doc.removedAt,
         updatedAt: doc.updatedAt,
       },
@@ -834,7 +845,7 @@ const editSocietyDailyHelpProfile = async (req, res, next) => {
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
-        status: doc.status,
+        status: formatStatusForClient(doc.status),
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
