@@ -14,6 +14,7 @@ const petRoutes = require('./petRoute');
 const maintainanceAdminRoutes = require('./maintainanceAdminRoute');
 const maintainanceRoutes = require('./maintainanceRoute');
 const announcementRoutes = require('./announcementRoute');
+const societyRulesRoutes = require('./societyRulesRoute');
 
 
 const router = express.Router();
@@ -33,6 +34,7 @@ router.use('/maintainance', maintainanceRoutes);
 router.use('/dailyHelp/admin', dailyHelpAdminRoutes);
 router.use('/dailyHelp', dailyHelpRoutes);
 router.use('/announcements', announcementRoutes);
+router.use('/society-rules', societyRulesRoutes);
 
 
 module.exports = router;

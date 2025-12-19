@@ -171,7 +171,6 @@ const mapUiStatusToCanonical = (value) => {
   if (v === 'pending') return 'PENDING';
   if (v === 'approved') return 'APPROVED';
   if (v === 'rejected') return 'REJECTED';
-  if (v === 'removed') return 'REMOVED';
   return '';
 };
 
@@ -194,9 +193,11 @@ const getDailyHelpByStatus = async (req, res, next) => {
     }
 
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
-    const statusFilter = canonicalStatus
-      ? { status: canonicalStatus }
-      : { status: { $in: ['APPROVED', 'PENDING', 'REJECTED', 'REMOVED'] } };
+    const allowedStatuses = ['APPROVED', 'PENDING', 'REJECTED'];
+    const statusFilter =
+      canonicalStatus && allowedStatuses.includes(canonicalStatus)
+        ? { status: canonicalStatus }
+        : { status: { $in: allowedStatuses } };
 
     const assignments = await DailyHelpAssignment.find({
       unitId: canonicalUnitId,
