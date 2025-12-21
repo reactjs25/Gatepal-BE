@@ -6,6 +6,22 @@ const { normalizeString } = require('../../utils/strings');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateLabel, toISTTimeLabel } = require('../../utils/dateTime');
+const { assertUnitResidentAccess } = require('../../utils/unitAccess');
+
+const MONTH_LABELS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 const resolveAdminSociety = async (authUser) => {
   if (!authUser) throw createHttpError('Unauthorized', 401);
@@ -162,29 +178,86 @@ const getAnnouncements = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+    let societyId = null;
+
+    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+      const society = await resolveAdminSociety(authUser);
+      societyId = society._id;
+    } else if (authUser.role === 'member') {
+      const unitIdCandidate = normalizeString(
+        (req.body && req.body.unitId) ||
+          (req.params && (req.params.unitId || req.params.id)) ||
+          (req.query && (req.query.unitId || req.query.id)) ||
+          ''
+      );
+
+      if (!unitIdCandidate) {
+        return next(createHttpError('unitId is required to view announcements', 400));
+      }
+
+      let unitDoc;
+      try {
+        unitDoc = await assertUnitResidentAccess({ unitId: unitIdCandidate, authUser });
+      } catch (e) {
+        return next(e);
+      }
+
+      societyId = unitDoc.societyId;
+    } else {
+      return next(createHttpError('Only members or society admins can perform this action', 403));
     }
 
-    const society = await resolveAdminSociety(authUser);
-
-    const items = await Announcement.find({ societyId: society._id, deletedAt: null })
+    const items = await Announcement.find({ societyId, deletedAt: null })
       .sort({ createdAt: -1 })
       .lean();
 
-    const data = items.map((doc) => ({
-      announcementId: doc.announcementId,
-      societyId: String(doc.societyId),
-      createdByUserId: String(doc.createdByUserId),
-      title: doc.title,
-      contentHtml: doc.contentHtml,
-      photos: Array.isArray(doc.photos) ? doc.photos : [],
-      attachments: doc.attachments || [],
-      monthLabel: toISTDateLabel(doc.createdAt),
-      timeLabel: toISTTimeLabel(doc.createdAt),
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
-    }));
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthIndex = now.getMonth();
+
+    const groupsByKey = {};
+
+    items.forEach((doc) => {
+      const createdAt = doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt);
+      const year = createdAt.getFullYear();
+      const monthIndex = createdAt.getMonth();
+      const monthName = MONTH_LABELS[monthIndex] || '';
+      const monthLabel = monthName && Number.isFinite(year) ? `${monthName} ${year}` : '';
+      const isCurrentMonth = year === currentYear && monthIndex === currentMonthIndex;
+      const sectionLabel = isCurrentMonth ? 'This Month' : monthLabel || 'Unknown';
+      const groupKey = isCurrentMonth
+        ? `this_month_${year}_${String(monthIndex + 1).padStart(2, '0')}`
+        : `month_${year}_${String(monthIndex + 1).padStart(2, '0')}`;
+
+      if (!groupsByKey[groupKey]) {
+        groupsByKey[groupKey] = {
+          sectionLabel,
+          monthLabel: monthLabel || null,
+          year,
+          monthIndex,
+          announcements: [],
+        };
+      }
+
+      groupsByKey[groupKey].announcements.push({
+        announcementId: doc.announcementId,
+        societyId: String(doc.societyId),
+        createdByUserId: String(doc.createdByUserId),
+        title: doc.title,
+        contentHtml: doc.contentHtml,
+        photos: Array.isArray(doc.photos) ? doc.photos : [],
+        attachments: doc.attachments || [],
+        dateLabel: toISTDateLabel(doc.createdAt),
+        timeLabel: toISTTimeLabel(doc.createdAt),
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt,
+      });
+    });
+
+    const data = Object.values(groupsByKey).sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      return b.monthIndex - a.monthIndex;
+    });
 
     return sendSuccessResponse(res, 200, 'Announcements fetched successfully', { data });
   } catch (error) {
