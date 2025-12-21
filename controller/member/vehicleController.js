@@ -5,6 +5,11 @@ const { normalizeString } = require('../../utils/strings');
 const { buildCanonicalUnitId, assertUnitAccess } = require('../../utils/unitAccess');
 
 const ALLOWED_TYPES = new Set(['Two-Wheeler', 'Four-Wheeler', 'Other']);
+const MAX_VEHICLES_BY_TYPE = {
+  'Two-Wheeler': 2,
+  'Four-Wheeler': 2,
+  Other: 3,
+};
 
 
 const validateVehiclePayload = (payload = {}) => {
@@ -17,12 +22,27 @@ const validateVehiclePayload = (payload = {}) => {
     throw createHttpError('Vehicle type must be one of Two-Wheeler, Four-Wheeler, Other.', 400);
   }
   if (!name) throw createHttpError('Vehicle name is required.', 400);
-  if (!rawNumber) throw createHttpError('Vehicle number is required.', 400);
-  if (!/^[A-Z0-9]+$/.test(rawNumber)) {
+  if (!isElectric && !rawNumber) {
+    throw createHttpError('Vehicle number is required for non-electric vehicles.', 400);
+  }
+  if (rawNumber && !/^[A-Z0-9]+$/.test(rawNumber)) {
     throw createHttpError('Vehicle number must be alphanumeric without spaces, slashes, or dashes.', 400);
   }
 
-  return { vehicleType, name, vehicleNumber: rawNumber, isElectric };
+  return { vehicleType, name, vehicleNumber: rawNumber || undefined, isElectric };
+};
+
+const assertVehicleTypeLimit = async ({ unitId, vehicleType, excludeVehicleId }) => {
+  const max = MAX_VEHICLES_BY_TYPE[vehicleType];
+  if (!max) return;
+  const query = { unitId, vehicleType, deletedAt: null };
+  if (excludeVehicleId) {
+    query.vehicleId = { $ne: excludeVehicleId };
+  }
+  const count = await Vehicle.countDocuments(query);
+  if (count >= max) {
+    throw createHttpError(`Maximum ${max} ${vehicleType} vehicles allowed per unit.`, 400);
+  }
 };
 
 const addVehicle = async (req, res, next) => {
@@ -50,9 +70,21 @@ const addVehicle = async (req, res, next) => {
 
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
-    const exists = await Vehicle.exists({ unitId: canonicalUnitId, vehicleNumber: validated.vehicleNumber, deletedAt: null });
-    if (exists) {
-      return next(createHttpError('A vehicle with this number already exists for the unit', 409));
+    if (validated.vehicleNumber) {
+      const exists = await Vehicle.exists({
+        unitId: canonicalUnitId,
+        vehicleNumber: validated.vehicleNumber,
+        deletedAt: null,
+      });
+      if (exists) {
+        return next(createHttpError('A vehicle with this number already exists for the unit', 409));
+      }
+    }
+
+    try {
+      await assertVehicleTypeLimit({ unitId: canonicalUnitId, vehicleType: validated.vehicleType });
+    } catch (e) {
+      return next(e);
     }
 
     const doc = await Vehicle.create({
@@ -149,8 +181,22 @@ const editVehicle = async (req, res, next) => {
     }
 
     if (validated.vehicleNumber && validated.vehicleNumber !== doc.vehicleNumber) {
-      const dup = await Vehicle.exists({ unitId: canonicalUnitId, vehicleNumber: validated.vehicleNumber, deletedAt: null });
+      const dup = await Vehicle.exists({
+        unitId: canonicalUnitId,
+        vehicleNumber: validated.vehicleNumber,
+        deletedAt: null,
+      });
       if (dup) return next(createHttpError('A vehicle with this number already exists for the unit', 409));
+    }
+
+    try {
+      await assertVehicleTypeLimit({
+        unitId: canonicalUnitId,
+        vehicleType: validated.vehicleType,
+        excludeVehicleId: vehicleId,
+      });
+    } catch (e) {
+      return next(e);
     }
 
     doc.vehicleType = validated.vehicleType;

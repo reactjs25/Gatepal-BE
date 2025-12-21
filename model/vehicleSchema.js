@@ -10,7 +10,14 @@ const vehicleSchema = new mongoose.Schema(
     memberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     vehicleType: { type: String, required: true, enum: VEHICLE_TYPES },
     name: { type: String, required: true, trim: true },
-    vehicleNumber: { type: String, required: true, uppercase: true, trim: true },
+    vehicleNumber: {
+      type: String,
+      required() {
+        return !this.isElectric;
+      },
+      uppercase: true,
+      trim: true,
+    },
     isElectric: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
   },
