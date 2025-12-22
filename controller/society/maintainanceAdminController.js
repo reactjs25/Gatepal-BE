@@ -1,3 +1,4 @@
+const PDFDocument = require('pdfkit');
 const Maintenance = require('../../model/maintenanceSchema');
 const Society = require('../../model/societySchema');
 const MemberUnit = require('../../model/memberUnitSchema');
@@ -35,6 +36,185 @@ const MAINTENANCE_REJECT_REASON_CATEGORIES = [
 const MAINTENANCE_REJECT_REASON_CODES = new Set(
   MAINTENANCE_REJECT_REASON_CATEGORIES.map((name) => name.toLowerCase().replace(/\s+/g, '_'))
 );
+
+const formatAmountForReceipt = (value) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '';
+  return value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const formatDateDdMmYyyy = (date) => {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
+const formatMonthYearShort = (month, year) => {
+  if (!month || !year) return '';
+  const m = String(month).substring(0, 3);
+  return `${m}, ${year}`;
+};
+
+const buildMaintenanceReceiptPdf = async ({
+  society,
+  maintenance,
+  unitLabel,
+  ownerName,
+  paidByName,
+}) =>
+  new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const chunks = [];
+
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', (err) => reject(err));
+
+    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const left = doc.page.margins.left;
+
+    doc.fillColor('#00A651').fontSize(22).text('GatePal', left, 40, { align: 'left' });
+
+    doc.moveDown(1.5);
+    doc.fillColor('#000000').fontSize(12);
+    doc.text(`Society Name: ${society.societyName}`, { align: 'left' });
+
+    const addressParts = [society.address, society.city, society.country].filter(Boolean);
+    if (addressParts.length) {
+      doc.fontSize(10).text(`Address: ${addressParts.join(', ')}`, { align: 'left' });
+    }
+
+    let y = 120;
+    const headerHeight = 80;
+    const headerRightWidthRatio = 0.42;
+    const headerRightX = left + pageWidth * (1 - headerRightWidthRatio);
+
+    doc.lineWidth(0.5).strokeColor('#CCCCCC');
+    doc.rect(left, y, pageWidth, headerHeight).stroke();
+    doc.moveTo(headerRightX, y).lineTo(headerRightX, y + headerHeight).stroke();
+
+    const labelOffsetX = 10;
+    const valueOffsetX = 120;
+    const lineGap = 22;
+
+    doc.fontSize(10).fillColor('#000000');
+    doc.text('Owner', left + labelOffsetX, y + 12);
+    doc.text(':', left + valueOffsetX - 10, y + 12);
+    doc.font('Helvetica-Bold').text(ownerName || '-', left + valueOffsetX, y + 12);
+    doc.font('Helvetica');
+
+    doc.text('Unit Number', left + labelOffsetX, y + 12 + lineGap);
+    doc.text(':', left + valueOffsetX - 10, y + 12 + lineGap);
+    doc.font('Helvetica-Bold').text(unitLabel || '-', left + valueOffsetX, y + 12 + lineGap);
+    doc.font('Helvetica');
+
+    doc.text('Paid By', left + labelOffsetX, y + 12 + lineGap * 2);
+    doc.text(':', left + valueOffsetX - 10, y + 12 + lineGap * 2);
+    doc.font('Helvetica-Bold').text(paidByName || '-', left + valueOffsetX, y + 12 + lineGap * 2);
+    doc.font('Helvetica');
+
+    const rightLabelOffsetX = 10;
+    const rightValueOffsetX = 140;
+
+    doc.text('Receipt Number', headerRightX + rightLabelOffsetX, y + 12);
+    doc.text(':', headerRightX + rightValueOffsetX - 10, y + 12);
+    doc.font('Helvetica-Bold').text(String(maintenance.receiptNumber || ''), headerRightX + rightValueOffsetX, y + 12);
+    doc.font('Helvetica');
+
+    const receiptDate = maintenance.verifiedAt || maintenance.updatedAt || new Date();
+    doc.text('Receipt Date', headerRightX + rightLabelOffsetX, y + 12 + lineGap);
+    doc.text(':', headerRightX + rightValueOffsetX - 10, y + 12 + lineGap);
+    doc.font('Helvetica-Bold').text(formatDateDdMmYyyy(receiptDate), headerRightX + rightValueOffsetX, y + 12 + lineGap);
+    doc.font('Helvetica');
+
+    y += headerHeight;
+
+    const receiptBarHeight = 22;
+    doc.rect(left, y, pageWidth, receiptBarHeight).fillAndStroke('#00A651', '#00A651');
+    doc.fillColor('#FFFFFF').fontSize(12).font('Helvetica-Bold').text('Receipt', left + 10, y + 4);
+
+    y += receiptBarHeight;
+    const headerRowHeight = 24;
+    const dataRowHeight = 26;
+
+    const colWidths = [
+      pageWidth * 0.32,
+      pageWidth * 0.16,
+      pageWidth * 0.16,
+      pageWidth * 0.2,
+      pageWidth * 0.16,
+    ];
+
+    const colX = [
+      left,
+      left + colWidths[0],
+      left + colWidths[0] + colWidths[1],
+      left + colWidths[0] + colWidths[1] + colWidths[2],
+      left + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3],
+    ];
+
+    doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
+    doc.rect(left, y, pageWidth, headerRowHeight).stroke('#000000');
+    for (let i = 1; i < colX.length; i += 1) {
+      doc.moveTo(colX[i], y).lineTo(colX[i], y + headerRowHeight + dataRowHeight).stroke();
+    }
+
+    const headerTitles = [
+      'Description',
+      'Month',
+      'Due Date',
+      'Payment Date',
+      'Amount (₹)',
+    ];
+
+    for (let i = 0; i < headerTitles.length; i += 1) {
+      doc.text(headerTitles[i], colX[i] + 6, y + 6);
+    }
+
+    y += headerRowHeight;
+
+    doc.font('Helvetica').rect(left, y, pageWidth, dataRowHeight).stroke('#000000');
+
+    const paymentDate = maintenance.transactionDate;
+
+    const monthYearLabel = formatMonthYearShort(maintenance.month, maintenance.year);
+
+    const dueDateDay =
+      typeof society.maintenanceDueDate === 'number' && Number.isFinite(society.maintenanceDueDate)
+        ? society.maintenanceDueDate
+        : null;
+
+    let dueDate = '';
+    if (dueDateDay) {
+      const monthIndex = MONTH_LABELS.indexOf(maintenance.month);
+      if (monthIndex >= 0) {
+        const d = new Date(maintenance.year, monthIndex, dueDateDay);
+        dueDate = formatDateDdMmYyyy(d);
+      }
+    }
+
+    doc.text('Maintenance Charges', colX[0] + 6, y + 6);
+    doc.text(monthYearLabel, colX[1] + 6, y + 6);
+    doc.text(dueDate || '-', colX[2] + 6, y + 6);
+    doc.text(formatDateDdMmYyyy(paymentDate), colX[3] + 6, y + 6);
+    doc.text(formatAmountForReceipt(maintenance.amount), colX[4] + 6, y + 6, {
+      align: 'right',
+      width: colWidths[4] - 12,
+    });
+
+    y += dataRowHeight + 24;
+
+    doc.font('Helvetica-Oblique')
+      .fontSize(9)
+      .fillColor('#555555')
+      .text('This is a computer generated receipt and requires no authentication.', left, y, {
+        align: 'left',
+      });
+
+    doc.end();
+  });
 
 const resolveAdminSociety = async (authUser) => {
   if (!authUser) throw createHttpError('Unauthorized', 401);
@@ -619,10 +799,34 @@ const verifyMaintenance = async (req, res, next) => {
       return next(createHttpError('Payload monthLabel does not match record', 409));
     }
 
+    if (!doc.receiptNumber) {
+      const lastWithReceipt = await Maintenance.findOne({ receiptNumber: { $ne: null } })
+        .sort({ receiptNumber: -1 })
+        .lean();
+      const nextReceiptNumber =
+        lastWithReceipt && lastWithReceipt.receiptNumber
+          ? lastWithReceipt.receiptNumber + 1
+          : 1;
+      doc.receiptNumber = nextReceiptNumber;
+    }
+
     doc.status = 'Verified';
     doc.verifiedAt = new Date();
     doc.verifiedByUserId = authUser._id || null;
     await doc.save();
+
+    const unitLabel =
+      expectedWing && expectedNumber ? `${expectedWing}-${expectedNumber}` : expectedNumber || '';
+
+    const receiptBuffer = await buildMaintenanceReceiptPdf({
+      society,
+      maintenance: doc,
+      unitLabel,
+      ownerName: ownerUser ? ownerUser.fullName : '',
+      paidByName: uploaderUser ? uploaderUser.fullName : '',
+    });
+
+    const receiptBase64 = receiptBuffer.toString('base64');
 
     return sendSuccessResponse(res, 200, 'Maintenance verified successfully', {
       data: {
@@ -637,7 +841,9 @@ const verifyMaintenance = async (req, res, next) => {
         proofImageUrl: doc.proofImageUrl,
         uploadedOn: toISTDateTimeLabel(doc.createdAt),
         uploadedBy: uploaderUser ? uploaderUser.fullName : null,
-
+        receiptNumber: doc.receiptNumber,
+        receiptDate: toDateOnly(doc.verifiedAt),
+        receipt: `data:application/pdf;base64,${receiptBase64}`,
       },
     });
   } catch (error) {
@@ -755,4 +961,5 @@ module.exports = {
   verifyMaintenance,
   rejectMaintenance,
   getMaintenanceRejectReasonCategories,
+  buildMaintenanceReceiptPdf,
 };

@@ -24,6 +24,7 @@ const maintenanceSchema = new mongoose.Schema(
     year: { type: Number, required: true },
     month: { type: String, required: true, enum: MONTH_NAMES },
     amount: { type: Number, required: true },
+    receiptNumber: { type: Number, default: null },
     transactionDate: { type: Date, required: true },
     proofImageUrl: { type: String, required: true, trim: true },
     status: { type: String, required: true, enum: ['Uploaded', 'Verified', 'Rejected'], default: 'Uploaded' },

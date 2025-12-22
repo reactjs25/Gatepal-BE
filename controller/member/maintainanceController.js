@@ -1,10 +1,12 @@
 const Maintenance = require('../../model/maintenanceSchema');
+const Society = require('../../model/societySchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { buildCanonicalUnitId, assertUnitResidentAccess } = require('../../utils/unitAccess');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
+const { buildMaintenanceReceiptPdf } = require('../society/maintainanceAdminController');
 
 const ALLOWED_MONTHS = new Set([
     'January',
@@ -130,6 +132,15 @@ const uploadMaintainanceProof = async (req, res, next) => {
 
         const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
+        let society = null;
+        try {
+            if (unitDoc.societyId) {
+                society = await Society.findById(unitDoc.societyId).lean();
+            }
+        } catch (e) {
+            society = null;
+        }
+
         const exists = await Maintenance.exists({ unitId: canonicalUnitId, year: validated.year, month: validated.month, deletedAt: null });
         if (exists) {
             return next(createHttpError('A maintenance proof for the specified month already exists for the unit', 409));
@@ -234,9 +245,41 @@ const getMaintainancesByUnit = async (req, res, next) => {
         }
         const userMap = users.reduce((acc, u) => { acc[String(u._id)] = u; return acc; }, {});
 
-        return sendSuccessResponse(res, 200, 'Maintenance fetched successfully', {
-            data: items.map((doc) => {
+        let society = null;
+        try {
+            if (unitDoc.societyId) {
+                society = await Society.findById(unitDoc.societyId).lean();
+            }
+        } catch (e) {
+            society = null;
+        }
+
+        const data = await Promise.all(
+            items.map(async (doc) => {
                 const u = userMap[String(doc.memberId)] || {};
+                let receipt = null;
+                let receiptDate = null;
+
+                if (society && doc.status === 'Verified' && doc.receiptNumber) {
+                    try {
+                        const unitLabel = unitDoc.wingName
+                            ? `${unitDoc.wingName}-${unitDoc.unitNumber}`
+                            : unitDoc.unitNumber;
+                        const buffer = await buildMaintenanceReceiptPdf({
+                            society,
+                            maintenance: doc,
+                            unitLabel,
+                            ownerName: u.fullName || '',
+                            paidByName: u.fullName || '',
+                        });
+                        receipt = `data:application/pdf;base64,${buffer.toString('base64')}`;
+                        receiptDate = doc.verifiedAt || null;
+                    } catch (e) {
+                        receipt = null;
+                        receiptDate = doc.verifiedAt || null;
+                    }
+                }
+
                 return {
                     maintenanceId: doc.maintenanceId,
                     unitId: String(unitDoc._id),
@@ -253,9 +296,15 @@ const getMaintainancesByUnit = async (req, res, next) => {
                     uploadedOn: toISTDateTimeLabel(doc.createdAt),
                     createdAt: doc.createdAt,
                     updatedAt: doc.updatedAt,
-
+                    receiptNumber: doc.receiptNumber || null,
+                    receiptDate,
+                    receipt,
                 };
-            }),
+            })
+        );
+
+        return sendSuccessResponse(res, 200, 'Maintenance fetched successfully', {
+            data,
         });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to fetch maintenance'));
@@ -299,6 +348,37 @@ const getMaintainanceById = async (req, res, next) => {
         const User = require('../../model/userSchema');
         const uploader = await User.findById(doc.memberId, { fullName: 1, phoneNumber: 1 }).lean();
 
+        let society = null;
+        try {
+            if (unitDoc.societyId) {
+                society = await Society.findById(unitDoc.societyId).lean();
+            }
+        } catch (e) {
+            society = null;
+        }
+
+        let receipt = null;
+        let receiptDate = null;
+        if (society && doc.status === 'Verified' && doc.receiptNumber) {
+            try {
+                const unitLabel = unitDoc.wingName
+                    ? `${unitDoc.wingName}-${unitDoc.unitNumber}`
+                    : unitDoc.unitNumber;
+                const buffer = await buildMaintenanceReceiptPdf({
+                    society,
+                    maintenance: doc,
+                    unitLabel,
+                    ownerName: uploader ? uploader.fullName || '' : '',
+                    paidByName: uploader ? uploader.fullName || '' : '',
+                });
+                receipt = `data:application/pdf;base64,${buffer.toString('base64')}`;
+                receiptDate = doc.verifiedAt || null;
+            } catch (e) {
+                receipt = null;
+                receiptDate = doc.verifiedAt || null;
+            }
+        }
+
         return sendSuccessResponse(res, 200, 'Maintenance fetched successfully', {
             data: {
                 maintenanceId: doc.maintenanceId,
@@ -316,6 +396,9 @@ const getMaintainanceById = async (req, res, next) => {
                 createdAt: doc.createdAt,
                 updatedAt: doc.updatedAt,
                 uploadedOn: toISTDateTimeLabel(doc.createdAt),
+                receiptNumber: doc.receiptNumber || null,
+                receiptDate,
+                receipt,
             },
         });
     } catch (error) {
