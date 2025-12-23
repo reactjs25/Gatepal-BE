@@ -1,0 +1,308 @@
+const Society = require('../../model/societySchema');
+const MemberUnit = require('../../model/memberUnitSchema');
+const FamilyMember = require('../../model/familyMemberSchema');
+const Vehicle = require('../../model/vehicleSchema');
+const Pet = require('../../model/petSchema');
+const { sendSuccessResponse } = require('../../utils/response');
+const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
+const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+
+const resolveAdminSociety = async (authUser) => {
+    if (!authUser) throw createHttpError('Unauthorized', 401);
+    if (authUser.adminSocietyId) {
+        const society = await Society.findById(authUser.adminSocietyId).lean();
+        if (!society) throw createHttpError('Society not found', 404);
+        return society;
+    }
+    const linkedId = authUser.linkedSocietyAdminId || null;
+    if (linkedId) {
+        const society = await Society.findOne({ 'societyAdmins._id': linkedId }).lean();
+        if (!society) throw createHttpError('Society not found', 404);
+        return society;
+    }
+    const match = await lookupSocietyAdminByMobile(authUser.phoneNumber || '');
+    if (!match) throw createHttpError('Society not found', 404);
+    const society = await Society.findById(match.societyId).lean();
+    if (!society) throw createHttpError('Society not found', 404);
+    return society;
+};
+
+const classifyUnitGroup = (items) => {
+    const types = new Set(items.map((x) => x.occupantType));
+    const statuses = new Set(items.map((x) => x.occupancyStatus));
+    if (types.has('tenant') || types.has('tenant_family_member') || statuses.has('unit_rented')) {
+        return 'tenant';
+    }
+    if (statuses.has('unit_vacant') && !statuses.has('currently_residing')) {
+        return 'vacant';
+    }
+    if (types.has('unit_owner') || types.has('unit_owner_family_member')) {
+        return 'owner';
+    }
+    return 'owner';
+};
+
+const getSocietyInfo = async (req, res, next) => {
+    try {
+        const authUser = req.appUser;
+        if (!authUser) {
+            return next(createHttpError('Unauthorized', 401));
+        }
+
+        if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId && !authUser.adminSocietyId) {
+            return next(createHttpError('Only society admins can perform this action', 403));
+        }
+
+        const society = await resolveAdminSociety(authUser);
+
+        const wings = Array.isArray(society.structure) ? society.structure : [];
+        const totalUnits = wings.reduce((sum, w) => {
+            const units = Array.isArray(w.units) ? w.units.length : 0;
+            const declared = typeof w.totalUnits === 'number' ? w.totalUnits : 0;
+            return sum + (declared || units);
+        }, 0);
+
+        const occupants = await MemberUnit.find(
+            { societyId: society._id },
+            { wingName: 1, wingNameLower: 1, unitNumber: 1, unitNumberLower: 1, occupantType: 1, occupancyStatus: 1 }
+        ).lean();
+
+        const unitGroups = occupants.reduce((acc, u) => {
+            const key = `${u.wingNameLower}:${u.unitNumberLower}`;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(u);
+            return acc;
+        }, {});
+
+        const groupKeys = Object.keys(unitGroups);
+
+        let ownerUnitCount = 0;
+        let tenantUnitCount = 0;
+        let vacantUnitCount = 0;
+
+        groupKeys.forEach((key) => {
+            const items = unitGroups[key] || [];
+            const kind = classifyUnitGroup(items);
+            if (kind === 'owner') ownerUnitCount += 1;
+            else if (kind === 'tenant') tenantUnitCount += 1;
+            else if (kind === 'vacant') vacantUnitCount += 1;
+        });
+
+        const notRegisteredCount = Math.max(0, totalUnits - groupKeys.length);
+
+        const unitsSummary = {
+            title: 'Units List',
+            totalUnits,
+            ownerResiding: ownerUnitCount,
+            tenantResiding: tenantUnitCount,
+            vacant: vacantUnitCount,
+            notRegisteredOnGatePal: notRegisteredCount,
+        };
+
+        const unitList = [];
+
+        wings.forEach((wing) => {
+            const wingName = wing.wingName;
+            const units = Array.isArray(wing.units) ? wing.units : [];
+            units.forEach((u) => {
+                const unitNumber = u.unitNumber;
+                const wingLower = (wingName || '').toString().toLowerCase();
+                const unitLower = (unitNumber || '').toString().toLowerCase();
+                const key = `${wingLower}:${unitLower}`;
+                const items = unitGroups[key] || [];
+                const kind = items.length > 0 ? classifyUnitGroup(items) : null;
+                const occupancyCategory = kind || 'not_registered';
+                let statusLabel = 'Not Registered on GatePal\u2122';
+                if (occupancyCategory === 'owner') statusLabel = 'Owner Residing';
+                else if (occupancyCategory === 'tenant') statusLabel = 'Tenant Residing';
+                else if (occupancyCategory === 'vacant') statusLabel = 'Vacant';
+                unitList.push({
+                    wingName,
+                    unitNumber,
+                    occupancyCategory,
+                    statusLabel,
+                });
+            });
+        });
+
+        const structuralKeys = new Set(
+            unitList.map((u) => `${(u.wingName || '').toString().toLowerCase()}:${(u.unitNumber || '').toString().toLowerCase()}`)
+        );
+
+        groupKeys.forEach((key) => {
+            if (!structuralKeys.has(key)) {
+                const items = unitGroups[key] || [];
+                if (!items.length) return;
+                const primary = items[0];
+                const kind = classifyUnitGroup(items);
+                const occupancyCategory = kind || 'owner';
+                let statusLabel = 'Owner Residing';
+                if (occupancyCategory === 'tenant') statusLabel = 'Tenant Residing';
+                else if (occupancyCategory === 'vacant') statusLabel = 'Vacant';
+                const wingName = primary.wingName;
+                const unitNumber = primary.unitNumber;
+                unitList.push({
+                    wingName,
+                    unitNumber,
+                    occupancyCategory,
+                    statusLabel,
+                });
+            }
+        });
+
+        const unitObjectIdMap = occupants.reduce((acc, u) => {
+            const key = String(u._id);
+            if (!acc[key]) {
+                acc[key] = {
+                    wingName: u.wingName,
+                    unitNumber: u.unitNumber,
+                };
+            }
+            return acc;
+        }, {});
+
+        const unitIdMap = occupants.reduce((acc, u) => {
+            const canonical = `${String(society._id)}:${u.wingNameLower}:${u.unitNumberLower}`;
+            if (!acc[canonical]) {
+                acc[canonical] = {
+                    wingName: u.wingName,
+                    unitNumber: u.unitNumber,
+                };
+            }
+            return acc;
+        }, {});
+
+        const unitIds = occupants.map((u) => u._id);
+
+        const familyMembers = unitIds.length
+            ? await FamilyMember.find({ unitId: { $in: unitIds } }).lean()
+            : [];
+
+        const totalResidents = familyMembers.length;
+        let adults = 0;
+        let children = 0;
+        familyMembers.forEach((fm) => {
+            if (fm.category === 'adult') adults += 1;
+            else if (fm.category === 'child') children += 1;
+        });
+
+        const residentsSummary = {
+            title: 'Residents',
+            totalResidents,
+            adults,
+            children,
+        };
+
+        const residents = familyMembers.map((fm) => {
+            const unitInfo = unitObjectIdMap[String(fm.unitId)] || {};
+            const unitNumber = unitInfo.unitNumber || null;
+            return {
+                id: String(fm._id),
+                name: fm.name,
+                category: fm.category,
+                unitNumber: unitNumber || null,
+            };
+        });
+
+        const prefix = `${String(society._id)}:`;
+
+        const vehicles = await Vehicle.find({ unitId: { $regex: `^${prefix}` }, deletedAt: null }).lean();
+
+        let twoWheelerCount = 0;
+        let fourWheelerCount = 0;
+        let otherVehicleCount = 0;
+        vehicles.forEach((v) => {
+            if (v.vehicleType === 'Two-Wheeler') twoWheelerCount += 1;
+            else if (v.vehicleType === 'Four-Wheeler') fourWheelerCount += 1;
+            else if (v.vehicleType === 'Other') otherVehicleCount += 1;
+        });
+
+        const vehiclesSummary = {
+            title: 'Vehicles',
+            twoWheeler: twoWheelerCount,
+            fourWheeler: fourWheelerCount,
+            others: otherVehicleCount,
+        };
+
+        const vehiclesList = vehicles.map((v) => {
+            const unitInfo = unitIdMap[v.unitId] || {};
+            const wingName = unitInfo.wingName || null;
+            const unitNumber = unitInfo.unitNumber || null;
+            return {
+                id: String(v._id),
+                vehicleNumber: v.vehicleNumber,
+                vehicleType: v.vehicleType,
+                unitNumber: unitNumber || null,
+            };
+        });
+
+        const pets = await Pet.find({ unitId: { $regex: `^${prefix}` }, deletedAt: null }).lean();
+
+        let dogs = 0;
+        let cats = 0;
+        let parrots = 0;
+        let otherPets = 0;
+        pets.forEach((p) => {
+            if (p.petType === 'Dog') dogs += 1;
+            else if (p.petType === 'Cat') cats += 1;
+            else if (p.petType === 'Parrot') parrots += 1;
+            else otherPets += 1;
+        });
+
+        const petsSummary = {
+            title: 'Pets',
+            dogs,
+            cats,
+            parrots,
+            others: otherPets,
+        };
+
+        const petsList = pets.map((p) => {
+            const unitInfo = unitIdMap[p.unitId] || {};
+            const wingName = unitInfo.wingName || null;
+            const unitNumber = unitInfo.unitNumber || null;
+            return {
+                id: String(p._id),
+                name: p.name,
+                petType: p.petType,
+                unitNumber: unitNumber || null,
+                vaccinationStatus: p.vaccinationStatus,
+            };
+        });
+
+        const missingUnits = unitList
+            .filter((u) => u.occupancyCategory === 'not_registered')
+            .map((u) => {
+                const wingName = u.wingName || '';
+                const unitNumber = u.unitNumber || '';
+                const combined = `${wingName} ${unitNumber}`.trim();
+                return {
+                    unitNumber: combined || null,
+                    status: 'Not Registered',
+                };
+            });
+
+        const data = {
+            societyId: String(society._id),
+            societyName: society.societyName,
+            unitsSummary,
+            residentsSummary,
+            vehiclesSummary,
+            petsSummary,
+            units: unitList,
+            residents,
+            vehicles: vehiclesList,
+            pets: petsList,
+            missingUnits,
+        };
+
+        return sendSuccessResponse(res, 200, 'Society info fetched successfully', { data });
+    } catch (error) {
+        return next(setErrorDefaults(error, 'Failed to fetch society info'));
+    }
+};
+
+module.exports = {
+    getSocietyInfo,
+};
+

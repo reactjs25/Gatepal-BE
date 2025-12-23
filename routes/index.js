@@ -16,6 +16,7 @@ const maintainanceRoutes = require('./maintainanceRoute');
 const announcementRoutes = require('./announcementRoute');
 const societyRulesRoutes = require('./societyRulesRoute');
 const meetingRoutes = require('./meetingRoute');
+const societyInfoRoutes = require('./societyInfoRoute');
 
 
 const router = express.Router();
@@ -37,6 +38,7 @@ router.use('/dailyHelp', dailyHelpRoutes);
 router.use('/announcements', announcementRoutes);
 router.use('/society-rules', societyRulesRoutes);
 router.use('/meetings', meetingRoutes);
+router.use('/societyInfo', societyInfoRoutes);
 
 
 module.exports = router;
