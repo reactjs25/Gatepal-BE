@@ -165,9 +165,9 @@ const uploadMaintainanceProof = async (req, res, next) => {
                 memberId: String(doc.memberId),
                 uploadedByName: authUser.fullName || null,
                 uploadedByPhone: authUser.phoneNumber || null,
-                year: doc.year,
+                year: String(doc.year),
                 month: doc.month,
-                amount: doc.amount,
+                amount: doc.amount != null ? String(doc.amount) : null,
                 transactionDate: toDateOnly(doc.transactionDate),
                 proofImageUrl: doc.proofImageUrl,
                 status: doc.status,
@@ -245,7 +245,14 @@ const getMaintainancesByUnit = async (req, res, next) => {
                     .filter((id) => id)
             )
         );
-        const userIds = Array.from(new Set([...memberIds, ...verifierIds]));
+        const rejectorIds = Array.from(
+            new Set(
+                items
+                    .map((d) => (d.rejectedByUserId ? String(d.rejectedByUserId) : null))
+                    .filter((id) => id)
+            )
+        );
+        const userIds = Array.from(new Set([...memberIds, ...verifierIds, ...rejectorIds]));
         let users = [];
         if (userIds.length > 0) {
             const User = require('../../model/userSchema');
@@ -269,6 +276,7 @@ const getMaintainancesByUnit = async (req, res, next) => {
             items.map(async (doc) => {
                 const u = userMap[String(doc.memberId)] || {};
                 const verifier = doc.verifiedByUserId ? userMap[String(doc.verifiedByUserId)] || {} : {};
+                const rejector = doc.rejectedByUserId ? userMap[String(doc.rejectedByUserId)] || {} : {};
                 let receipt = null;
                 let receiptDate = null;
 
@@ -292,6 +300,14 @@ const getMaintainancesByUnit = async (req, res, next) => {
                     }
                 }
 
+                const statusLower = String(doc.status || '').toLowerCase();
+                let statusLabel = 'Uploaded';
+                if (statusLower === 'verified') {
+                    statusLabel = 'Uploaded Verified';
+                } else if (statusLower === 'rejected') {
+                    statusLabel = 'Uploaded Rejected';
+                }
+
                 return {
                     maintenanceId: doc.maintenanceId,
                     unitId: String(unitDoc._id),
@@ -299,18 +315,22 @@ const getMaintainancesByUnit = async (req, res, next) => {
                     memberId: String(doc.memberId),
                     uploadedByName: u.fullName || null,
                     uploadedByPhone: u.phoneNumber || null,
-                    year: doc.year,
+                    year: String(doc.year),
                     month: doc.month,
-                    amount: doc.amount,
+                    amount: doc.amount != null ? String(doc.amount) : null,
                     transactionDate: toDateOnly(doc.transactionDate),
                     proofImageUrl: doc.proofImageUrl,
-                    status: doc.status,
+                    status: statusLabel,
                     uploadedOn: toISTDateTimeLabel(doc.createdAt),
-                    verifiedByRole: verifier.role || null,
+                    verifiedBy: verifier.role || null,
                     verifiedOn: doc.verifiedAt ? toISTDateTimeLabel(doc.verifiedAt) : null,
+                    rejectedBy: rejector.role || null,
+                    rejectedOn: doc.rejectedAt ? toISTDateTimeLabel(doc.rejectedAt) : null,
+                    rejectionReason: doc.rejectionReason || null,
+                    rejectionDescription: doc.rejectionDescription || null,
                     createdAt: doc.createdAt,
                     updatedAt: doc.updatedAt,
-                    receiptNumber: doc.receiptNumber || null,
+                    receiptNumber: doc.receiptNumber != null ? String(doc.receiptNumber) : null,
                     receiptDate,
                     receipt,
                 };
@@ -401,16 +421,16 @@ const getMaintainanceById = async (req, res, next) => {
                 memberId: String(doc.memberId),
                 uploadedByName: uploader ? uploader.fullName || null : null,
                 uploadedByPhone: uploader ? uploader.phoneNumber || null : null,
-                year: doc.year,
+                year: String(doc.year),
                 month: doc.month,
-                amount: doc.amount,
+                amount: doc.amount != null ? String(doc.amount) : null,
                 transactionDate: toDateOnly(doc.transactionDate),
                 proofImageUrl: doc.proofImageUrl,
                 status: doc.status,
                 createdAt: doc.createdAt,
                 updatedAt: doc.updatedAt,
                 uploadedOn: toISTDateTimeLabel(doc.createdAt),
-                receiptNumber: doc.receiptNumber || null,
+                receiptNumber: doc.receiptNumber != null ? String(doc.receiptNumber) : null,
                 receiptDate,
                 receipt,
             },

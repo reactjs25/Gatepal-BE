@@ -659,12 +659,15 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
         unitNumber,
         unitCategory: categoryLabel || null,
         ownerName: ownerUser.fullName || '',
-        amount: doc.amount,
+        amount: doc.amount != null ? String(doc.amount) : null,
         transactionDate: toDateOnly(doc.transactionDate),
         status: doc.status,
         proofImageUrl: doc.proofImageUrl,
         uploadedOn: toISTDateTimeLabel(doc.createdAt),
         uploadedBy: (userMap[String(doc.memberId)] || {}).fullName || null,
+        rejectionReason: doc.rejectionReason || null,
+        rejectionDescription: doc.rejectionDescription || null,
+        rejectedAt: doc.rejectedAt || null,
       };
     });
 
@@ -835,13 +838,13 @@ const verifyMaintenance = async (req, res, next) => {
         unitNumber: expectedNumber,
         unitCategory: expectedCategory || null,
         ownerName: ownerUser ? ownerUser.fullName : null,
-        amount: doc.amount,
+        amount: doc.amount != null ? String(doc.amount) : null,
         transactionDate: toDateOnly(doc.transactionDate),
         status: doc.status,
         proofImageUrl: doc.proofImageUrl,
         uploadedOn: toISTDateTimeLabel(doc.createdAt),
         uploadedBy: uploaderUser ? uploaderUser.fullName : null,
-        receiptNumber: doc.receiptNumber,
+        receiptNumber: doc.receiptNumber != null ? String(doc.receiptNumber) : null,
         receiptDate: toDateOnly(doc.verifiedAt),
         receipt: `data:application/pdf;base64,${receiptBase64}`,
       },
@@ -929,6 +932,7 @@ const rejectMaintenance = async (req, res, next) => {
         rejectedAt: doc.rejectedAt,
         rejectedByUserId: doc.rejectedByUserId ? String(doc.rejectedByUserId) : null,
         rejectionReason: doc.rejectionReason,
+        rejectionDescription: doc.rejectionDescription,
       },
     });
   } catch (error) {
