@@ -226,19 +226,31 @@ const getFamilyMembersByUnit = async (req, res, next) => {
       });
     }
 
-    const data = members.map((m) => ({
-      id: String(m._id),
-      unitId: String(m.unitId),
-      category: m.category,
-      name: m.name,
-      countryCode: m.countryCode,
-      phoneNumber: m.phoneNumber,
-      imageUrl: m.imageUrl,
-      occupantType: unitTypeMap[String(m.unitId)] || null,
-      status: m.status,
-      createdAt: m.createdAt,
-      updatedAt: m.updatedAt,
-    })).concat(occupantItems);
+    const occupantPhones = new Set(
+      occupantItems
+        .map((item) => normalizeDigits(item.phoneNumber || ''))
+        .filter((digits) => digits && digits.length === 10)
+    );
+
+    const data = members
+      .filter((m) => {
+        const digits = normalizeDigits(m.phoneDigits || m.phoneNumber || '');
+        return !digits || !occupantPhones.has(digits);
+      })
+      .map((m) => ({
+        id: String(m._id),
+        unitId: String(m.unitId),
+        category: m.category,
+        name: m.name,
+        countryCode: m.countryCode,
+        phoneNumber: m.phoneNumber,
+        imageUrl: m.imageUrl,
+        occupantType: unitTypeMap[String(m.unitId)] || null,
+        status: m.status,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+      }))
+      .concat(occupantItems);
 
     const authPhone = normalizeDigits(authUser.phoneNumber || '');
     const filtered = data.filter((item) => normalizeDigits(item.phoneNumber || '') !== authPhone && String(item.id) !== String(authUser._id));
