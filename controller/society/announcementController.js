@@ -5,7 +5,7 @@ const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
-const { toISTDateLabel, toISTTimeLabel } = require('../../utils/dateTime');
+const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 
 const MONTH_LABELS = [
@@ -122,6 +122,32 @@ const validateAnnouncementPayload = (payload = {}, options = {}) => {
   return validated;
 };
 
+const buildCreatedAndUpdatedOn = (doc) => {
+  if (!doc) {
+    return {
+      createdOn: '',
+      updatedOn: '',
+    };
+  }
+
+  const createdAt =
+    doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+  const updatedAt =
+    doc.updatedAt instanceof Date ? doc.updatedAt : doc.updatedAt ? new Date(doc.updatedAt) : null;
+
+  const createdOn = createdAt ? toISTDateTimeLabel(createdAt) : '';
+
+  let updatedOn = '';
+  if (createdAt && updatedAt && updatedAt.getTime() !== createdAt.getTime()) {
+    updatedOn = toISTDateTimeLabel(updatedAt);
+  }
+
+  return {
+    createdOn,
+    updatedOn,
+  };
+};
+
 const createAnnouncement = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -151,17 +177,18 @@ const createAnnouncement = async (req, res, next) => {
       attachments: validated.attachments,
     });
 
+    const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
+
     return sendSuccessResponse(res, 201, 'Announcement created successfully', {
       data: {
         announcementId: doc.announcementId,
         societyId: String(doc.societyId),
-        createdByUserId: String(doc.createdByUserId),
         title: doc.title,
         contentHtml: doc.contentHtml,
         photos: Array.isArray(doc.photos) ? doc.photos : [],
         attachments: doc.attachments || [],
-        monthLabel: toISTDateLabel(doc.createdAt),
-        timeLabel: toISTTimeLabel(doc.createdAt),
+        createdOn,
+        updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -186,9 +213,9 @@ const getAnnouncements = async (req, res, next) => {
     } else if (authUser.role === 'member') {
       const unitIdCandidate = normalizeString(
         (req.body && req.body.unitId) ||
-          (req.params && (req.params.unitId || req.params.id)) ||
-          (req.query && (req.query.unitId || req.query.id)) ||
-          ''
+        (req.params && (req.params.unitId || req.params.id)) ||
+        (req.query && (req.query.unitId || req.query.id)) ||
+        ''
       );
 
       if (!unitIdCandidate) {
@@ -233,22 +260,21 @@ const getAnnouncements = async (req, res, next) => {
         groupsByKey[groupKey] = {
           sectionLabel,
           monthLabel: monthLabel || null,
-          year,
-          monthIndex,
           announcements: [],
         };
       }
 
+      const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
+
       groupsByKey[groupKey].announcements.push({
         announcementId: doc.announcementId,
         societyId: String(doc.societyId),
-        createdByUserId: String(doc.createdByUserId),
         title: doc.title,
         contentHtml: doc.contentHtml,
         photos: Array.isArray(doc.photos) ? doc.photos : [],
         attachments: doc.attachments || [],
-        dateLabel: toISTDateLabel(doc.createdAt),
-        timeLabel: toISTTimeLabel(doc.createdAt),
+        createdOn,
+        updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       });
@@ -280,7 +306,7 @@ const getAnnouncementById = async (req, res, next) => {
 
     const announcementId = normalizeString(
       ((req.body || {}).announcementId) ||
-        ((req.params && req.params.announcementId) || '')
+      ((req.params && req.params.announcementId) || '')
     );
     if (!announcementId) {
       return next(createHttpError('announcementId path parameter is required', 400));
@@ -296,17 +322,18 @@ const getAnnouncementById = async (req, res, next) => {
       return next(createHttpError('Announcement not found', 404));
     }
 
+    const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
+
     return sendSuccessResponse(res, 200, 'Announcement fetched successfully', {
       data: {
         announcementId: doc.announcementId,
         societyId: String(doc.societyId),
-        createdByUserId: String(doc.createdByUserId),
         title: doc.title,
         contentHtml: doc.contentHtml,
         photos: Array.isArray(doc.photos) ? doc.photos : [],
         attachments: doc.attachments || [],
-        monthLabel: toISTDateLabel(doc.createdAt),
-        timeLabel: toISTTimeLabel(doc.createdAt),
+        createdOn,
+        updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -331,7 +358,7 @@ const updateAnnouncementById = async (req, res, next) => {
 
     const announcementId = normalizeString(
       ((req.body || {}).announcementId) ||
-        ((req.params && req.params.announcementId) || '')
+      ((req.params && req.params.announcementId) || '')
     );
     if (!announcementId) {
       return next(createHttpError('announcementId path parameter is required', 400));
@@ -369,17 +396,18 @@ const updateAnnouncementById = async (req, res, next) => {
 
     await doc.save();
 
+    const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
+
     return sendSuccessResponse(res, 200, 'Announcement updated successfully', {
       data: {
         announcementId: doc.announcementId,
         societyId: String(doc.societyId),
-        createdByUserId: String(doc.createdByUserId),
         title: doc.title,
         contentHtml: doc.contentHtml,
         photos: Array.isArray(doc.photos) ? doc.photos : [],
         attachments: doc.attachments || [],
-        monthLabel: toISTDateLabel(doc.createdAt),
-        timeLabel: toISTTimeLabel(doc.createdAt),
+        createdOn,
+        updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -404,7 +432,7 @@ const deleteAnnouncementById = async (req, res, next) => {
 
     const announcementId = normalizeString(
       ((req.body || {}).announcementId) ||
-        ((req.params && req.params.announcementId) || '')
+      ((req.params && req.params.announcementId) || '')
     );
     if (!announcementId) {
       return next(createHttpError('announcementId path parameter is required', 400));
