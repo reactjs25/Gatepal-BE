@@ -238,10 +238,21 @@ const getMaintainancesByUnit = async (req, res, next) => {
         const items = all.slice(skip, skip + limit);
 
         const memberIds = Array.from(new Set(items.map((d) => String(d.memberId))));
+        const verifierIds = Array.from(
+            new Set(
+                items
+                    .map((d) => (d.verifiedByUserId ? String(d.verifiedByUserId) : null))
+                    .filter((id) => id)
+            )
+        );
+        const userIds = Array.from(new Set([...memberIds, ...verifierIds]));
         let users = [];
-        if (memberIds.length > 0) {
+        if (userIds.length > 0) {
             const User = require('../../model/userSchema');
-            users = await User.find({ _id: { $in: memberIds } }, { fullName: 1, phoneNumber: 1 }).lean();
+            users = await User.find(
+                { _id: { $in: userIds } },
+                { fullName: 1, phoneNumber: 1, role: 1 }
+            ).lean();
         }
         const userMap = users.reduce((acc, u) => { acc[String(u._id)] = u; return acc; }, {});
 
@@ -257,6 +268,7 @@ const getMaintainancesByUnit = async (req, res, next) => {
         const data = await Promise.all(
             items.map(async (doc) => {
                 const u = userMap[String(doc.memberId)] || {};
+                const verifier = doc.verifiedByUserId ? userMap[String(doc.verifiedByUserId)] || {} : {};
                 let receipt = null;
                 let receiptDate = null;
 
@@ -294,6 +306,8 @@ const getMaintainancesByUnit = async (req, res, next) => {
                     proofImageUrl: doc.proofImageUrl,
                     status: doc.status,
                     uploadedOn: toISTDateTimeLabel(doc.createdAt),
+                    verifiedByRole: verifier.role || null,
+                    verifiedOn: doc.verifiedAt ? toISTDateTimeLabel(doc.verifiedAt) : null,
                     createdAt: doc.createdAt,
                     updatedAt: doc.updatedAt,
                     receiptNumber: doc.receiptNumber || null,
