@@ -5,7 +5,7 @@ const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
-const { toISTDateLabel, toISTTimeLabel} = require('../../utils/dateTime');
+const { toISTDateLabel, toISTTimeLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 
 const resolveAdminSociety = async (authUser) => {
@@ -211,6 +211,13 @@ const buildMeetingResponse = (doc) => {
   const meetingDateTime = parseMeetingDateTime(doc.meetingDate, doc.meetingStartingFrom);
   const meetingDateLabel = meetingDateTime ? toISTDateLabel(meetingDateTime) : null;
   const meetingTimeLabel = meetingDateTime ? toISTTimeLabel(meetingDateTime) : null;
+  const createdAt = doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+  const updatedAt = doc.updatedAt instanceof Date ? doc.updatedAt : doc.updatedAt ? new Date(doc.updatedAt) : null;
+  const createdOn = createdAt ? toISTDateTimeLabel(createdAt) : '';
+  let updatedOn = '';
+  if (createdAt && updatedAt && updatedAt.getTime() !== createdAt.getTime()) {
+    updatedOn = toISTDateTimeLabel(updatedAt);
+  }
   return {
     meetingId: doc.meetingId,
     societyId: String(doc.societyId),
@@ -223,6 +230,8 @@ const buildMeetingResponse = (doc) => {
     discussionHtml: doc.discussionHtml || '',
     discussionPhotos: Array.isArray(doc.discussionPhotos) ? doc.discussionPhotos : [],
     discussionAttachments: doc.discussionAttachments || [],
+    createdOn,
+    updatedOn,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };

@@ -4,6 +4,8 @@ const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { toISTDateTimeLabel } = require('../../utils/dateTime');
 
 const SOCIETY_RULE_CATEGORIES = [
   { key: 'general', label: 'General' },
@@ -52,6 +54,9 @@ const validateSocietyRulePayload = (payload = {}, options = {}) => {
 
   const categoryKeyRaw = payload.categoryKey;
   const contentRaw = payload.contentHtml;
+  const photoRaw = payload.photo;
+  const photosRaw = payload.photos;
+  const attachmentsRaw = payload.attachments;
 
   const validated = {};
 
@@ -79,7 +84,72 @@ const validateSocietyRulePayload = (payload = {}, options = {}) => {
     }
   }
 
+  if (!isPartial || photoRaw !== undefined || photosRaw !== undefined) {
+    let sources = [];
+
+    if (Array.isArray(photosRaw)) {
+      sources = photosRaw;
+    } else if (Array.isArray(photoRaw)) {
+      sources = photoRaw;
+    } else if (photoRaw === null || photoRaw === undefined || photoRaw === '') {
+      sources = [];
+    } else if (photoRaw !== undefined) {
+      sources = [photoRaw];
+    }
+
+    const cleanedPhotos = sources
+      .map((entry) => (entry == null ? '' : entry.toString().trim()))
+      .filter((entry) => entry.length > 0)
+      .map((value) =>
+        ensureBase64ImageDataUrl({
+          value,
+          fieldLabel: 'Society rule photo',
+        })
+      );
+
+    validated.photos = cleanedPhotos;
+  }
+
+  if (!isPartial || attachmentsRaw !== undefined) {
+    if (attachmentsRaw == null) {
+      validated.attachments = [];
+    } else if (!Array.isArray(attachmentsRaw)) {
+      throw createHttpError('attachments must be an array of base64 strings', 400);
+    } else {
+      const cleaned = attachmentsRaw
+        .map((entry) => (entry == null ? '' : entry.toString().trim()))
+        .filter((entry) => entry.length > 0);
+      validated.attachments = cleaned;
+    }
+  }
+
   return validated;
+};
+
+const buildCreatedAndUpdatedOn = (doc) => {
+  if (!doc) {
+    return {
+      createdOn: '',
+      updatedOn: '',
+    };
+  }
+
+  const createdAt =
+    doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+  const updatedAt =
+    doc.updatedAt instanceof Date ? doc.updatedAt : doc.updatedAt ? new Date(doc.updatedAt) : null;
+
+  const createdOn = createdAt ? toISTDateTimeLabel(createdAt) : '';
+
+  let updatedOn = '';
+  if (createdAt && updatedAt && updatedAt.getTime() !== createdAt.getTime()) {
+    updatedOn = toISTDateTimeLabel(updatedAt);
+  }
+
+  return {
+    createdOn,
+    updatedOn,
+  };
 };
 
 const createSocietyRule = async (req, res, next) => {
@@ -107,18 +177,25 @@ const createSocietyRule = async (req, res, next) => {
       createdByUserId: authUser._id,
       categoryKey: validated.categoryKey,
       contentHtml: validated.contentHtml,
+      photos: validated.photos || [],
+      attachments: validated.attachments,
     });
 
     const category = findCategoryByKey(doc.categoryKey);
+    const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
     return sendSuccessResponse(res, 201, 'Society rule created successfully', {
       data: {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
-        createdByUserId: String(doc.createdByUserId),
+      
         categoryKey: doc.categoryKey,
         categoryLabel: category ? category.label : doc.categoryKey,
         contentHtml: doc.contentHtml,
+        photos: Array.isArray(doc.photos) ? doc.photos : [],
+        attachments: doc.attachments || [],
+        createdOn,
+        updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -159,13 +236,19 @@ const getSocietyRules = async (req, res, next) => {
 
     const data = items.map((doc) => {
       const category = findCategoryByKey(doc.categoryKey);
+      const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
+
       return {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
-        createdByUserId: String(doc.createdByUserId),
+       
         categoryKey: doc.categoryKey,
         categoryLabel: category ? category.label : doc.categoryKey,
         contentHtml: doc.contentHtml,
+        photos: Array.isArray(doc.photos) ? doc.photos : [],
+        attachments: doc.attachments || [],
+        createdOn,
+        updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       };
@@ -208,15 +291,20 @@ const getSocietyRuleById = async (req, res, next) => {
     }
 
     const category = findCategoryByKey(doc.categoryKey);
+    const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
     return sendSuccessResponse(res, 200, 'Society rule fetched successfully', {
       data: {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
-        createdByUserId: String(doc.createdByUserId),
+      
         categoryKey: doc.categoryKey,
         categoryLabel: category ? category.label : doc.categoryKey,
         contentHtml: doc.contentHtml,
+        photos: Array.isArray(doc.photos) ? doc.photos : [],
+        attachments: doc.attachments || [],
+        createdOn,
+        updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -256,32 +344,43 @@ const updateSocietyRuleById = async (req, res, next) => {
       return next(createHttpError('Society rule not found', 404));
     }
 
+    const rawBody = req.body || {};
+    const { categoryKey, categoryLabel, ...mutableBody } = rawBody;
+
     let validated;
     try {
-      validated = validateSocietyRulePayload(req.body || {}, { isPartial: true });
+      validated = validateSocietyRulePayload(mutableBody, { isPartial: true });
     } catch (e) {
       return next(e);
     }
 
-    if (validated.categoryKey !== undefined) {
-      doc.categoryKey = validated.categoryKey;
-    }
     if (validated.contentHtml !== undefined) {
       doc.contentHtml = validated.contentHtml;
+    }
+    if (validated.photos !== undefined) {
+      doc.photos = validated.photos;
+    }
+    if (validated.attachments !== undefined) {
+      doc.attachments = validated.attachments;
     }
 
     await doc.save();
 
     const category = findCategoryByKey(doc.categoryKey);
+    const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
     return sendSuccessResponse(res, 200, 'Society rule updated successfully', {
       data: {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
-        createdByUserId: String(doc.createdByUserId),
+     
         categoryKey: doc.categoryKey,
         categoryLabel: category ? category.label : doc.categoryKey,
         contentHtml: doc.contentHtml,
+        photos: Array.isArray(doc.photos) ? doc.photos : [],
+        attachments: doc.attachments || [],
+        createdOn,
+        updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -363,18 +462,29 @@ const getSocietyRuleCategories = async (req, res, next) => {
       categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
     }
 
-    const data = SOCIETY_RULE_CATEGORIES.map((category) => {
+    const notAdded = [];
+    const added = [];
+
+    SOCIETY_RULE_CATEGORIES.forEach((category) => {
       const count = categoryCounts.get(category.key) || 0;
-      return {
+      const item = {
         key: category.key,
         label: category.label,
         status: count > 0 ? 'added' : 'not_added',
         ruleCount: count,
       };
+      if (count > 0) {
+        added.push(item);
+      } else {
+        notAdded.push(item);
+      }
     });
 
     return sendSuccessResponse(res, 200, 'Society rule categories fetched successfully', {
-      data,
+      data: {
+        not_added: notAdded,
+        added,
+      },
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch society rule categories'));
@@ -385,9 +495,7 @@ module.exports = {
   SOCIETY_RULE_CATEGORIES,
   createSocietyRule,
   getSocietyRules,
-  getSocietyRuleById,
   updateSocietyRuleById,
   deleteSocietyRuleById,
   getSocietyRuleCategories,
 };
-

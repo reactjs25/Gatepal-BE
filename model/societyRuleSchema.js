@@ -13,6 +13,8 @@ const societyRuleSchema = new mongoose.Schema(
     },
     categoryKey: { type: String, required: true, index: true },
     contentHtml: { type: String, required: true },
+    photos: { type: [String], default: [] },
+    attachments: { type: [String], default: [] },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
