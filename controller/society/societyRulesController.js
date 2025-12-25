@@ -229,12 +229,24 @@ const getSocietyRules = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
+    const viewAsRaw = normalizeString(
+      (req.body && req.body.viewAs) ||
+        (req.params && req.params.viewAs) ||
+        (req.query && req.query.viewAs) ||
+        ''
+    );
+    const viewAs = viewAsRaw.toLowerCase();
+    const isMemberView = authUser.role === 'member' || viewAs === 'member';
+
     let societyId = null;
 
-    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+    if (
+      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      !isMemberView
+    ) {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
-    } else if (authUser.role === 'member') {
+    } else if (isMemberView) {
       const unitIdCandidate = normalizeString(
         (req.body && req.body.unitId) ||
         (req.params && (req.params.unitId || req.params.id)) ||
@@ -273,7 +285,7 @@ const getSocietyRules = async (req, res, next) => {
     const items = await SocietyRule.find(filter).sort({ createdAt: -1 }).lean();
 
     let lastSeenByCategoryTs = {};
-    if (authUser.role === 'member') {
+    if (isMemberView) {
       const raw = authUser.lastSocietyRulesSeenAtByCategory || {};
       if (raw && typeof raw === 'object') {
         Object.keys(raw).forEach((key) => {
@@ -308,7 +320,7 @@ const getSocietyRules = async (req, res, next) => {
       }
 
       let isRead = true;
-      if (authUser.role === 'member' && effectiveAt) {
+      if (isMemberView && effectiveAt) {
         const effectiveTs = effectiveAt.getTime();
         const key = doc.categoryKey;
         const lastSeenTs = lastSeenByCategoryTs[key] || 0;
@@ -329,11 +341,11 @@ const getSocietyRules = async (req, res, next) => {
         updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
-   
+        isRead,
       };
     });
 
-    if (authUser.role === 'member' && latestEffectiveAtByCategory.size > 0) {
+    if (isMemberView && latestEffectiveAtByCategory.size > 0) {
       const update = {};
       latestEffectiveAtByCategory.forEach((value, key) => {
         if (key) {
@@ -358,9 +370,21 @@ const getSocietyRuleById = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
+    const viewAsRaw = normalizeString(
+      (req.body && req.body.viewAs) ||
+        (req.params && req.params.viewAs) ||
+        (req.query && req.query.viewAs) ||
+        ''
+    );
+    const viewAs = viewAsRaw.toLowerCase();
+    const isMemberView = authUser.role === 'member' || viewAs === 'member';
+
     let societyId = null;
 
-    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+    if (
+      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      !isMemberView
+    ) {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
     } else if (authUser.role === 'member') {
@@ -404,7 +428,7 @@ const getSocietyRuleById = async (req, res, next) => {
       return next(createHttpError('Society rule not found', 404));
     }
 
-    if (authUser.role === 'member') {
+    if (isMemberView) {
       const createdAt =
         doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
       const updatedAt =
@@ -634,12 +658,24 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
+    const viewAsRaw = normalizeString(
+      (req.body && req.body.viewAs) ||
+        (req.params && req.params.viewAs) ||
+        (req.query && req.query.viewAs) ||
+        ''
+    );
+    const viewAs = viewAsRaw.toLowerCase();
+    const isMemberView = authUser.role === 'member' || viewAs === 'member';
+
     let societyId = null;
 
-    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+    if (
+      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      !isMemberView
+    ) {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
-    } else if (authUser.role === 'member') {
+    } else if (isMemberView) {
       const unitIdCandidate = normalizeString(
         (req.body && req.body.unitId) ||
         (req.params && (req.params.unitId || req.params.id)) ||
@@ -679,7 +715,7 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
       totalCategoryCounts.set(key, (totalCategoryCounts.get(key) || 0) + 1);
     }
 
-    if (authUser.role === 'member') {
+    if (isMemberView) {
       let lastSeenByCategoryTs = {};
       const raw = authUser.lastSocietyRulesSeenAtByCategory || {};
       if (raw && typeof raw === 'object') {
@@ -720,7 +756,7 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
       let ruleCount = totalCount;
       let isRead = true;
 
-      if (authUser.role === 'member') {
+      if (isMemberView) {
         ruleCount = unreadCategoryCounts.get(category.key) || 0;
         isRead = ruleCount === 0;
       }

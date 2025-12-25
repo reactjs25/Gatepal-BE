@@ -287,12 +287,24 @@ const getMeetings = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
+    const viewAsRaw = normalizeString(
+      (req.body && req.body.viewAs) ||
+        (req.params && req.params.viewAs) ||
+        (req.query && req.query.viewAs) ||
+        ''
+    );
+    const viewAs = viewAsRaw.toLowerCase();
+    const isMemberView = authUser.role === 'member' || viewAs === 'member';
+
     let societyId = null;
 
-    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+    if (
+      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      !isMemberView
+    ) {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
-    } else if (authUser.role === 'member') {
+    } else if (isMemberView) {
       const unitIdCandidate = normalizeString(
         (req.body && req.body.unitId) ||
           (req.params && (req.params.unitId || req.params.id)) ||
@@ -321,7 +333,7 @@ const getMeetings = async (req, res, next) => {
     const now = new Date();
 
     let lastMeetingsSeenAtTs = null;
-    if (authUser.role === 'member') {
+    if (isMemberView) {
       const lastSeen =
         authUser.lastMeetingsSeenAt instanceof Date
           ? authUser.lastMeetingsSeenAt
@@ -342,7 +354,7 @@ const getMeetings = async (req, res, next) => {
         doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
 
       let isRead = true;
-      if (authUser.role === 'member') {
+      if (isMemberView) {
         if (lastMeetingsSeenAtTs && createdAt) {
           isRead = createdAt.getTime() <= lastMeetingsSeenAtTs;
         } else {
@@ -374,12 +386,24 @@ const getMeetingById = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
+    const viewAsRaw = normalizeString(
+      (req.body && req.body.viewAs) ||
+        (req.params && req.params.viewAs) ||
+        (req.query && req.query.viewAs) ||
+        ''
+    );
+    const viewAs = viewAsRaw.toLowerCase();
+    const isMemberView = authUser.role === 'member' || viewAs === 'member';
+
     let societyId = null;
 
-    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+    if (
+      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      !isMemberView
+    ) {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
-    } else if (authUser.role === 'member') {
+    } else if (isMemberView) {
       const unitIdCandidate = normalizeString(
         (req.body && req.body.unitId) ||
           (req.params && (req.params.unitId || req.params.id)) ||
@@ -422,7 +446,7 @@ const getMeetingById = async (req, res, next) => {
       return next(createHttpError('Meeting not found', 404));
     }
 
-    if (authUser.role === 'member') {
+    if (isMemberView) {
       const createdAt =
         doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
 
