@@ -61,7 +61,13 @@ const assertUnitResidentAccess = async ({ unitId, authUser }) => {
     wingNameLower: unitDoc.wingNameLower,
     unitNumberLower: unitDoc.unitNumberLower,
     memberId: authUser._id,
-    occupancyStatus: 'currently_residing',
+    $or: [
+      { occupancyStatus: 'currently_residing' },
+      {
+        occupancyStatus: 'unit_rented',
+        occupantType: { $in: ['tenant', 'tenant_family_member'] },
+      },
+    ],
   });
 
   if (!isResident) {
