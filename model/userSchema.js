@@ -201,6 +201,14 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    lastSocietyRulesSeenAt: {
+      type: Date,
+      default: null,
+    },
+    lastSocietyRulesSeenAtByCategory: {
+      type: mongoose.Schema.Types.Mixed,
+      default: () => ({}),
+    },
   },
   { timestamps: true }
 );

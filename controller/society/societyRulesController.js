@@ -1,11 +1,13 @@
 const SocietyRule = require('../../model/societyRuleSchema');
 const Society = require('../../model/societySchema');
+const User = require('../../model/userSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
+const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 
 const SOCIETY_RULE_CATEGORIES = [
   { key: 'general', label: 'General' },
@@ -172,6 +174,21 @@ const createSocietyRule = async (req, res, next) => {
       return next(e);
     }
 
+    const existingRule = await SocietyRule.findOne({
+      societyId: society._id,
+      categoryKey: validated.categoryKey,
+      deletedAt: null,
+    }).lean();
+
+    if (existingRule) {
+      return next(
+        createHttpError(
+          'A rule for this category already exists. Please edit the existing rule instead.',
+          400
+        )
+      );
+    }
+
     const doc = await SocietyRule.create({
       societyId: society._id,
       createdByUserId: authUser._id,
@@ -188,7 +205,7 @@ const createSocietyRule = async (req, res, next) => {
       data: {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
-      
+
         categoryKey: doc.categoryKey,
         categoryLabel: category ? category.label : doc.categoryKey,
         contentHtml: doc.contentHtml,
@@ -212,17 +229,38 @@ const getSocietyRules = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+    let societyId = null;
+
+    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+      const society = await resolveAdminSociety(authUser);
+      societyId = society._id;
+    } else if (authUser.role === 'member') {
+      const unitIdCandidate = normalizeString(
+        (req.body && req.body.unitId) ||
+        (req.params && (req.params.unitId || req.params.id)) ||
+        (req.query && (req.query.unitId || req.query.id)) ||
+        ''
+      );
+
+      if (!unitIdCandidate) {
+        return next(createHttpError('unitId is required to view society rules', 400));
+      }
+
+      let unitDoc;
+      try {
+        unitDoc = await assertUnitResidentAccess({ unitId: unitIdCandidate, authUser });
+      } catch (e) {
+        return next(e);
+      }
+
+      societyId = unitDoc.societyId;
+    } else {
+      return next(createHttpError('Only members or society admins can perform this action', 403));
     }
 
-    const society = await resolveAdminSociety(authUser);
-
     const categoryKeyRaw =
-      (req.query && req.query.categoryKey) ||
-      ((req.body || {}).categoryKey) ||
-      '';
-    let filter = { societyId: society._id, deletedAt: null };
+      (req.query && req.query.categoryKey) || ((req.body || {}).categoryKey) || '';
+    let filter = { societyId, deletedAt: null };
 
     if (categoryKeyRaw !== undefined && categoryKeyRaw !== null && categoryKeyRaw !== '') {
       const categoryKey = normalizeString(categoryKeyRaw || '').toLowerCase();
@@ -234,14 +272,54 @@ const getSocietyRules = async (req, res, next) => {
 
     const items = await SocietyRule.find(filter).sort({ createdAt: -1 }).lean();
 
+    let lastSeenByCategoryTs = {};
+    if (authUser.role === 'member') {
+      const raw = authUser.lastSocietyRulesSeenAtByCategory || {};
+      if (raw && typeof raw === 'object') {
+        Object.keys(raw).forEach((key) => {
+          const value = raw[key];
+          const date =
+            value instanceof Date ? value : value ? new Date(value) : null;
+          if (date) {
+            lastSeenByCategoryTs[key] = date.getTime();
+          }
+        });
+      }
+    }
+
+    const latestEffectiveAtByCategory = new Map();
+
     const data = items.map((doc) => {
       const category = findCategoryByKey(doc.categoryKey);
       const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
+      const createdAt =
+        doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+      const updatedAt =
+        doc.updatedAt instanceof Date ? doc.updatedAt : doc.updatedAt ? new Date(doc.updatedAt) : null;
+      const effectiveAt = updatedAt || createdAt;
+
+      if (effectiveAt) {
+        const key = doc.categoryKey;
+        const existing = latestEffectiveAtByCategory.get(key);
+        if (!existing || effectiveAt.getTime() > existing.getTime()) {
+          latestEffectiveAtByCategory.set(key, effectiveAt);
+        }
+      }
+
+      let isRead = true;
+      if (authUser.role === 'member' && effectiveAt) {
+        const effectiveTs = effectiveAt.getTime();
+        const key = doc.categoryKey;
+        const lastSeenTs = lastSeenByCategoryTs[key] || 0;
+        if (!lastSeenTs || effectiveTs > lastSeenTs) {
+          isRead = false;
+        }
+      }
+
       return {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
-       
         categoryKey: doc.categoryKey,
         categoryLabel: category ? category.label : doc.categoryKey,
         contentHtml: doc.contentHtml,
@@ -251,8 +329,21 @@ const getSocietyRules = async (req, res, next) => {
         updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
+   
       };
     });
+
+    if (authUser.role === 'member' && latestEffectiveAtByCategory.size > 0) {
+      const update = {};
+      latestEffectiveAtByCategory.forEach((value, key) => {
+        if (key) {
+          update[`lastSocietyRulesSeenAtByCategory.${key}`] = value;
+        }
+      });
+      if (Object.keys(update).length > 0) {
+        await User.findByIdAndUpdate(authUser._id, update).exec();
+      }
+    }
 
     return sendSuccessResponse(res, 200, 'Society rules fetched successfully', { data });
   } catch (error) {
@@ -267,11 +358,34 @@ const getSocietyRuleById = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
-    }
+    let societyId = null;
 
-    const society = await resolveAdminSociety(authUser);
+    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+      const society = await resolveAdminSociety(authUser);
+      societyId = society._id;
+    } else if (authUser.role === 'member') {
+      const unitIdCandidate = normalizeString(
+        (req.body && req.body.unitId) ||
+        (req.params && (req.params.unitId || req.params.id)) ||
+        (req.query && (req.query.unitId || req.query.id)) ||
+        ''
+      );
+
+      if (!unitIdCandidate) {
+        return next(createHttpError('unitId is required to view society rules', 400));
+      }
+
+      let unitDoc;
+      try {
+        unitDoc = await assertUnitResidentAccess({ unitId: unitIdCandidate, authUser });
+      } catch (e) {
+        return next(e);
+      }
+
+      societyId = unitDoc.societyId;
+    } else {
+      return next(createHttpError('Only members or society admins can perform this action', 403));
+    }
 
     const ruleId = normalizeString(
       ((req.body || {}).ruleId) || ((req.params && req.params.ruleId) || '')
@@ -282,12 +396,35 @@ const getSocietyRuleById = async (req, res, next) => {
 
     const doc = await SocietyRule.findOne({
       ruleId,
-      societyId: society._id,
+      societyId,
       deletedAt: null,
     }).lean();
 
     if (!doc) {
       return next(createHttpError('Society rule not found', 404));
+    }
+
+    if (authUser.role === 'member') {
+      const createdAt =
+        doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+      const updatedAt =
+        doc.updatedAt instanceof Date ? doc.updatedAt : doc.updatedAt ? new Date(doc.updatedAt) : null;
+      const effectiveAt = updatedAt || createdAt;
+
+      if (effectiveAt) {
+        const rawByCategory = authUser.lastSocietyRulesSeenAtByCategory || {};
+        const existing = rawByCategory && rawByCategory[doc.categoryKey];
+        const lastSeen =
+          existing instanceof Date ? existing : existing ? new Date(existing) : null;
+        const lastSeenTs = lastSeen ? lastSeen.getTime() : 0;
+        const effectiveTs = effectiveAt.getTime();
+
+        if (effectiveTs > lastSeenTs) {
+          await User.findByIdAndUpdate(authUser._id, {
+            [`lastSocietyRulesSeenAtByCategory.${doc.categoryKey}`]: effectiveAt,
+          }).exec();
+        }
+      }
     }
 
     const category = findCategoryByKey(doc.categoryKey);
@@ -297,7 +434,6 @@ const getSocietyRuleById = async (req, res, next) => {
       data: {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
-      
         categoryKey: doc.categoryKey,
         categoryLabel: category ? category.label : doc.categoryKey,
         contentHtml: doc.contentHtml,
@@ -373,7 +509,7 @@ const updateSocietyRuleById = async (req, res, next) => {
       data: {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
-     
+
         categoryKey: doc.categoryKey,
         categoryLabel: category ? category.label : doc.categoryKey,
         contentHtml: doc.contentHtml,
@@ -491,6 +627,122 @@ const getSocietyRuleCategories = async (req, res, next) => {
   }
 };
 
+const getSocietyRuleCategoriesForMember = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    let societyId = null;
+
+    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+      const society = await resolveAdminSociety(authUser);
+      societyId = society._id;
+    } else if (authUser.role === 'member') {
+      const unitIdCandidate = normalizeString(
+        (req.body && req.body.unitId) ||
+        (req.params && (req.params.unitId || req.params.id)) ||
+        (req.query && (req.query.unitId || req.query.id)) ||
+        ''
+      );
+
+      if (!unitIdCandidate) {
+        return next(createHttpError('unitId is required to view society rules', 400));
+      }
+
+      let unitDoc;
+      try {
+        unitDoc = await assertUnitResidentAccess({ unitId: unitIdCandidate, authUser });
+      } catch (e) {
+        return next(e);
+      }
+
+      societyId = unitDoc.societyId;
+    } else {
+      return next(createHttpError('Only members or society admins can perform this action', 403));
+    }
+
+    const rules = await SocietyRule.find({
+      societyId,
+      deletedAt: null,
+    })
+      .select('categoryKey createdAt updatedAt')
+      .lean();
+
+    const totalCategoryCounts = new Map();
+    const unreadCategoryCounts = new Map();
+
+    for (const rule of rules) {
+      const key = rule.categoryKey;
+      if (!key) continue;
+      totalCategoryCounts.set(key, (totalCategoryCounts.get(key) || 0) + 1);
+    }
+
+    if (authUser.role === 'member') {
+      let lastSeenByCategoryTs = {};
+      const raw = authUser.lastSocietyRulesSeenAtByCategory || {};
+      if (raw && typeof raw === 'object') {
+        Object.keys(raw).forEach((key) => {
+          const value = raw[key];
+          const date =
+            value instanceof Date ? value : value ? new Date(value) : null;
+          if (date) {
+            lastSeenByCategoryTs[key] = date.getTime();
+          }
+        });
+      }
+
+      for (const rule of rules) {
+        const key = rule.categoryKey;
+        if (!key) continue;
+
+        const createdAt =
+          rule.createdAt instanceof Date ? rule.createdAt : rule.createdAt ? new Date(rule.createdAt) : null;
+        const updatedAt =
+          rule.updatedAt instanceof Date ? rule.updatedAt : rule.updatedAt ? new Date(rule.updatedAt) : null;
+        const effectiveAt = updatedAt || createdAt;
+        if (!effectiveAt) continue;
+
+        const effectiveTs = effectiveAt.getTime();
+        const lastSeenTs = lastSeenByCategoryTs[key] || 0;
+        const isUnread = !lastSeenTs || effectiveTs > lastSeenTs;
+        if (isUnread) {
+          unreadCategoryCounts.set(key, (unreadCategoryCounts.get(key) || 0) + 1);
+        }
+      }
+    }
+
+    const categories = [];
+
+    SOCIETY_RULE_CATEGORIES.forEach((category) => {
+      const totalCount = totalCategoryCounts.get(category.key) || 0;
+      let ruleCount = totalCount;
+      let isRead = true;
+
+      if (authUser.role === 'member') {
+        ruleCount = unreadCategoryCounts.get(category.key) || 0;
+        isRead = ruleCount === 0;
+      }
+
+      categories.push({
+        key: category.key,
+        label: category.label,
+        ruleCount,
+        isRead,
+      });
+    });
+
+    return sendSuccessResponse(res, 200, 'Society rule categories fetched successfully', {
+      data: {
+        categories,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch society rule categories'));
+  }
+};
+
 module.exports = {
   SOCIETY_RULE_CATEGORIES,
   createSocietyRule,
@@ -498,4 +750,5 @@ module.exports = {
   updateSocietyRuleById,
   deleteSocietyRuleById,
   getSocietyRuleCategories,
+  getSocietyRuleCategoriesForMember,
 };
