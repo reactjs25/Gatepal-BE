@@ -3,9 +3,14 @@ const MemberUnit = require('../../model/memberUnitSchema');
 const FamilyMember = require('../../model/familyMemberSchema');
 const Vehicle = require('../../model/vehicleSchema');
 const Pet = require('../../model/petSchema');
+const Announcement = require('../../model/announcementSchema');
+const Meeting = require('../../model/meetingSchema');
+const SocietyRule = require('../../model/societyRuleSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const { normalizeString } = require('../../utils/strings');
+const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 
 const resolveAdminSociety = async (authUser) => {
     if (!authUser) throw createHttpError('Unauthorized', 401);
@@ -302,7 +307,242 @@ const getSocietyInfo = async (req, res, next) => {
     }
 };
 
+const getSocietyActivitySummary = async (req, res, next) => {
+    try {
+        const authUser = req.appUser;
+        if (!authUser) {
+            return next(createHttpError('Unauthorized', 401));
+        }
+
+        let societyId = null;
+        if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+            const society = await resolveAdminSociety(authUser);
+            societyId = society._id;
+        } else if (authUser.role === 'member') {
+            const unitIdCandidate = normalizeString(
+                (req.body && req.body.unitId) ||
+                    (req.params && (req.params.unitId || req.params.id)) ||
+                    (req.query && (req.query.unitId || req.query.id)) ||
+                    ''
+            );
+
+            if (!unitIdCandidate) {
+                return next(createHttpError('unitId is required to view society activity summary', 400));
+            }
+
+            let unitDoc;
+            try {
+                unitDoc = await assertUnitResidentAccess({ unitId: unitIdCandidate, authUser });
+            } catch (e) {
+                return next(e);
+            }
+
+            societyId = unitDoc.societyId;
+        } else {
+            return next(createHttpError('Only members or society admins can perform this action', 403));
+        }
+
+        const society = await Society.findById(societyId).lean();
+        if (!society) {
+            return next(createHttpError('Society not found', 404));
+        }
+
+        const [announcementDocs, meetingDocs, ruleDocs] = await Promise.all([
+            Announcement.find({ societyId, deletedAt: null }).sort({ createdAt: -1 }).lean(),
+            Meeting.find({ societyId, deletedAt: null }).sort({ createdAt: -1 }).lean(),
+            SocietyRule.find({ societyId, deletedAt: null }).lean(),
+        ]);
+
+        let lastAnnouncementsSeenAtTs = null;
+        let lastMeetingsSeenAtTs = null;
+        let lastRulesSeenByCategoryTs = {};
+
+        if (authUser.role === 'member') {
+            if (authUser.lastAnnouncementsSeenAt) {
+                const lastAnnouncementsSeenAt =
+                    authUser.lastAnnouncementsSeenAt instanceof Date
+                        ? authUser.lastAnnouncementsSeenAt
+                        : new Date(authUser.lastAnnouncementsSeenAt);
+                if (!Number.isNaN(lastAnnouncementsSeenAt.getTime())) {
+                    lastAnnouncementsSeenAtTs = lastAnnouncementsSeenAt.getTime();
+                }
+            }
+
+            if (authUser.lastMeetingsSeenAt) {
+                const lastMeetingsSeenAt =
+                    authUser.lastMeetingsSeenAt instanceof Date
+                        ? authUser.lastMeetingsSeenAt
+                        : new Date(authUser.lastMeetingsSeenAt);
+                if (!Number.isNaN(lastMeetingsSeenAt.getTime())) {
+                    lastMeetingsSeenAtTs = lastMeetingsSeenAt.getTime();
+                }
+            }
+
+            const rawRulesSeen = authUser.lastSocietyRulesSeenAtByCategory || {};
+            if (rawRulesSeen && typeof rawRulesSeen === 'object') {
+                Object.keys(rawRulesSeen).forEach((key) => {
+                    const value = rawRulesSeen[key];
+                    const date = value instanceof Date ? value : value ? new Date(value) : null;
+                    if (date && !Number.isNaN(date.getTime())) {
+                        lastRulesSeenByCategoryTs[key] = date.getTime();
+                    }
+                });
+            }
+        }
+
+        let unreadAnnouncementsCount = 0;
+        const announcementItems = [];
+        announcementDocs.forEach((doc) => {
+            const createdAt =
+                doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+            let isRead = true;
+            if (authUser.role === 'member') {
+                if (lastAnnouncementsSeenAtTs && createdAt) {
+                    isRead = createdAt.getTime() <= lastAnnouncementsSeenAtTs;
+                } else {
+                    isRead = true;
+                }
+            }
+            if (!isRead) {
+                unreadAnnouncementsCount += 1;
+            }
+            announcementItems.push({
+                announcementId: doc.announcementId,
+                societyId: String(doc.societyId),
+                title: doc.title,
+                contentHtml: doc.contentHtml,
+                photos: Array.isArray(doc.photos) ? doc.photos : [],
+                attachments: doc.attachments || [],
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+                isRead,
+            });
+        });
+
+        let unreadMeetingsCount = 0;
+        const upcomingMeetings = [];
+        const pastMeetings = [];
+        const now = new Date();
+
+        meetingDocs.forEach((doc) => {
+            const meetingDateStr = doc.meetingDate ? doc.meetingDate.toString().trim() : '';
+            const meetingTimeStr = doc.meetingStartingFrom ? doc.meetingStartingFrom.toString().trim() : '';
+            const combinedDateTime = meetingDateStr && meetingTimeStr ? new Date(`${meetingDateStr} ${meetingTimeStr}`) : null;
+            const isUpcoming = combinedDateTime && combinedDateTime > now;
+
+            const createdAt =
+                doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+
+            let isRead = true;
+            if (authUser.role === 'member') {
+                if (lastMeetingsSeenAtTs && createdAt) {
+                    isRead = createdAt.getTime() <= lastMeetingsSeenAtTs;
+                } else {
+                    isRead = true;
+                }
+            }
+            if (!isRead) {
+                unreadMeetingsCount += 1;
+            }
+
+            const payload = {
+                meetingId: doc.meetingId,
+                societyId: String(doc.societyId),
+                meetingDate: doc.meetingDate,
+                meetingStartingFrom: doc.meetingStartingFrom,
+                venue: doc.venue,
+                agendaHtml: doc.agendaHtml,
+                agendaPhotos: Array.isArray(doc.agendaPhotos) ? doc.agendaPhotos : [],
+                agendaAttachments: doc.agendaAttachments || [],
+                discussionHtml: doc.discussionHtml || '',
+                discussionPhotos: Array.isArray(doc.discussionPhotos) ? doc.discussionPhotos : [],
+                discussionAttachments: doc.discussionAttachments || [],
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+                isRead,
+              };
+
+            if (isUpcoming) {
+                upcomingMeetings.push(payload);
+            } else {
+                pastMeetings.push(payload);
+            }
+        });
+
+        let unreadSocietyRulesCount = 0;
+        const rulesWithMeta = [];
+
+        ruleDocs.forEach((doc) => {
+            const createdAt =
+                doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+            const updatedAt =
+                doc.updatedAt instanceof Date ? doc.updatedAt : doc.updatedAt ? new Date(doc.updatedAt) : null;
+            const effectiveAt = updatedAt || createdAt;
+
+            let isRead = true;
+            if (authUser.role === 'member' && effectiveAt) {
+                const key = doc.categoryKey;
+                const lastSeenTs = lastRulesSeenByCategoryTs[key] || 0;
+                const effectiveTs = effectiveAt.getTime();
+                if (!lastSeenTs || effectiveTs > lastSeenTs) {
+                    isRead = false;
+                }
+            }
+            if (!isRead) {
+                unreadSocietyRulesCount += 1;
+            }
+
+            rulesWithMeta.push({
+                ruleId: doc.ruleId,
+                societyId: String(doc.societyId),
+                categoryKey: doc.categoryKey,
+                contentHtml: doc.contentHtml,
+                photos: Array.isArray(doc.photos) ? doc.photos : [],
+                attachments: doc.attachments || [],
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+                effectiveAt,
+                isRead,
+            });
+        });
+
+        rulesWithMeta.sort((a, b) => {
+            const aTime = a.effectiveAt instanceof Date ? a.effectiveAt.getTime() : 0;
+            const bTime = b.effectiveAt instanceof Date ? b.effectiveAt.getTime() : 0;
+            return bTime - aTime;
+        });
+
+        const recentAnnouncements = announcementItems.slice(0, 10);
+        const recentUpcomingMeetings = upcomingMeetings.slice(0, 10);
+        const recentPastMeetings = pastMeetings.slice(0, 10);
+        const recentSocietyRules = rulesWithMeta.slice(0, 10).map((item) => {
+            const { effectiveAt, ...rest } = item;
+            return rest;
+        });
+
+        const recentMeetings = [...recentUpcomingMeetings, ...recentPastMeetings];
+
+        const data = {
+            societyId: String(societyId),
+            societyName: society.societyName,
+            unreadCounts: {
+                announcements: unreadAnnouncementsCount,
+                meetings: unreadMeetingsCount,
+                societyRules: unreadSocietyRulesCount,
+            },
+            announcements: recentAnnouncements,
+            meetings: recentMeetings,
+            societyRules: recentSocietyRules,
+        };
+
+        return sendSuccessResponse(res, 200, 'Society activity summary fetched successfully', { data });
+    } catch (error) {
+        return next(setErrorDefaults(error, 'Failed to fetch society activity summary'));
+    }
+};
+
 module.exports = {
     getSocietyInfo,
+    getSocietyActivitySummary,
 };
 
