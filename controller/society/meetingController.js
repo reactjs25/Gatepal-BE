@@ -1,5 +1,6 @@
 const Meeting = require('../../model/meetingSchema');
 const Society = require('../../model/societySchema');
+const User = require('../../model/userSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
@@ -319,13 +320,40 @@ const getMeetings = async (req, res, next) => {
 
     const now = new Date();
 
+    let lastMeetingsSeenAtTs = null;
+    if (authUser.role === 'member') {
+      const lastSeen =
+        authUser.lastMeetingsSeenAt instanceof Date
+          ? authUser.lastMeetingsSeenAt
+          : authUser.lastMeetingsSeenAt
+          ? new Date(authUser.lastMeetingsSeenAt)
+          : null;
+      lastMeetingsSeenAtTs = lastSeen ? lastSeen.getTime() : null;
+    }
+
     const upcomingMeetings = [];
     const pastMeetings = [];
 
     items.forEach((doc) => {
       const meetingDateTime = parseMeetingDateTime(doc.meetingDate, doc.meetingStartingFrom);
       const target = meetingDateTime && meetingDateTime > now ? upcomingMeetings : pastMeetings;
-      target.push(buildMeetingResponse(doc));
+
+      const createdAt =
+        doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+
+      let isRead = true;
+      if (authUser.role === 'member') {
+        if (lastMeetingsSeenAtTs && createdAt) {
+          isRead = createdAt.getTime() <= lastMeetingsSeenAtTs;
+        } else {
+          isRead = true;
+        }
+      }
+
+      const payload = buildMeetingResponse(doc);
+      payload.isRead = isRead;
+
+      target.push(payload);
     });
 
     return sendSuccessResponse(res, 200, 'Meetings fetched successfully', {
@@ -392,6 +420,23 @@ const getMeetingById = async (req, res, next) => {
 
     if (!doc) {
       return next(createHttpError('Meeting not found', 404));
+    }
+
+    if (authUser.role === 'member') {
+      const createdAt =
+        doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+
+      if (createdAt) {
+        const lastSeenRaw = authUser.lastMeetingsSeenAt;
+        const lastSeen =
+          lastSeenRaw instanceof Date ? lastSeenRaw : lastSeenRaw ? new Date(lastSeenRaw) : null;
+        const lastSeenTs = lastSeen ? lastSeen.getTime() : 0;
+        const createdAtTs = createdAt.getTime();
+
+        if (createdAtTs > lastSeenTs) {
+          await User.findByIdAndUpdate(authUser._id, { lastMeetingsSeenAt: createdAt }).exec();
+        }
+      }
     }
 
     return sendSuccessResponse(res, 200, 'Meeting fetched successfully', {
