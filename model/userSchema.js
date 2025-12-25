@@ -193,6 +193,10 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    lastAnnouncementsSeenAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
@@ -245,4 +249,3 @@ userSchema.methods.verifyOtp = function verifyOtp(otp) {
 };
 
 module.exports = mongoose.model('User', userSchema);
-

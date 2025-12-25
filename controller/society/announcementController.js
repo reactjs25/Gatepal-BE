@@ -1,5 +1,7 @@
 const Announcement = require('../../model/announcementSchema');
 const Society = require('../../model/societySchema');
+const User = require('../../model/userSchema');
+const MemberUnit = require('../../model/memberUnitSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
@@ -242,6 +244,17 @@ const getAnnouncements = async (req, res, next) => {
     const currentYear = now.getFullYear();
     const currentMonthIndex = now.getMonth();
 
+    let lastAnnouncementsSeenAtTs = null;
+    if (authUser.role === 'member') {
+      const lastSeen =
+        authUser.lastAnnouncementsSeenAt instanceof Date
+          ? authUser.lastAnnouncementsSeenAt
+          : authUser.lastAnnouncementsSeenAt
+          ? new Date(authUser.lastAnnouncementsSeenAt)
+          : null;
+      lastAnnouncementsSeenAtTs = lastSeen ? lastSeen.getTime() : null;
+    }
+
     const groupsByKey = {};
 
     items.forEach((doc) => {
@@ -261,10 +274,21 @@ const getAnnouncements = async (req, res, next) => {
           sectionLabel,
           monthLabel: monthLabel || null,
           announcements: [],
+          year,
+          monthIndex,
         };
       }
 
       const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
+
+      let isRead = true;
+      if (authUser.role === 'member') {
+        if (lastAnnouncementsSeenAtTs) {
+          isRead = createdAt.getTime() <= lastAnnouncementsSeenAtTs;
+        } else {
+          isRead = true;
+        }
+      }
 
       groupsByKey[groupKey].announcements.push({
         announcementId: doc.announcementId,
@@ -277,6 +301,7 @@ const getAnnouncements = async (req, res, next) => {
         updatedOn,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
+        isRead,
       });
     });
 
@@ -284,6 +309,10 @@ const getAnnouncements = async (req, res, next) => {
       if (a.year !== b.year) return b.year - a.year;
       return b.monthIndex - a.monthIndex;
     });
+
+    if (authUser.role === 'member') {
+      await User.findByIdAndUpdate(authUser._id, { lastAnnouncementsSeenAt: now }).exec();
+    }
 
     return sendSuccessResponse(res, 200, 'Announcements fetched successfully', { data });
   } catch (error) {
@@ -298,28 +327,64 @@ const getAnnouncementById = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
-    }
-
-    const society = await resolveAdminSociety(authUser);
-
     const announcementId = normalizeString(
       ((req.body || {}).announcementId) ||
-      ((req.params && req.params.announcementId) || '')
+      ((req.params && req.params.announcementId) || '') ||
+      ((req.query && req.query.announcementId) || '')
     );
     if (!announcementId) {
       return next(createHttpError('announcementId path parameter is required', 400));
     }
 
-    const doc = await Announcement.findOne({
-      announcementId,
-      societyId: society._id,
-      deletedAt: null,
-    }).lean();
+    let doc = null;
 
-    if (!doc) {
-      return next(createHttpError('Announcement not found', 404));
+    if (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') {
+      const society = await resolveAdminSociety(authUser);
+
+      doc = await Announcement.findOne({
+        announcementId,
+        societyId: society._id,
+        deletedAt: null,
+      }).lean();
+
+      if (!doc) {
+        return next(createHttpError('Announcement not found', 404));
+      }
+    } else if (authUser.role === 'member') {
+      doc = await Announcement.findOne({
+        announcementId,
+        deletedAt: null,
+      }).lean();
+
+      if (!doc) {
+        return next(createHttpError('Announcement not found', 404));
+      }
+
+      const hasAccess = await MemberUnit.exists({
+        societyId: doc.societyId,
+        memberId: authUser._id,
+      });
+
+      if (!hasAccess) {
+        return next(createHttpError('Forbidden: you do not have access to this announcement', 403));
+      }
+
+      const createdAt =
+        doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+
+      if (createdAt) {
+        const lastSeenRaw = authUser.lastAnnouncementsSeenAt;
+        const lastSeen =
+          lastSeenRaw instanceof Date ? lastSeenRaw : lastSeenRaw ? new Date(lastSeenRaw) : null;
+        const lastSeenTs = lastSeen ? lastSeen.getTime() : 0;
+        const createdAtTs = createdAt.getTime();
+
+        if (createdAtTs > lastSeenTs) {
+          await User.findByIdAndUpdate(authUser._id, { lastAnnouncementsSeenAt: createdAt }).exec();
+        }
+      }
+    } else {
+      return next(createHttpError('Only members or society admins can perform this action', 403));
     }
 
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
