@@ -491,7 +491,7 @@ const getMaintenanceSummaryByMonth = async (req, res, next) => {
         totalPendingCount: `${totalPending} Pending`,
         pendingCount: {
           ownerPendingCount: `${owner.pending} Pending`,
-          tenantPendingCount: tenant.pending,
+          tenantPendingCount: `${tenant.pending} Pending`,
           vacantCount: `${vacantCount} Vacant`,
         },
       },
@@ -612,11 +612,28 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
       );
       if (owner) ownerIds.push(String(owner.memberId));
     }
-    const userIds = Array.from(new Set([...uploaderIds, ...ownerIds]));
-    const users = userIds.length > 0 ? await User.find({ _id: { $in: userIds } }, { fullName: 1, phoneNumber: 1 }).lean() : [];
+    const verifierIds = Array.from(
+      new Set(
+        items
+          .map((m) => (m.verifiedByUserId ? String(m.verifiedByUserId) : null))
+          .filter((id) => id)
+      )
+    );
+    const rejectorIds = Array.from(
+      new Set(
+        items
+          .map((m) => (m.rejectedByUserId ? String(m.rejectedByUserId) : null))
+          .filter((id) => id)
+      )
+    );
+    const userIds = Array.from(new Set([...uploaderIds, ...ownerIds, ...verifierIds, ...rejectorIds]));
+    const users =
+      userIds.length > 0
+        ? await User.find({ _id: { $in: userIds } }, { fullName: 1, phoneNumber: 1, role: 1 }).lean()
+        : [];
     const userMap = users.reduce((acc, u) => { acc[String(u._id)] = u; return acc; }, {});
 
-    const dataUploaded = items.map((doc) => {
+    const dataUploaded = await Promise.all(items.map(async (doc) => {
       const p = parseUnit(doc.unitId);
       const key = `${p.wingLower}:${p.unitLower}`;
       const group = unitGroups[key] || [];
@@ -652,6 +669,35 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
         };
       }
 
+      const verifier = doc.verifiedByUserId ? userMap[String(doc.verifiedByUserId)] || {} : {};
+      const rejector = doc.rejectedByUserId ? userMap[String(doc.rejectedByUserId)] || {} : {};
+
+      let receipt = null;
+      let receiptDate = null;
+      const statusLower = String(doc.status || '').toLowerCase();
+      if (society && statusLower === 'verified' && doc.receiptNumber) {
+        try {
+          const unitLabel = primaryUnit
+            ? primaryUnit.wingName
+              ? `${primaryUnit.wingName}-${primaryUnit.unitNumber}`
+              : primaryUnit.unitNumber
+            : unitNumber;
+          const uploaderUser = userMap[String(doc.memberId)] || {};
+          const buffer = await buildMaintenanceReceiptPdf({
+            society,
+            maintenance: doc,
+            unitLabel,
+            ownerName: ownerUser.fullName || '',
+            paidByName: uploaderUser.fullName || '',
+          });
+          receipt = `data:application/pdf;base64,${buffer.toString('base64')}`;
+          receiptDate = doc.verifiedAt || null;
+        } catch (e) {
+          receipt = null;
+          receiptDate = doc.verifiedAt || null;
+        }
+      }
+
       return {
         maintenanceId: doc.maintenanceId,
         unitId: primaryUnit ? String(primaryUnit._id) : null,
@@ -665,11 +711,18 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
         proofImageUrl: doc.proofImageUrl,
         uploadedOn: toISTDateTimeLabel(doc.createdAt),
         uploadedBy: (userMap[String(doc.memberId)] || {}).fullName || null,
+        verifiedBy: verifier.role || null,
+        verifiedOn: doc.verifiedAt ? toISTDateTimeLabel(doc.verifiedAt) : null,
         rejectionReason: doc.rejectionReason || null,
         rejectionDescription: doc.rejectionDescription || null,
+        rejectedBy: rejector.role || null,
+        rejectedOn: doc.rejectedAt ? toISTDateTimeLabel(doc.rejectedAt) : null,
+        receiptNumber: doc.receiptNumber != null ? String(doc.receiptNumber) : null,
+        receiptDate,
+        receipt,
         rejectedAt: doc.rejectedAt || null,
       };
-    });
+    }));
 
     let data = dataUploaded;
     if (includePendingMissing) {
