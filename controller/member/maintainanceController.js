@@ -141,9 +141,25 @@ const uploadMaintainanceProof = async (req, res, next) => {
             society = null;
         }
 
-        const exists = await Maintenance.exists({ unitId: canonicalUnitId, year: validated.year, month: validated.month, deletedAt: null });
-        if (exists) {
-            return next(createHttpError('A maintenance proof for the specified month already exists for the unit', 409));
+        const existing = await Maintenance.findOne({
+            unitId: canonicalUnitId,
+            year: validated.year,
+            month: validated.month,
+            deletedAt: null,
+        });
+        if (existing) {
+            const statusLower = String(existing.status || '').toLowerCase();
+            if (statusLower === 'rejected') {
+                existing.deletedAt = new Date();
+                await existing.save();
+            } else {
+                return next(
+                    createHttpError(
+                        'A maintenance proof for the specified month already exists for the unit',
+                        409
+                    )
+                );
+            }
         }
 
         const doc = await Maintenance.create({
