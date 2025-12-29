@@ -36,7 +36,7 @@ router.use('/maintainance', maintainanceRoutes);
 router.use('/dailyHelp/admin', dailyHelpAdminRoutes);
 router.use('/dailyHelp', dailyHelpRoutes);
 router.use('/announcements', announcementRoutes);
-router.use('/society-rules', societyRulesRoutes);
+router.use('/societyRules', societyRulesRoutes);
 router.use('/meetings', meetingRoutes);
 router.use('/societyInfo', societyInfoRoutes);
 

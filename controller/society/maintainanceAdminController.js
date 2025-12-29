@@ -606,11 +606,17 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
 
     const uploaderIds = Array.from(new Set(items.map((m) => String(m.memberId))));
     const ownerIds = [];
+    const tenantResidentIds = [];
     for (const key of Object.keys(unitGroups)) {
-      const owner = unitGroups[key].find(
+      const group = unitGroups[key] || [];
+      const owner = group.find(
         (u) => u.occupantType === 'unit_owner' && u.occupancyStatus === 'currently_residing'
       );
+      const tenantResident = group.find(
+        (u) => u.occupantType === 'tenant' && u.occupancyStatus === 'unit_rented'
+      );
       if (owner) ownerIds.push(String(owner.memberId));
+      if (tenantResident) tenantResidentIds.push(String(tenantResident.memberId));
     }
     const verifierIds = Array.from(
       new Set(
@@ -626,7 +632,9 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
           .filter((id) => id)
       )
     );
-    const userIds = Array.from(new Set([...uploaderIds, ...ownerIds, ...verifierIds, ...rejectorIds]));
+    const userIds = Array.from(
+      new Set([...uploaderIds, ...ownerIds, ...tenantResidentIds, ...verifierIds, ...rejectorIds])
+    );
     const users =
       userIds.length > 0
         ? await User.find({ _id: { $in: userIds } }, { fullName: 1, phoneNumber: 1, role: 1 }).lean()
@@ -653,11 +661,15 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
           : ''
         : '';
 
-      const ownerLiving =
+      const residentUnit =
         group.find(
           (u) => u.occupantType === 'unit_owner' && u.occupancyStatus === 'currently_residing'
-        ) || null;
-      const ownerUser = ownerLiving ? userMap[String(ownerLiving.memberId)] || {} : {};
+        ) ||
+        group.find(
+          (u) => u.occupantType === 'tenant' && u.occupancyStatus === 'unit_rented'
+        ) ||
+        null;
+      const residentUser = residentUnit ? userMap[String(residentUnit.memberId)] || {} : {};
 
       if (includePendingMissing) {
         return {
@@ -665,7 +677,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
           monthLabel: `${month} ${year}`,
           unitNumber,
           unitCategory: categoryLabel || null,
-          ownerName: ownerUser.fullName || '',
+          ownerName: residentUser.fullName || '',
         };
       }
 
@@ -687,7 +699,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
             society,
             maintenance: doc,
             unitLabel,
-            ownerName: ownerUser.fullName || '',
+            ownerName: residentUser.fullName || '',
             paidByName: uploaderUser.fullName || '',
           });
           receipt = `data:application/pdf;base64,${buffer.toString('base64')}`;
@@ -704,7 +716,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
         monthLabel: `${month} ${year}`,
         unitNumber,
         unitCategory: categoryLabel || null,
-        ownerName: ownerUser.fullName || '',
+        ownerName: residentUser.fullName || '',
         amount: doc.amount != null ? String(doc.amount) : null,
         transactionDate: toDateOnly(doc.transactionDate),
         status: doc.status,
