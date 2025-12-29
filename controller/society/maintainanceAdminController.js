@@ -521,7 +521,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
       const s = statusRaw.toLowerCase();
       if (s === 'pending') {
         includePendingMissing = true;
-        statusQuery = { $in: ['Uploaded'] };
+        statusQuery = { $in: ['REJECTED', 'Rejected'] };
       } else {
         const statusCanonicalMap = { uploaded: 'UPLOADED', verified: 'VERIFIED', rejected: 'REJECTED' };
         const canonical = statusCanonicalMap[s] || null;
@@ -671,22 +671,13 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
         null;
       const residentUser = residentUnit ? userMap[String(residentUnit.memberId)] || {} : {};
 
-      if (includePendingMissing) {
-        return {
-          unitId: primaryUnit ? String(primaryUnit._id) : null,
-          monthLabel: `${month} ${year}`,
-          unitNumber,
-          unitCategory: categoryLabel || null,
-          ownerName: residentUser.fullName || '',
-        };
-      }
-
       const verifier = doc.verifiedByUserId ? userMap[String(doc.verifiedByUserId)] || {} : {};
       const rejector = doc.rejectedByUserId ? userMap[String(doc.rejectedByUserId)] || {} : {};
 
       let receipt = null;
       let receiptDate = null;
       const statusLower = String(doc.status || '').toLowerCase();
+      let statusLabel = doc.status;
       if (society && statusLower === 'verified' && doc.receiptNumber) {
         try {
           const unitLabel = primaryUnit
@@ -719,7 +710,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
         ownerName: residentUser.fullName || '',
         amount: doc.amount != null ? String(doc.amount) : null,
         transactionDate: toDateOnly(doc.transactionDate),
-        status: doc.status,
+        status: includePendingMissing && statusLower === 'rejected' ? 'Pending Rejected' : statusLabel,
         proofImageUrl: doc.proofImageUrl,
         uploadedOn: toISTDateTimeLabel(doc.createdAt),
         uploadedBy: (userMap[String(doc.memberId)] || {}).fullName || null,
@@ -762,7 +753,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
           ownerName: ownerUser.fullName || null,
         };
       });
-      data = synthetic;
+      data = dataUploaded.concat(synthetic);
     }
 
     return sendSuccessResponse(res, 200, 'Maintenance uploads fetched successfully', { data });
