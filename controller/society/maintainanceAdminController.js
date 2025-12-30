@@ -386,17 +386,17 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
 
       return {
         month,
-        year,
+        year: String(year),
         monthLabel: `${month} ${year}`,
         status,
         statusTag,
         counts: {
-          pendingUnits,
-          uploaded,
-          verified,
-          rejected,
-          totalUnits,
-          vacantUnits: vacantCount,
+          pendingUnits: String(pendingUnits),
+          uploaded: String(uploaded),
+          verified: String(verified),
+          rejected: String(rejected),
+          totalUnits: String(totalUnits),
+          vacantUnits: String(vacantCount),
         },
       };
     });
