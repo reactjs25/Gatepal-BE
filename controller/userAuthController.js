@@ -15,15 +15,16 @@ const PASSWORD_RESET_TOKEN_TTL = parseInt(process.env.PASSWORD_RESET_TOKEN_TTL |
 
 const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   const normalizedRole = normalizeRole(role);
-  const normalizedPhone = normalizePhoneNumber(phoneNumber);
+  const rawPhone = normalizePhoneNumber(String(phoneNumber || ''));
+  const digitsOnly = normalizeDigits(rawPhone);
 
-  if (!normalizedPhone) {
+  if (!digitsOnly) {
     throw createHttpError('Phone number is required', 400);
   }
 
   const normalizedCountryCode = normalizeCountryCode(countryCode);
 
-  const match = await findSocietyAdminByPhone(normalizedPhone);
+  const match = await findSocietyAdminByPhone(digitsOnly);
 
   if (match) {
     return {
@@ -39,7 +40,7 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   if (APP_USER_ROLES.has(normalizedRole)) {
     const query = {
       role: normalizedRole,
-      phoneNumber: normalizedPhone,
+      phoneNumber: digitsOnly,
     };
 
     if (normalizedCountryCode) {
@@ -49,21 +50,43 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
     let user = await User.findOne(query);
 
     if (!user) {
-      const digitsOnly = normalizeDigits(normalizedPhone);
+      user = await User.findOne({
+        role: normalizedRole,
+        phoneNumber: digitsOnly,
+      });
+    }
 
-      if (digitsOnly && digitsOnly !== normalizedPhone) {
-        user = await User.findOne({
-          role: normalizedRole,
-          phoneNumber: digitsOnly,
-          countryCode: normalizedCountryCode,
-        });
-      }
+    if (!user && rawPhone && rawPhone !== digitsOnly) {
+      user = await User.findOne({
+        role: normalizedRole,
+        phoneNumber: rawPhone,
+        ...(normalizedCountryCode ? { countryCode: normalizedCountryCode } : {}),
+      });
+    }
+
+    if (!user && rawPhone && rawPhone !== digitsOnly) {
+      user = await User.findOne({
+        role: normalizedRole,
+        phoneNumber: rawPhone,
+      });
+    }
+
+    if (!user) {
+      user = await User.findOne({ phoneNumber: digitsOnly });
+    }
+
+    if (!user && rawPhone) {
+      user = await User.findOne({ phoneNumber: rawPhone });
+    }
+
+    if (user && !APP_USER_ROLES.has(user.role)) {
+      user = null;
     }
 
     if (user) {
       return {
         type: 'user',
-        role: normalizedRole,
+        role: user.role,
         countryCode: normalizedCountryCode,
         doc: user,
         save: () => user.save(),

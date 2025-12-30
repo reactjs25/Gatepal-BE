@@ -189,9 +189,12 @@ const updateMemberProfile = async (req, res, next) => {
         return next(createHttpError('This phone number already exists in the system', 409));
       }
 
-      const adminExists = await lookupSocietyAdminByMobile(digits);
-      if (adminExists) {
-        return next(createHttpError('This phone number already exists in the system', 409));
+      const adminMatch = await lookupSocietyAdminByMobile(digits);
+      if (adminMatch) {
+        const linkedId = user.linkedSocietyAdminId || null;
+        if (!linkedId || String(linkedId) !== String(adminMatch.adminId)) {
+          return next(createHttpError('This phone number already exists in the system', 409));
+        }
       }
 
       updates.phoneNumber = digits;
