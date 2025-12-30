@@ -272,9 +272,16 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
     const authUser = req.appUser;
     const society = await resolveAdminSociety(authUser);
 
-    const year = Math.round(Number((req.query && req.query.year) || new Date().getFullYear()));
+    const year = Math.round(Number((req.body && req.body.year) || (req.query && req.query.year) || new Date().getFullYear()));
     if (!Number.isFinite(year) || String(year).length !== 4) {
       return next(createHttpError('year must be a 4-digit number', 400));
+    }
+
+    const currentYear = new Date().getFullYear();
+    const minYear = currentYear - 2;
+    const maxYear = currentYear + 2;
+    if (year < minYear || year > maxYear) {
+      return next(createHttpError(`year must be between ${minYear} and ${maxYear}`, 400));
     }
 
     const wings = Array.isArray(society.structure) ? society.structure : [];

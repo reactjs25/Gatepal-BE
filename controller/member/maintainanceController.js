@@ -76,6 +76,13 @@ const validateUploadPayload = (payload = {}) => {
         throw createHttpError('year must be a 4-digit number', 400);
     }
 
+    const currentYear = new Date().getFullYear();
+    const minYear = currentYear - 2;
+    const maxYear = currentYear + 2;
+    if (year < minYear || year > maxYear) {
+        throw createHttpError(`year must be between ${minYear} and ${maxYear}`, 400);
+    }
+
     const month = toCanonicalMonth(payload.month);
     if (!month || !ALLOWED_MONTHS.has(month)) {
         throw createHttpError('month must be one of January, February, March, April, May, June, July, August, September, October, November, December', 400);
@@ -226,6 +233,20 @@ const getMaintainancesByUnit = async (req, res, next) => {
         const limit = Math.max(1, Math.min(100, Number((req.query && req.query.limit) || 10)));
         const skip = (page - 1) * limit;
 
+        // Year filter from request body (optional)
+        let yearFilter = null;
+        if (req.body && req.body.year) {
+            const parsedYear = Math.round(Number(req.body.year));
+            if (Number.isFinite(parsedYear) && String(parsedYear).length === 4) {
+                const currentYear = new Date().getFullYear();
+                const minYear = currentYear - 2;
+                const maxYear = currentYear + 2;
+                if (parsedYear >= minYear && parsedYear <= maxYear) {
+                    yearFilter = parsedYear;
+                }
+            }
+        }
+
         const monthIndex = {
             January: 1,
             February: 2,
@@ -241,9 +262,14 @@ const getMaintainancesByUnit = async (req, res, next) => {
             December: 12,
         };
 
+        const query = { unitId: canonicalUnitId, deletedAt: null };
+        if (yearFilter) {
+            query.year = yearFilter;
+        }
+
         const [all, total] = await Promise.all([
-            Maintenance.find({ unitId: canonicalUnitId, deletedAt: null }).lean(),
-            Maintenance.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
+            Maintenance.find(query).lean(),
+            Maintenance.countDocuments(query),
         ]);
 
         all.sort((a, b) => {
