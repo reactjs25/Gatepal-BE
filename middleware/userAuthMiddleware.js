@@ -19,20 +19,26 @@ const userAuthMiddleware = async (req, res, next) => {
       return next(createHttpError('Access denied', 403));
     }
     
-    if (decoded.role === 'society_admin') {
-      const societyId = decoded.societyId;
-      if (!societyId) {
-        return next(createHttpError('Unauthorized: society context missing', 401));
+    if (decoded.role === 'society_admin' && decoded.societyId) {
+      let society = null;
+      let admin = null;
+
+      if (decoded.societyId) {
+        society = await Society.findById(decoded.societyId);
+        if (society) {
+          admin = society.societyAdmins.id(decoded.id);
+        }
       }
 
-      const society = await Society.findById(societyId);
-      if (!society) {
-        return next(createHttpError('Unauthorized: society not found', 401));
-      }
-
-      const admin = society.societyAdmins.id(decoded.id);
-      if (!admin) {
-        return next(createHttpError('Unauthorized: admin not found', 401));
+      if (!society || !admin) {
+        society = await Society.findOne({ 'societyAdmins._id': decoded.id });
+        if (!society) {
+          return next(createHttpError('Unauthorized: society not found', 401));
+        }
+        admin = society.societyAdmins.id(decoded.id);
+        if (!admin) {
+          return next(createHttpError('Unauthorized: admin not found', 401));
+        }
       }
 
       const digits = normalizeDigits(admin.mobile || '');

@@ -7,6 +7,7 @@ const User = require('../../model/userSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { countryCityData } = require('../../utils/countryCityData');
+const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 
 const findStateName = (countryName, cityName) => {
   const normalizedCountry = (countryName || '').toString().trim().toLowerCase();
@@ -94,6 +95,27 @@ const getMemberProfile = async (req, res, next) => {
     }
 
     const effectiveRole = req.user?.effectiveRole || user.role;
+    let adminSocietyId = null;
+
+    if (effectiveRole === 'society_admin') {
+      if (req.user?.societyId) {
+        adminSocietyId = String(req.user.societyId);
+      } else if (user.adminSocietyId) {
+        adminSocietyId = String(user.adminSocietyId);
+      } else if (user.linkedSocietyAdminId) {
+        const society = await Society.findOne({ 'societyAdmins._id': user.linkedSocietyAdminId }).lean();
+        if (society) {
+          adminSocietyId = String(society._id);
+        }
+      }
+
+      if (!adminSocietyId) {
+        const match = await lookupSocietyAdminByMobile(user.phoneNumber || '');
+        if (match && match.societyId) {
+          adminSocietyId = String(match.societyId);
+        }
+      }
+    }
 
     return sendSuccessResponse(res, 200, 'Member profile fetched successfully', {
       data: {
@@ -103,9 +125,13 @@ const getMemberProfile = async (req, res, next) => {
         countryCode: user.countryCode || '+91',
         imageUrl: user.profilePhoto || null,
         phoneNumber: user.phoneNumber,
-        role: effectiveRole,
         units: unitsFromDb.map((u) => {
           const s = societyMap[String(u.societyId)] || null;
+          const societyRole =
+            s && adminSocietyId && String(s._id) === adminSocietyId && effectiveRole === 'society_admin'
+              ? 'society_admin'
+              : 'member';
+
           return {
             id: String(u._id),
             wingName: u.wingName,
@@ -114,17 +140,16 @@ const getMemberProfile = async (req, res, next) => {
             occupancyStatus: u.occupancyStatus,
             society: s
               ? {
-                  id: String(s._id),
-                  name: s.societyName,
-                  pin: s.societyPin,
-                  address: s.address,
-                  city: s.city,
-                  stateName: findStateName(s.country, s.city),
-                  country: s.country,
-                }
+                id: String(s._id),
+                name: s.societyName,
+                pin: s.societyPin,
+                address: s.address,
+                city: s.city,
+                stateName: findStateName(s.country, s.city),
+                country: s.country,
+                role: societyRole,
+              }
               : null,
-            createdAt: u.createdAt,
-            updatedAt: u.updatedAt,
           };
         }),
         qrCodeImage,
