@@ -144,6 +144,40 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    guardSocieties: {
+      type: [{
+        societyId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Society',
+        },
+        societyName: {
+          type: String,
+          trim: true,
+        },
+        addedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        isOnDuty: {
+          type: Boolean,
+          default: false,
+        },
+        dutyGateId: {
+          type: mongoose.Schema.Types.ObjectId,
+          default: null,
+        },
+        dutyGateName: {
+          type: String,
+          trim: true,
+          default: null,
+        },
+        dutyStartedAt: {
+          type: Date,
+          default: null,
+        },
+      }],
+      default: [],
+    },
     qrCodeImage: {
       type: String,
       default: null,

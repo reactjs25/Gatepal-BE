@@ -49,6 +49,24 @@ const handleGuardOnboarding = async ({ user, payload }) => {
   }
   user.societyId = society ? society._id : null;
   user.societyName = society ? society.societyName : null;
+
+ 
+  if (society) {
+    if (!Array.isArray(user.guardSocieties)) {
+      user.guardSocieties = [];
+    }
+    const alreadyExists = user.guardSocieties.some(
+      (s) => String(s.societyId) === String(society._id)
+    );
+    if (!alreadyExists) {
+      user.guardSocieties.push({
+        societyId: society._id,
+        societyName: society.societyName,
+        addedAt: new Date(),
+      });
+    }
+  }
+
   user.onboardingData = {
     ...(user.onboardingData || {}),
     guard: {
