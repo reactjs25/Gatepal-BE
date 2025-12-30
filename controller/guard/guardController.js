@@ -1,6 +1,7 @@
 const validator = require('validator');
 const Society = require('../../model/societySchema');
 const User = require('../../model/userSchema');
+const GuardDutyLog = require('../../model/guardDutyLogSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
@@ -347,6 +348,19 @@ const startDuty = async (req, res, next) => {
 
     await user.save();
 
+    // Create duty start log entry
+    await GuardDutyLog.create({
+      guardId: user._id,
+      guardName: user.fullName || 'Unknown',
+      guardPhone: user.phoneNumber || null,
+      societyId: society._id,
+      societyName: society.societyName,
+      gateId: gate._id,
+      gateName: gate.name,
+      logType: 'duty_start',
+      logTime: user.guardSocieties[societyIndex].dutyStartedAt,
+    });
+
     return sendSuccessResponse(res, 200, 'Duty started successfully', {
       data: {
         societyId: String(society._id),
@@ -397,6 +411,7 @@ const endDuty = async (req, res, next) => {
     const dutyEndedAt = new Date();
     const societyName = user.guardSocieties[societyIndex].societyName;
     const gateName = user.guardSocieties[societyIndex].dutyGateName;
+    const gateId = user.guardSocieties[societyIndex].dutyGateId;
 
     user.guardSocieties[societyIndex].isOnDuty = false;
     user.guardSocieties[societyIndex].dutyGateId = null;
@@ -404,6 +419,22 @@ const endDuty = async (req, res, next) => {
     user.guardSocieties[societyIndex].dutyStartedAt = null;
 
     await user.save();
+
+    // Fetch society for log
+    const society = await Society.findById(societyId).lean();
+
+    // Create duty end log entry
+    await GuardDutyLog.create({
+      guardId: user._id,
+      guardName: user.fullName || 'Unknown',
+      guardPhone: user.phoneNumber || null,
+      societyId: societyId,
+      societyName: society?.societyName || societyName,
+      gateId: gateId,
+      gateName: gateName,
+      logType: 'duty_end',
+      logTime: dutyEndedAt,
+    });
 
     return sendSuccessResponse(res, 200, 'Duty ended successfully', {
       data: {
