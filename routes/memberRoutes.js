@@ -16,7 +16,11 @@ const {
   deleteFamilyMember,
   getFamilyMemberById,
 } = require('../controller/member/familyController');
-const { createQuickInvite } = require('../controller/guestInviteController');
+const {
+  createQuickInvite,
+  createGroupInvite,
+  createFrequentInvite,
+} = require('../controller/guestInviteController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const router = express.Router();
 
@@ -32,6 +36,8 @@ router.get('/getFamilyMember/:memberId', userAuthMiddleware, getFamilyMemberById
 router.patch('/updateFamily/:memberId', userAuthMiddleware, updateFamilyMember);
 router.delete('/deleteFamily/:memberId', userAuthMiddleware, deleteFamilyMember);
 router.post('/guestInvites/quick', userAuthMiddleware, createQuickInvite);
+router.post('/guestInvites/group', userAuthMiddleware, createGroupInvite);
+router.post('/guestInvites/frequent', userAuthMiddleware, createFrequentInvite);
 
 
 module.exports = router;

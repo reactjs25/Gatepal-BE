@@ -20,6 +20,18 @@ const normalizeOption = (value) =>
     .toLowerCase()
     .replace(/\s+/g, '_');
 
+const parseDateOnly = (value, fieldLabel) => {
+  if (!value) {
+    throw createHttpError(`${fieldLabel} is required`, 400);
+  }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    throw createHttpError(`Invalid ${fieldLabel} format`, 400);
+  }
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
 const parseDateTime = (value, fieldLabel) => {
   if (!value) {
     throw createHttpError(`${fieldLabel} is required`, 400);
@@ -29,6 +41,48 @@ const parseDateTime = (value, fieldLabel) => {
     throw createHttpError(`Invalid ${fieldLabel} format`, 400);
   }
   return d;
+};
+
+const parseTimeOfDay = (value, fieldLabel) => {
+  const raw = (value || '').toString().trim();
+  if (!raw) {
+    throw createHttpError(`${fieldLabel} is required`, 400);
+  }
+
+  const lower = raw.toLowerCase();
+
+  const twelveHourMatch = lower.match(
+    /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/
+  );
+  if (twelveHourMatch) {
+    let hour = parseInt(twelveHourMatch[1], 10);
+    const minute = twelveHourMatch[2] ? parseInt(twelveHourMatch[2], 10) : 0;
+    const meridiem = twelveHourMatch[3];
+
+    if (hour < 1 || hour > 12 || minute < 0 || minute > 59) {
+      throw createHttpError(`Invalid ${fieldLabel} value`, 400);
+    }
+
+    if (meridiem === 'pm' && hour !== 12) {
+      hour += 12;
+    } else if (meridiem === 'am' && hour === 12) {
+      hour = 0;
+    }
+
+    return { hour, minute };
+  }
+
+  const twentyFourMatch = lower.match(/^(\d{1,2}):(\d{2})$/);
+  if (twentyFourMatch) {
+    const hour = parseInt(twentyFourMatch[1], 10);
+    const minute = parseInt(twentyFourMatch[2], 10);
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      throw createHttpError(`Invalid ${fieldLabel} value`, 400);
+    }
+    return { hour, minute };
+  }
+
+  throw createHttpError(`Invalid ${fieldLabel} format`, 400);
 };
 
 const sanitizeGuests = (guests) => {
@@ -190,6 +244,80 @@ const computeUiBasedValidityWindow = ({
   });
 };
 
+const computeGroupInviteValidityWindow = ({
+  selectedDate,
+  startingFrom,
+  validityHours,
+}) => {
+  const baseDate = parseDateOnly(selectedDate, 'selectedDate');
+  const timeOfDay = parseTimeOfDay(startingFrom, 'startingFrom');
+
+  const start = new Date(baseDate);
+  start.setHours(timeOfDay.hour, timeOfDay.minute, 0, 0);
+
+  const hours = Number(validityHours);
+  if (!Number.isFinite(hours) || hours <= 0) {
+    throw createHttpError('validityHours must be a positive number', 400);
+  }
+  if (hours > 24) {
+    throw createHttpError('validityHours cannot exceed 24 hours for group invites', 400);
+  }
+
+  const end = new Date(start.getTime() + hours * 60 * 60 * 1000);
+
+  if (end <= start) {
+    throw createHttpError('Computed validity end time must be after start time', 400);
+  }
+
+  return { validFrom: start, validTill: end };
+};
+
+const computeFrequentInviteValidityWindow = ({
+  allowEntryFor,
+  startDate,
+  endDate,
+}) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const normalized = normalizeOption(allowEntryFor || '1_week');
+
+  if (
+    normalized === '1_week' ||
+    normalized === 'one_week' ||
+    normalized === 'week'
+  ) {
+    const start = new Date(today);
+    const end = new Date(today);
+    end.setDate(end.getDate() + 7 - 1);
+    end.setHours(23, 59, 59, 999);
+    return { validFrom: start, validTill: end };
+  }
+
+  if (
+    normalized === '1_month' ||
+    normalized === 'one_month' ||
+    normalized === 'month'
+  ) {
+    const start = new Date(today);
+    const end = new Date(today);
+    end.setMonth(end.getMonth() + 1);
+    end.setDate(end.getDate() - 1);
+    end.setHours(23, 59, 59, 999);
+    return { validFrom: start, validTill: end };
+  }
+
+  const start = parseDateOnly(startDate, 'startDate');
+  const end = parseDateOnly(endDate, 'endDate');
+  end.setHours(23, 59, 59, 999);
+
+  if (end < start) {
+    throw createHttpError('endDate must be on or after startDate', 400);
+  }
+
+  return { validFrom: start, validTill: end };
+};
+
 const buildGuestInviteQrPayload = ({ invite, unit, member }) => {
   const payload = {
     type: 'gatepal_guest_invite',
@@ -206,6 +334,244 @@ const buildGuestInviteQrPayload = ({ invite, unit, member }) => {
     validTill: invite.validTill.toISOString(),
   };
   return JSON.stringify(payload);
+};
+
+const createGroupInvite = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    if (authUser.role !== 'member') {
+      return next(createHttpError('Only members can create guest invites', 403));
+    }
+
+    const { unitId, selectedDate, startingFrom, validityHours, guestCount } = req.body || {};
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    let window;
+    try {
+      window = computeGroupInviteValidityWindow({
+        selectedDate,
+        startingFrom,
+        validityHours,
+      });
+    } catch (e) {
+      return next(e);
+    }
+
+    const countNumber = Number(guestCount);
+    if (!Number.isFinite(countNumber) || countNumber <= 0) {
+      return next(createHttpError('guestCount must be a positive number', 400));
+    }
+
+    let placeholderGuests;
+    try {
+      placeholderGuests = sanitizeGuests([{ name: 'Group / Party Guests' }]);
+    } catch (e) {
+      return next(e);
+    }
+
+    const invite = await GuestInvite.create({
+      type: 'group',
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+      invitedByUserId: authUser._id,
+      isPrivateInvite: false,
+      guests: placeholderGuests,
+      validFrom: window.validFrom,
+      validTill: window.validTill,
+      maxEntries: countNumber,
+    });
+
+    const member = await User.findById(authUser._id).lean();
+
+    let qrCodeImage = null;
+    try {
+      const payload = buildGuestInviteQrPayload({ invite, unit: unitDoc, member });
+      qrCodeImage = await QRCode.toDataURL(payload, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 256,
+      });
+    } catch (e) {
+      qrCodeImage = null;
+    }
+
+    if (qrCodeImage) {
+      invite.qrCodeImage = qrCodeImage;
+      invite.qrCodeGeneratedAt = new Date();
+      await invite.save();
+    }
+
+    const dateLabel = toISTDateLabel(window.validFrom);
+    const fromTimeLabel = toISTTimeLabel(window.validFrom);
+    const tillTimeLabel = toISTTimeLabel(window.validTill);
+    const validityLabel = `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`;
+
+    const responseData = {
+      inviteId: invite.inviteId,
+      type: invite.type,
+      societyId: String(invite.societyId),
+      unitId: String(invite.unitId),
+      unit: {
+        id: String(unitDoc._id),
+        wingName: unitDoc.wingName,
+        unitNumber: unitDoc.unitNumber,
+      },
+      invitedBy: {
+        id: String(authUser._id),
+        name: authUser.fullName || null,
+      },
+      isPrivateInvite: invite.isPrivateInvite,
+      guests: invite.guests.map((g) => ({
+        name: g.name,
+        countryCode: g.countryCode,
+        phoneNumber: g.phoneNumber,
+      })),
+      validFrom: invite.validFrom,
+      validTill: invite.validTill,
+      validityLabel,
+      qrCodeImage: invite.qrCodeImage || null,
+      maxEntries: invite.maxEntries,
+    };
+
+    const shareMessage = `${authUser.fullName || 'A member'} has invited you. Show this QR code to the guard at the gate during the valid time window.`;
+
+    return sendSuccessResponse(res, 201, 'Group guest invite created successfully', {
+      data: responseData,
+      shareMessage,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to create group guest invite'));
+  }
+};
+
+const createFrequentInvite = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    if (authUser.role !== 'member') {
+      return next(createHttpError('Only members can create guest invites', 403));
+    }
+
+    const {
+      unitId,
+      allowEntryFor,
+      startDate,
+      endDate,
+      guests,
+    } = req.body || {};
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    let window;
+    try {
+      window = computeFrequentInviteValidityWindow({
+        allowEntryFor,
+        startDate,
+        endDate,
+      });
+    } catch (e) {
+      return next(e);
+    }
+
+    let cleanedGuests;
+    try {
+      cleanedGuests = sanitizeGuests(guests);
+    } catch (e) {
+      return next(e);
+    }
+
+    const invite = await GuestInvite.create({
+      type: 'frequent',
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+      invitedByUserId: authUser._id,
+      isPrivateInvite: false,
+      guests: cleanedGuests,
+      validFrom: window.validFrom,
+      validTill: window.validTill,
+      maxEntries: Number.MAX_SAFE_INTEGER,
+    });
+
+    const member = await User.findById(authUser._id).lean();
+
+    let qrCodeImage = null;
+    try {
+      const payload = buildGuestInviteQrPayload({ invite, unit: unitDoc, member });
+      qrCodeImage = await QRCode.toDataURL(payload, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 256,
+      });
+    } catch (e) {
+      qrCodeImage = null;
+    }
+
+    if (qrCodeImage) {
+      invite.qrCodeImage = qrCodeImage;
+      invite.qrCodeGeneratedAt = new Date();
+      await invite.save();
+    }
+
+    const dateLabelFrom = toISTDateLabel(window.validFrom);
+    const dateLabelTill = toISTDateLabel(window.validTill);
+    const fromTimeLabel = toISTTimeLabel(window.validFrom);
+    const tillTimeLabel = toISTTimeLabel(window.validTill);
+    const validityLabel = `${dateLabelFrom} ${fromTimeLabel} to ${dateLabelTill} ${tillTimeLabel}`;
+
+    const responseData = {
+      inviteId: invite.inviteId,
+      type: invite.type,
+      societyId: String(invite.societyId),
+      unitId: String(invite.unitId),
+      unit: {
+        id: String(unitDoc._id),
+        wingName: unitDoc.wingName,
+        unitNumber: unitDoc.unitNumber,
+      },
+      invitedBy: {
+        id: String(authUser._id),
+        name: authUser.fullName || null,
+      },
+      isPrivateInvite: invite.isPrivateInvite,
+      guests: invite.guests.map((g) => ({
+        name: g.name,
+        countryCode: g.countryCode,
+        phoneNumber: g.phoneNumber,
+      })),
+      validFrom: invite.validFrom,
+      validTill: invite.validTill,
+      validityLabel,
+      qrCodeImage: invite.qrCodeImage || null,
+      maxEntries: null,
+    };
+
+    const shareMessage = `${authUser.fullName || 'A member'} has invited you. Show this QR code to the guard at the gate during the valid time window.`;
+
+    return sendSuccessResponse(res, 201, 'Frequent guest invite created successfully', {
+      data: responseData,
+      shareMessage,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to create frequent guest invite'));
+  }
 };
 
 const createQuickInvite = async (req, res, next) => {
@@ -399,7 +765,8 @@ const scanGuestInvite = async (req, res, next) => {
     }
 
     const usedEntries = Array.isArray(invite.entryLogs) ? invite.entryLogs.length : 0;
-    if (usedEntries >= invite.maxEntries) {
+    const hasEntryLimit = invite.type !== 'frequent';
+    if (hasEntryLimit && usedEntries >= invite.maxEntries) {
       return next(createHttpError('Entry already used for this invite', 400));
     }
 
@@ -424,6 +791,12 @@ const scanGuestInvite = async (req, res, next) => {
     const dateLabel = toISTDateLabel(invite.validFrom);
     const fromTimeLabel = toISTTimeLabel(invite.validFrom);
     const tillTimeLabel = toISTTimeLabel(invite.validTill);
+
+    const usedEntriesAfterScan = usedEntries + 1;
+    const remainingEntries =
+      hasEntryLimit && Number.isFinite(invite.maxEntries)
+        ? Math.max(invite.maxEntries - usedEntriesAfterScan, 0)
+        : null;
 
     const responseData = {
       inviteId: invite.inviteId,
@@ -454,6 +827,9 @@ const scanGuestInvite = async (req, res, next) => {
       validityLabel: `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`,
       vehicleNumber: normalizedVehicleNumber,
       accompanyingCount: safeCount,
+      maxEntries: hasEntryLimit ? invite.maxEntries : null,
+      usedEntries: usedEntriesAfterScan,
+      remainingEntries,
       message: 'QR validated successfully. Click a picture to continue.',
     };
 
@@ -466,6 +842,8 @@ const scanGuestInvite = async (req, res, next) => {
 };
 
 module.exports = {
+  createGroupInvite,
+  createFrequentInvite,
   createQuickInvite,
   scanGuestInvite,
 };
