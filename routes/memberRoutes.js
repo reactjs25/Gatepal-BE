@@ -1,7 +1,22 @@
 const express = require('express');
-const { addMemberUnit, updateUnitOccupancyStatus, getUnitById, getUnitDashboard } = require('../controller/member/unitController');
-const { getMemberProfile, updateMemberProfile } = require('../controller/member/profileController');
-const { addFamilyMember, getFamilyMembersByUnit, updateFamilyMember, deleteFamilyMember, getFamilyMemberById } = require('../controller/member/familyController');
+const {
+  addMemberUnit,
+  updateUnitOccupancyStatus,
+  getUnitById,
+  getUnitDashboard,
+} = require('../controller/member/unitController');
+const {
+  getMemberProfile,
+  updateMemberProfile,
+} = require('../controller/member/profileController');
+const {
+  addFamilyMember,
+  getFamilyMembersByUnit,
+  updateFamilyMember,
+  deleteFamilyMember,
+  getFamilyMemberById,
+} = require('../controller/member/familyController');
+const { createQuickInvite } = require('../controller/guestInviteController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const router = express.Router();
 
@@ -16,6 +31,7 @@ router.get('/getFamily/:id', userAuthMiddleware, getFamilyMembersByUnit);
 router.get('/getFamilyMember/:memberId', userAuthMiddleware, getFamilyMemberById);
 router.patch('/updateFamily/:memberId', userAuthMiddleware, updateFamilyMember);
 router.delete('/deleteFamily/:memberId', userAuthMiddleware, deleteFamilyMember);
+router.post('/guestInvites/quick', userAuthMiddleware, createQuickInvite);
 
 
 module.exports = router;
