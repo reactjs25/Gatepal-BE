@@ -610,13 +610,11 @@ const getFamilyMemberById = async (req, res, next) => {
       });
     }
 
-    // If not found in FamilyMember, treat memberId as a User occupant id
     const targetUser = await User.findById(memberId).lean();
     if (!targetUser) {
       return next(createHttpError('Family member not found', 404));
     }
 
-    // Find a unit occupied by both authUser and targetUser (same wing/unit in a society)
     const authUnits = await MemberUnit.find({ memberId: authUser._id }).lean();
     const userUnits = await MemberUnit.find({ memberId: targetUser._id }).lean();
 

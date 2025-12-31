@@ -173,12 +173,10 @@ const addSociety = async (req, res, next) => {
       return next(createHttpError('Society not found for provided name and PIN', 404));
     }
 
-    // Initialize guardSocieties array if not exists
     if (!Array.isArray(user.guardSocieties)) {
       user.guardSocieties = [];
     }
 
-    // Check if society is already enrolled
     const alreadyEnrolled = user.guardSocieties.some(
       (s) => String(s.societyId) === String(society._id)
     );
@@ -186,14 +184,12 @@ const addSociety = async (req, res, next) => {
       return next(createHttpError('You are already enrolled in this society', 409));
     }
 
-    // Add society to guardSocieties array
     user.guardSocieties.push({
       societyId: society._id,
       societyName: society.societyName,
       addedAt: new Date(),
     });
 
-    // Also update the primary societyId for backward compatibility
     if (!user.societyId) {
       user.societyId = society._id;
       user.societyName = society.societyName;
@@ -248,7 +244,6 @@ const getGuardProfile = async (req, res, next) => {
       : [];
 
     const societies = societiesFromDb.map((society) => {
-      // Get gates from society
       const entryGates = Array.isArray(society.entryGates) ? society.entryGates : [];
       const exitGates = Array.isArray(society.exitGates) ? society.exitGates : [];
 
@@ -311,7 +306,6 @@ const startDuty = async (req, res, next) => {
       return next(createHttpError('Gate ID is required', 400));
     }
 
-    // Check if guard is enrolled in this society
     const guardSocieties = Array.isArray(user.guardSocieties) ? user.guardSocieties : [];
     const societyIndex = guardSocieties.findIndex(
       (s) => String(s.societyId) === String(societyId)
@@ -321,26 +315,22 @@ const startDuty = async (req, res, next) => {
       return next(createHttpError('You are not enrolled in this society', 403));
     }
 
-    // Check if already on duty at any society
     const alreadyOnDuty = guardSocieties.find((s) => s.isOnDuty === true);
     if (alreadyOnDuty) {
       return next(createHttpError('You are already on duty at another society. Please end that duty first.', 409));
     }
 
-    // Fetch society to validate gate
     const society = await Society.findById(societyId).lean();
     if (!society) {
       return next(createHttpError('Society not found', 404));
     }
 
-    // Find gate in entryGates or exitGates
     const allGates = [...(society.entryGates || []), ...(society.exitGates || [])];
     const gate = allGates.find((g) => String(g._id) === String(gateId));
     if (!gate) {
       return next(createHttpError('Gate not found in this society', 404));
     }
 
-    // Update duty status
     user.guardSocieties[societyIndex].isOnDuty = true;
     user.guardSocieties[societyIndex].dutyGateId = gate._id;
     user.guardSocieties[societyIndex].dutyGateName = gate.name;
@@ -348,7 +338,6 @@ const startDuty = async (req, res, next) => {
 
     await user.save();
 
-    // Create duty start log entry
     await GuardDutyLog.create({
       guardId: user._id,
       guardName: user.fullName || 'Unknown',
@@ -420,10 +409,8 @@ const endDuty = async (req, res, next) => {
 
     await user.save();
 
-    // Fetch society for log
     const society = await Society.findById(societyId).lean();
 
-    // Create duty end log entry
     await GuardDutyLog.create({
       guardId: user._id,
       guardName: user.fullName || 'Unknown',

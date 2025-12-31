@@ -4,11 +4,16 @@ const MemberUnit = require('../../model/memberUnitSchema');
 const FamilyMember = require('../../model/familyMemberSchema');
 const Vehicle = require('../../model/vehicleSchema');
 const Pet = require('../../model/petSchema');
+const Announcement = require('../../model/announcementSchema');
+const Meeting = require('../../model/meetingSchema');
+const SocietyRule = require('../../model/societyRuleSchema');
+const Maintenance = require('../../model/maintenanceSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
 const { toCanonicalOccupantType, toCanonicalOccupancyStatus, mapUiToCanonicalOccupancy } = require('../../utils/enums/memberEnums');
 const { assertUnitAccess, buildCanonicalUnitId } = require('../../utils/unitAccess');
+const { toISTDateLabel, toISTTimeLabel } = require('../../utils/dateTime');
 
 const OCCUPANT_TYPES = new Set([
   'unit_owner',
@@ -337,37 +342,150 @@ const getUnitDashboard = async (req, res, next) => {
     }
 
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
+    const societyId = unitDoc.societyId;
 
-    const [familyCount, vehicleCount, petCount] = await Promise.all([
+    const [familyCount, vehicleCount, petCount, announcementDocs, meetingDocs, ruleDocs, maintenanceDocs] = await Promise.all([
       FamilyMember.countDocuments({ unitId: unitDoc._id }),
       Vehicle.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
       Pet.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
+      Announcement.find({ societyId, deletedAt: null }).sort({ createdAt: -1 }).lean(),
+      Meeting.find({ societyId, deletedAt: null }).sort({ createdAt: -1 }).lean(),
+      SocietyRule.find({ societyId, deletedAt: null }).lean(),
+      Maintenance.find({ unitId: canonicalUnitId, deletedAt: null }).lean(),
     ]);
 
     const addedItems = [familyCount > 0, vehicleCount > 0, petCount > 0].filter(Boolean).length;
     const progressPercent = Math.round((addedItems / 3) * 100);
 
-    const society_meeting = {
-      id: 'meeting',
-      title: 'Upcoming society meeting',
-      description:
-        'General meeting of society will be held on 13 Sep 2025, Thursday at 10:00 PM in the society hall. All members are requested to attend.',
-      severity: 'success',
-      ctaLabel: 'View Details',
-      titleIcon: '/assets/society_icon.png',
-      ctaLabelIcon: '/assets/view_details.png',
-    };
+    const announcementCount = announcementDocs.length;
+    const meetingCount = meetingDocs.length;
+    const society_rules = ruleDocs.length;
 
-    const Maintenance_proof = {
-      id: 'maintenance_due',
-      title: 'Upload Maintenance Proof',
-      description:
-        '5 days left to pay maintenance for Aug 2025, Upload maintenance proof on or before 10 Sep 2025.',
-      severity: 'warning',
-      ctaLabel: 'Upload Now',
-      titleIcon: '/assets/maintainance.png',
-      ctaLabelIcon: '/assets/upload.png',
-    };
+    const recentAnnouncement = announcementDocs[0] || null;
+    let recent_announcement = null;
+    if (recentAnnouncement) {
+      const announcementDate = recentAnnouncement.createdAt instanceof Date
+        ? recentAnnouncement.createdAt
+        : new Date(recentAnnouncement.createdAt);
+      const formattedDate = toISTDateLabel(announcementDate);
+
+      const contentPreview = recentAnnouncement.contentHtml
+        .replace(/<[^>]*>/g, '')
+        .substring(0, 100)
+        .trim();
+
+      recent_announcement = {
+        id: 'recent_announcement',
+        title: recentAnnouncement.title || 'Recent Announcement',
+        description: contentPreview || 'New announcement from society.',
+        severity: 'success',
+        ctaLabel: 'View Details',
+        titleIcon: '/assets/announcement 1.png',
+        ctaLabelIcon: '/assets/view_details.png',
+      };
+    }
+
+    const now = new Date();
+    let upcomingMeeting = null;
+    let society_meeting = null;
+
+    const upcomingMeetings = [];
+    for (const meeting of meetingDocs) {
+      const meetingDateStr = meeting.meetingDate ? meeting.meetingDate.toString().trim() : '';
+      const meetingTimeStr = meeting.meetingStartingFrom ? meeting.meetingStartingFrom.toString().trim() : '';
+      if (meetingDateStr && meetingTimeStr) {
+        const combinedDateTime = new Date(`${meetingDateStr} ${meetingTimeStr}`);
+        if (combinedDateTime > now && !Number.isNaN(combinedDateTime.getTime())) {
+          upcomingMeetings.push({ meeting, dateTime: combinedDateTime });
+        }
+      }
+    }
+
+    if (upcomingMeetings.length > 0) {
+      upcomingMeetings.sort((a, b) => a.dateTime - b.dateTime);
+      upcomingMeeting = upcomingMeetings[0].meeting;
+    }
+
+    if (upcomingMeeting) {
+      const meetingDateStr = upcomingMeeting.meetingDate ? upcomingMeeting.meetingDate.toString().trim() : '';
+      const meetingTimeStr = upcomingMeeting.meetingStartingFrom ? upcomingMeeting.meetingStartingFrom.toString().trim() : '';
+      const combinedDateTime = new Date(`${meetingDateStr} ${meetingTimeStr}`);
+      const formattedDate = toISTDateLabel(combinedDateTime);
+      const formattedTime = toISTTimeLabel(combinedDateTime);
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayName = dayNames[combinedDateTime.getDay()];
+
+      const venue = upcomingMeeting.venue || 'society hall';
+      const agendaPreview = upcomingMeeting.agendaHtml
+        .replace(/<[^>]*>/g, '')
+        .substring(0, 80)
+        .trim();
+
+      society_meeting = {
+        id: 'meeting',
+        title: 'Upcoming society meeting',
+        description: `General meeting of society will be held on ${formattedDate}, ${dayName} at ${formattedTime} in ${venue}. ${agendaPreview ? agendaPreview + '...' : 'All members are requested to attend.'}`,
+        severity: 'success',
+        ctaLabel: 'View Details',
+        titleIcon: '/assets/society_icon.png',
+        ctaLabelIcon: '/assets/view_details.png',
+      };
+    }
+
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonthIndex = currentDate.getMonth();
+    const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const currentMonth = MONTH_NAMES[currentMonthIndex];
+
+    const currentMonthMaintenance = maintenanceDocs.find(
+      (m) => m.year === currentYear && m.month === currentMonth
+    );
+
+    const verifiedMaintenance = maintenanceDocs.find(
+      (m) => m.year === currentYear && m.month === currentMonth && m.status === 'Verified'
+    );
+
+    let Maintenance_proof = null;
+    
+    if (!verifiedMaintenance) {
+      if (currentMonthMaintenance && currentMonthMaintenance.status === 'Rejected') {
+        Maintenance_proof = {
+          id: 'maintenance_due',
+          title: 'Upload Maintenance Proof',
+          description: `Your maintenance proof for ${currentMonth} ${currentYear} was rejected. Please upload a new proof.`,
+          severity: 'warning',
+          ctaLabel: 'Upload Now',
+          titleIcon: '/assets/maintainance.png',
+          ctaLabelIcon: '/assets/upload.png',
+        };
+      } 
+      else if (currentMonthMaintenance && currentMonthMaintenance.status === 'Uploaded') {
+        Maintenance_proof = {
+          id: 'maintenance_due',
+          title: 'Maintenance Proof Pending',
+          description: `Your maintenance proof for ${currentMonth} ${currentYear} is pending verification. Please wait for admin approval.`,
+          severity: 'info',
+          ctaLabel: 'View Status',
+          titleIcon: '/assets/maintainance.png',
+          ctaLabelIcon: '/assets/view_details.png',
+        };
+      }
+      else {
+        const lastDayOfMonth = new Date(currentYear, currentMonthIndex + 1, 0);
+        const daysRemaining = Math.max(0, Math.ceil((lastDayOfMonth - currentDate) / (1000 * 60 * 60 * 24)));
+
+        Maintenance_proof = {
+          id: 'maintenance_due',
+          title: 'Upload Maintenance Proof',
+          description: `${daysRemaining} days left to pay maintenance for ${currentMonth} ${currentYear}. Upload maintenance proof on or before ${toISTDateLabel(lastDayOfMonth)}.`,
+          severity: 'warning',
+          ctaLabel: 'Upload Now',
+          titleIcon: '/assets/maintainance.png',
+          ctaLabelIcon: '/assets/upload.png',
+        };
+      }
+    }
 
     const access_expire = {
       id: 'access_expire',
@@ -379,22 +497,6 @@ const getUnitDashboard = async (req, res, next) => {
       titleIcon: '/assets/access_expire.png',
       ctaLabelIcon: '/assets/contact_support.png',
     };
-
-    const recent_announcement = {
-      id: 'recent_announcement',
-      title: 'Recent Announcement',
-      description:
-        'Water supply in E-Block will not be available tomorrow, 25 Aug 2025 from 10 AM to 1 PM.',
-      severity: 'success',
-      ctaLabel: 'View Details',
-      titleIcon: '/assets/announcement 1.png',
-      ctaLabelIcon: '/assets/view_details.png',
-    };
-
-    const stableCountSeed = `${unitDoc.wingNameLower}:${unitDoc.unitNumberLower}`.length;
-    const announcementCount = (stableCountSeed % 5) + 1;
-    const meetingCount = ((stableCountSeed * 3) % 12) + 1;
-    const society_rules = ((stableCountSeed * 5) % 7) + 1;
 
     const completeProfile = {
       progressPercent,
@@ -446,22 +548,22 @@ const getUnitDashboard = async (req, res, next) => {
       {
         recent_announcement: 'announcement',
         announcement: [
-          {
+          ...(society_meeting ? [{
             actionCardType: 'upcomingMeeting',
             society_meeting: [society_meeting],
-          },
-          {
+          }] : []),
+          ...(Maintenance_proof ? [{
             actionCardType: 'uploadMaintenanceProof',
             Maintenance_proof: [Maintenance_proof],
-          },
+          }] : []),
           {
             actionCardType: 'accessExpiring',
             access_expire: [access_expire],
           },
-          {
+          ...(recent_announcement ? [{
             actionCardType: 'announcement',
             recent_announcement: [recent_announcement],
-          },
+          }] : []),
         ],
       },
     ];

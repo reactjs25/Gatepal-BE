@@ -538,9 +538,9 @@ const getSocietyActivitySummary = async (req, res, next) => {
             societyId: String(societyId),
             societyName: society.societyName,
             unreadCounts: {
-                announcements: unreadAnnouncementsCount,
-                meetings: unreadMeetingsCount,
-                societyRules: unreadSocietyRulesCount,
+                announcementCount: unreadAnnouncementsCount,
+                meetingCount: unreadMeetingsCount,
+                society_rules: unreadSocietyRulesCount,
             },
             announcements: recentAnnouncements,
             meetings: recentMeetings,

@@ -37,7 +37,6 @@ const getGuardLogs = async (req, res, next) => {
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     }
 
-    // Query logs
     const logs = await GuardDutyLog.find({
       societyId,
       logTime: { $gte: startDate },

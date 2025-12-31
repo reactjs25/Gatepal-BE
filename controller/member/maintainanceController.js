@@ -233,7 +233,6 @@ const getMaintainancesByUnit = async (req, res, next) => {
         const limit = Math.max(1, Math.min(100, Number((req.query && req.query.limit) || 10)));
         const skip = (page - 1) * limit;
 
-        // Year filter from request body (optional)
         let yearFilter = null;
         if (req.body && req.body.year) {
             const parsedYear = Math.round(Number(req.body.year));
