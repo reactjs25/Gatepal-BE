@@ -229,10 +229,6 @@ const getMaintainancesByUnit = async (req, res, next) => {
 
         const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
-        const page = Math.max(1, Number((req.query && req.query.page) || 1));
-        const limit = Math.max(1, Math.min(100, Number((req.query && req.query.limit) || 10)));
-        const skip = (page - 1) * limit;
-
         let yearFilter = null;
         if (req.body && req.body.year) {
             const parsedYear = Math.round(Number(req.body.year));
@@ -266,17 +262,13 @@ const getMaintainancesByUnit = async (req, res, next) => {
             query.year = yearFilter;
         }
 
-        const [all, total] = await Promise.all([
-            Maintenance.find(query).lean(),
-            Maintenance.countDocuments(query),
-        ]);
+        const all = await Maintenance.find(query).lean();
 
         all.sort((a, b) => {
             if (a.year !== b.year) return b.year - a.year;
             return (monthIndex[b.month] || 0) - (monthIndex[a.month] || 0);
         });
-
-        const items = all.slice(skip, skip + limit);
+        const items = all;
 
         const memberIds = Array.from(new Set(items.map((d) => String(d.memberId))));
         const verifierIds = Array.from(

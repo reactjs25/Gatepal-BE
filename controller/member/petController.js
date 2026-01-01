@@ -184,18 +184,9 @@ const getPetsByUnit = async (req, res, next) => {
 
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
-    const page = Math.max(1, Number((req.query && req.query.page) || 1));
-    const limit = Math.max(1, Math.min(100, Number((req.query && req.query.limit) || 10)));
-    const skip = (page - 1) * limit;
-
-    const [items, total] = await Promise.all([
-      Pet.find({ unitId: canonicalUnitId, deletedAt: null })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Pet.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
-    ]);
+    const items = await Pet.find({ unitId: canonicalUnitId, deletedAt: null })
+      .sort({ createdAt: -1 })
+      .lean();
 
     return sendSuccessResponse(res, 200, 'Pets fetched successfully', {
       data: items.map((p) => ({
