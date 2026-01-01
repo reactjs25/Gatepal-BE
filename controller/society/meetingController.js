@@ -526,6 +526,12 @@ const updateMeetingById = async (req, res, next) => {
       if (validated.agendaHtml !== undefined) {
         doc.agendaHtml = validated.agendaHtml;
       }
+      if (validated.agendaPhotos !== undefined) {
+        doc.agendaPhotos = validated.agendaPhotos;
+      }
+      if (validated.agendaAttachments !== undefined) {
+        doc.agendaAttachments = validated.agendaAttachments;
+      }
       if (
         validated.discussionHtml !== undefined ||
         validated.discussionPhotos !== undefined ||
@@ -543,7 +549,9 @@ const updateMeetingById = async (req, res, next) => {
         validated.meetingDate !== undefined ||
         validated.meetingStartingFrom !== undefined ||
         validated.venue !== undefined ||
-        validated.agendaHtml !== undefined
+        validated.agendaHtml !== undefined ||
+        validated.agendaPhotos !== undefined ||
+        validated.agendaAttachments !== undefined
       ) {
         return next(
           createHttpError(
