@@ -8,12 +8,13 @@ const toDateOnly = (value) => {
 const toISTTimeLabel = (value) => {
   if (!value) return null;
   const d = value instanceof Date ? value : new Date(value);
-  return new Intl.DateTimeFormat('en-IN', {
+  const formatted = new Intl.DateTimeFormat('en-IN', {
     timeZone: 'Asia/Kolkata',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
   }).format(d);
+  return formatted.replace(/\bam\b/gi, 'AM').replace(/\bpm\b/gi, 'PM');
 };
 
 const toISTDateTimeLabel = (value) => {
@@ -31,7 +32,8 @@ const toISTDateTimeLabel = (value) => {
     minute: '2-digit',
     hour12: true,
   }).format(d);
-  return `${dateFmt}, ${timeFmt}`;
+  const formattedTime = timeFmt.replace(/\bam\b/gi, 'AM').replace(/\bpm\b/gi, 'PM');
+  return `${dateFmt}, ${formattedTime}`;
 };
 
 const toISTDateLabel = (value) => {
