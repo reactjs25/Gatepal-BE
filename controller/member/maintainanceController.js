@@ -8,6 +8,22 @@ const { buildCanonicalUnitId, assertUnitResidentAccess } = require('../../utils/
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { buildMaintenanceReceiptPdf } = require('../society/maintainanceAdminController');
 
+// Format amount with 2 decimal places for API response
+const formatAmount = (value) => {
+    if (value == null || Number.isNaN(Number(value))) return null;
+    return Number(value).toFixed(2);
+};
+
+// Capitalize first letter of each word
+const toTitleCase = (str) => {
+    if (!str) return '';
+    return str
+        .toLowerCase()
+        .split(' ')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+};
+
 const ALLOWED_MONTHS = new Set([
     'January',
     'February',
@@ -162,7 +178,7 @@ const uploadMaintainanceProof = async (req, res, next) => {
             } else {
                 return next(
                     createHttpError(
-                        'A maintenance proof for the specified month already exists for the unit',
+                        'A maintenance proof for the specificed month already exists for the unit.',
                         409
                     )
                 );
@@ -180,17 +196,17 @@ const uploadMaintainanceProof = async (req, res, next) => {
             status: 'Uploaded',
         });
 
-        return sendSuccessResponse(res, 201, 'Maintenance proof uploaded successfully', {
+        return sendSuccessResponse(res, 201, 'Maintenance proof uploaded successfully.', {
             data: {
                 maintenanceId: doc.maintenanceId,
                 unitId: String(unitDoc._id),
                 unitNumber: unitDoc.unitNumber,
                 memberId: String(doc.memberId),
-                uploadedByName: authUser.fullName || null,
+                uploadedByName: toTitleCase(authUser.fullName) || null,
                 uploadedByPhone: authUser.phoneNumber || null,
                 year: String(doc.year),
                 month: doc.month,
-                amount: doc.amount != null ? String(doc.amount) : null,
+                amount: formatAmount(doc.amount),
                 transactionDate: toDateOnly(doc.transactionDate),
                 proofImageUrl: doc.proofImageUrl,
                 status: doc.status,
@@ -346,11 +362,11 @@ const getMaintainancesByUnit = async (req, res, next) => {
                     unitId: String(unitDoc._id),
                     unitNumber: unitDoc.unitNumber,
                     memberId: String(doc.memberId),
-                    uploadedByName: u.fullName || null,
+                    uploadedByName: toTitleCase(u.fullName) || null,
                     uploadedByPhone: u.phoneNumber || null,
                     year: String(doc.year),
                     month: doc.month,
-                    amount: doc.amount != null ? String(doc.amount) : null,
+                    amount: formatAmount(doc.amount),
                     transactionDate: toDateOnly(doc.transactionDate),
                     proofImageUrl: doc.proofImageUrl,
                     status: statusLabel,
@@ -452,11 +468,11 @@ const getMaintainanceById = async (req, res, next) => {
                 unitId: String(unitDoc._id),
                 unitNumber: unitDoc.unitNumber,
                 memberId: String(doc.memberId),
-                uploadedByName: uploader ? uploader.fullName || null : null,
+                uploadedByName: toTitleCase(uploader ? uploader.fullName : null) || null,
                 uploadedByPhone: uploader ? uploader.phoneNumber || null : null,
                 year: String(doc.year),
                 month: doc.month,
-                amount: doc.amount != null ? String(doc.amount) : null,
+                amount: formatAmount(doc.amount),
                 transactionDate: toDateOnly(doc.transactionDate),
                 proofImageUrl: doc.proofImageUrl,
                 status: doc.status,

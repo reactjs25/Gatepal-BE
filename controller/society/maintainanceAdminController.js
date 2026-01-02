@@ -46,8 +46,23 @@ const FONTS = {
   italic: path.join(FONT_PATH, 'NotoSans-Italic.ttf'),
 };
 
-// Logo path
 const LOGO_PATH = path.join(__dirname, '../../assets/Logo.png');
+
+
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+
+const formatAmount = (value) => {
+  if (value == null || Number.isNaN(Number(value))) return null;
+  return Number(value).toFixed(2);
+};
 
 const formatAmountForReceipt = (value) => {
   if (typeof value !== 'number' || Number.isNaN(value)) return '';
@@ -98,7 +113,7 @@ const buildMaintenanceReceiptPdf = async ({
     // Society Name
     doc.moveDown(1.5);
     doc.fillColor('#000000').fontSize(12).font('NotoSans-Bold');
-    doc.text(`Society Name: ${society.societyName}`, left, 75);
+    doc.text(`Society Name: ${toTitleCase(society.societyName)}`, left, 75);
     doc.font('NotoSans');
 
     // Address on separate line
@@ -125,7 +140,7 @@ const buildMaintenanceReceiptPdf = async ({
     doc.fontSize(10).fillColor('#000000');
     doc.text('Owner', left + labelOffsetX, y + 12);
     doc.text(':', left + valueOffsetX - 10, y + 12);
-    doc.font('NotoSans-Bold').text(ownerName || '-', left + valueOffsetX, y + 12);
+    doc.font('NotoSans-Bold').text(toTitleCase(ownerName) || '-', left + valueOffsetX, y + 12);
     doc.font('NotoSans');
 
     doc.text('Unit Number', left + labelOffsetX, y + 12 + lineGap);
@@ -135,7 +150,7 @@ const buildMaintenanceReceiptPdf = async ({
 
     doc.text('Paid By', left + labelOffsetX, y + 12 + lineGap * 2);
     doc.text(':', left + valueOffsetX - 10, y + 12 + lineGap * 2);
-    doc.font('NotoSans-Bold').text(paidByName || '-', left + valueOffsetX, y + 12 + lineGap * 2);
+    doc.font('NotoSans-Bold').text(toTitleCase(paidByName) || '-', left + valueOffsetX, y + 12 + lineGap * 2);
     doc.font('NotoSans');
 
     const rightLabelOffsetX = 10;
@@ -737,13 +752,13 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
         monthLabel: `${month} ${year}`,
         unitNumber,
         unitCategory: categoryLabel || null,
-        ownerName: residentUser.fullName || '',
-        amount: doc.amount != null ? String(doc.amount) : null,
-        transactionDate: toDateOnly(doc.transactionDate),
+        ownerName: toTitleCase(residentUser.fullName) || '',
+        amount: formatAmount(doc.amount),
+        transactionDate: toISTDateLabel(doc.transactionDate),
         status: includePendingMissing && statusLower === 'rejected' ? 'Pending Rejected' : statusLabel,
         proofImageUrl: doc.proofImageUrl,
         uploadedOn: toISTDateTimeLabel(doc.createdAt),
-        uploadedBy: (userMap[String(doc.memberId)] || {}).fullName || null,
+        uploadedBy: toTitleCase((userMap[String(doc.memberId)] || {}).fullName) || null,
         verifiedBy: verifier.role || null,
         verifiedOn: doc.verifiedAt ? toISTDateTimeLabel(doc.verifiedAt) : null,
         rejectionReason: doc.rejectionReason || null,
@@ -923,15 +938,15 @@ const verifyMaintenance = async (req, res, next) => {
         monthLabel: `${doc.month} ${doc.year}`,
         unitNumber: expectedNumber,
         unitCategory: expectedCategory || null,
-        ownerName: ownerUser ? ownerUser.fullName : null,
-        amount: doc.amount != null ? String(doc.amount) : null,
-        transactionDate: toDateOnly(doc.transactionDate),
+        ownerName: toTitleCase(ownerUser ? ownerUser.fullName : null) || null,
+        amount: formatAmount(doc.amount),
+        transactionDate: toISTDateLabel(doc.transactionDate),
         status: doc.status,
         proofImageUrl: doc.proofImageUrl,
         uploadedOn: toISTDateTimeLabel(doc.createdAt),
-        uploadedBy: uploaderUser ? uploaderUser.fullName : null,
+        uploadedBy: toTitleCase(uploaderUser ? uploaderUser.fullName : null) || null,
         receiptNumber: doc.receiptNumber != null ? String(doc.receiptNumber) : null,
-        receiptDate: toDateOnly(doc.verifiedAt),
+        receiptDate: toISTDateLabel(doc.verifiedAt),
         receipt: `data:application/pdf;base64,${receiptBase64}`,
       },
     });
@@ -1008,9 +1023,8 @@ const rejectMaintenance = async (req, res, next) => {
         unitNumber: primaryUnitDoc ? primaryUnitDoc.unitNumber : null,
         unitLabel: primaryUnitDoc ? `${primaryUnitDoc.wingName} ${primaryUnitDoc.unitNumber}` : null,
         unitCategory: primaryUnitDoc ? (primaryUnitDoc.occupantType === 'unit_owner' ? 'Owner' : primaryUnitDoc.occupantType === 'tenant' ? 'Tenant' : '') : null,
-        amount: doc.amount,
-        transactionDate: toDateOnly(doc.transactionDate),
-        transactionDateIst: toISTDateLabel(doc.transactionDate),
+        amount: formatAmount(doc.amount),
+        transactionDate: toISTDateLabel(doc.transactionDate),
         status: doc.status,
         proofImageUrl: doc.proofImageUrl,
         uploadedOn: toISTDateTimeLabel(doc.createdAt),
