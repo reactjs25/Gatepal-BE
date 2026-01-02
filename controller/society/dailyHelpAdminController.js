@@ -303,7 +303,7 @@ const addSocietyDailyHelp = async (req, res, next) => {
       );
     }
 
-    return sendSuccessResponse(res, 201, 'Society daily help added successfully', {
+    return sendSuccessResponse(res, 201, 'Society daily help added successfully.', {
       data: {
         id: String(person._id),
         societyId: String(person.societyId),
@@ -514,7 +514,7 @@ const approveDailyHelp = async (req, res, next) => {
       { $set: { status: 'APPROVED' } }
     );
 
-    return sendSuccessResponse(res, 200, 'Daily help approved successfully', {
+    return sendSuccessResponse(res, 200, 'Daily help approved successfully.', {
       data: {
         id: String(doc._id),
         societyId: String(doc.societyId),

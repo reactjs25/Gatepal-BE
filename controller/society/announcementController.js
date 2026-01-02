@@ -492,7 +492,7 @@ const updateAnnouncementById = async (req, res, next) => {
 
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
-    return sendSuccessResponse(res, 200, 'Announcement updated successfully', {
+    return sendSuccessResponse(res, 200, 'Announcement details updated successfully.', {
       data: {
         announcementId: doc.announcementId,
         societyId: String(doc.societyId),
@@ -546,7 +546,7 @@ const deleteAnnouncementById = async (req, res, next) => {
     doc.deletedAt = deletedAt;
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Announcement deleted successfully', {
+    return sendSuccessResponse(res, 200, 'Announcement details deleted successfully.', {
       data: {
         announcementId: doc.announcementId,
         deletedAt,

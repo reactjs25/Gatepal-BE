@@ -273,7 +273,7 @@ const verifyOtp = async (req, res, next) => {
     const isValid = principal.doc.verifyOtp(otp);
 
     if (!isValid) {
-      throw createHttpError('Invalid or expired OTP', 400);
+      throw createHttpError('OTP you have entered is incorrect.', 400);
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');

@@ -151,7 +151,7 @@ const addDailyHelp = async (req, res, next) => {
       status: assignmentStatus,
     });
 
-    return sendSuccessResponse(res, 201, 'Daily help added successfully', {
+    return sendSuccessResponse(res, 201, 'Daily help details saved successfully.', {
       data: {
         id: String(assignment._id),
         unitId: String(unitDoc._id),
@@ -341,7 +341,7 @@ const removeDailyHelpFromUnit = async (req, res, next) => {
     assignment.removedAt = new Date();
     await assignment.save();
 
-    return sendSuccessResponse(res, 200, 'Daily help removed from unit successfully', {
+    return sendSuccessResponse(res, 200, 'Daily help details removed successfully.', {
       data: {
         id: String(assignment._id),
         unitId: String(unitDoc._id),
@@ -494,7 +494,7 @@ const editDailyHelpProfile = async (req, res, next) => {
     Object.assign(doc, updates);
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Daily help profile updated successfully', {
+    return sendSuccessResponse(res, 200, 'Daily help details updated successfully.', {
       data: {
         id: String(doc._id),
         societyId: String(doc.societyId),

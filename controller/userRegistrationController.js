@@ -162,7 +162,7 @@ const verifyRegistrationOtp = async (req, res, next) => {
     const isValid = user.verifyOtp(otp);
 
     if (!isValid) {
-      throw createHttpError('Invalid or expired OTP', 400);
+      throw createHttpError('OTP you have entered is incorrect.', 400);
     }
 
     user.onboardingStatus = 'in_progress';

@@ -272,7 +272,7 @@ const createMeeting = async (req, res, next) => {
       discussionAttachments: validated.discussionAttachments || [],
     });
 
-    return sendSuccessResponse(res, 201, 'Meeting created successfully', {
+    return sendSuccessResponse(res, 201, 'Meeting created successfully.', {
       data: buildMeetingResponse(doc),
     });
   } catch (error) {
@@ -574,7 +574,7 @@ const updateMeetingById = async (req, res, next) => {
 
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Meeting updated successfully', {
+    return sendSuccessResponse(res, 200, 'Meeting updated successfully.', {
       data: buildMeetingResponse(doc),
     });
   } catch (error) {
@@ -643,7 +643,7 @@ const updateMeetingDiscussionById = async (req, res, next) => {
 
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Meeting discussions updated successfully', {
+    return sendSuccessResponse(res, 200, 'Meeting discussions updated successfully.', {
       data: buildMeetingResponse(doc),
     });
   } catch (error) {
@@ -686,7 +686,7 @@ const deleteMeetingById = async (req, res, next) => {
     doc.deletedAt = deletedAt;
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Meeting deleted successfully', {
+    return sendSuccessResponse(res, 200, 'Meeting deleted successfully.', {
       data: {
         meetingId: doc.meetingId,
         deletedAt,
