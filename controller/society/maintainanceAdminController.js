@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const path = require('path');
 const Maintenance = require('../../model/maintenanceSchema');
 const Society = require('../../model/societySchema');
 const MemberUnit = require('../../model/memberUnitSchema');
@@ -37,6 +38,17 @@ const MAINTENANCE_REJECT_REASON_CODES = new Set(
   MAINTENANCE_REJECT_REASON_CATEGORIES.map((name) => name.toLowerCase().replace(/\s+/g, '_'))
 );
 
+// Font paths for PDF generation (supports ₹ symbol)
+const FONT_PATH = path.join(__dirname, '../../assets/fonts');
+const FONTS = {
+  regular: path.join(FONT_PATH, 'NotoSans-Regular.ttf'),
+  bold: path.join(FONT_PATH, 'NotoSans-Bold.ttf'),
+  italic: path.join(FONT_PATH, 'NotoSans-Italic.ttf'),
+};
+
+// Logo path
+const LOGO_PATH = path.join(__dirname, '../../assets/Logo.png');
+
 const formatAmountForReceipt = (value) => {
   if (typeof value !== 'number' || Number.isNaN(value)) return '';
   return value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -68,6 +80,11 @@ const buildMaintenanceReceiptPdf = async ({
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const chunks = [];
 
+    // Register custom fonts that support ₹ symbol
+    doc.registerFont('NotoSans', FONTS.regular);
+    doc.registerFont('NotoSans-Bold', FONTS.bold);
+    doc.registerFont('NotoSans-Italic', FONTS.italic);
+
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', (err) => reject(err));
@@ -75,25 +92,31 @@ const buildMaintenanceReceiptPdf = async ({
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const left = doc.page.margins.left;
 
-    doc.fillColor('#00A651').fontSize(22).text('GatePal', left, 40, { align: 'left' });
+    // Draw GatePal logo from image
+    doc.image(LOGO_PATH, left, 35, { height: 30 });
 
+    // Society Name
     doc.moveDown(1.5);
-    doc.fillColor('#000000').fontSize(12);
-    doc.text(`Society Name: ${society.societyName}`, { align: 'left' });
+    doc.fillColor('#000000').fontSize(12).font('NotoSans-Bold');
+    doc.text(`Society Name: ${society.societyName}`, left, 75);
+    doc.font('NotoSans');
 
-    const addressParts = [society.address, society.city, society.country].filter(Boolean);
+    // Address on separate line
+    const addressParts = [society.address, society.city, society.state, society.country].filter(Boolean);
     if (addressParts.length) {
-      doc.fontSize(10).text(`Address: ${addressParts.join(', ')}`, { align: 'left' });
+      doc.fontSize(10).text(`Address: ${addressParts.join(', ')}`, left, 95);
     }
 
-    let y = 120;
+    let y = 130;
     const headerHeight = 80;
     const headerRightWidthRatio = 0.42;
     const headerRightX = left + pageWidth * (1 - headerRightWidthRatio);
 
-    doc.lineWidth(0.5).strokeColor('#CCCCCC');
+    // Draw info box with blue dashed border
+    doc.lineWidth(1).strokeColor('#4A90D9').dash(3, { space: 2 });
     doc.rect(left, y, pageWidth, headerHeight).stroke();
     doc.moveTo(headerRightX, y).lineTo(headerRightX, y + headerHeight).stroke();
+    doc.undash(); // Reset dash
 
     const labelOffsetX = 10;
     const valueOffsetX = 120;
@@ -102,38 +125,38 @@ const buildMaintenanceReceiptPdf = async ({
     doc.fontSize(10).fillColor('#000000');
     doc.text('Owner', left + labelOffsetX, y + 12);
     doc.text(':', left + valueOffsetX - 10, y + 12);
-    doc.font('Helvetica-Bold').text(ownerName || '-', left + valueOffsetX, y + 12);
-    doc.font('Helvetica');
+    doc.font('NotoSans-Bold').text(ownerName || '-', left + valueOffsetX, y + 12);
+    doc.font('NotoSans');
 
     doc.text('Unit Number', left + labelOffsetX, y + 12 + lineGap);
     doc.text(':', left + valueOffsetX - 10, y + 12 + lineGap);
-    doc.font('Helvetica-Bold').text(unitLabel || '-', left + valueOffsetX, y + 12 + lineGap);
-    doc.font('Helvetica');
+    doc.font('NotoSans-Bold').text(unitLabel || '-', left + valueOffsetX, y + 12 + lineGap);
+    doc.font('NotoSans');
 
     doc.text('Paid By', left + labelOffsetX, y + 12 + lineGap * 2);
     doc.text(':', left + valueOffsetX - 10, y + 12 + lineGap * 2);
-    doc.font('Helvetica-Bold').text(paidByName || '-', left + valueOffsetX, y + 12 + lineGap * 2);
-    doc.font('Helvetica');
+    doc.font('NotoSans-Bold').text(paidByName || '-', left + valueOffsetX, y + 12 + lineGap * 2);
+    doc.font('NotoSans');
 
     const rightLabelOffsetX = 10;
     const rightValueOffsetX = 140;
 
     doc.text('Receipt Number', headerRightX + rightLabelOffsetX, y + 12);
     doc.text(':', headerRightX + rightValueOffsetX - 10, y + 12);
-    doc.font('Helvetica-Bold').text(String(maintenance.receiptNumber || ''), headerRightX + rightValueOffsetX, y + 12);
-    doc.font('Helvetica');
+    doc.font('NotoSans-Bold').text(String(maintenance.receiptNumber || ''), headerRightX + rightValueOffsetX, y + 12);
+    doc.font('NotoSans');
 
     const receiptDate = maintenance.verifiedAt || maintenance.updatedAt || new Date();
     doc.text('Receipt Date', headerRightX + rightLabelOffsetX, y + 12 + lineGap);
     doc.text(':', headerRightX + rightValueOffsetX - 10, y + 12 + lineGap);
-    doc.font('Helvetica-Bold').text(formatDateDdMmYyyy(receiptDate), headerRightX + rightValueOffsetX, y + 12 + lineGap);
-    doc.font('Helvetica');
+    doc.font('NotoSans-Bold').text(formatDateDdMmYyyy(receiptDate), headerRightX + rightValueOffsetX, y + 12 + lineGap);
+    doc.font('NotoSans');
 
-    y += headerHeight;
+    y += headerHeight + 10;
 
     const receiptBarHeight = 22;
     doc.rect(left, y, pageWidth, receiptBarHeight).fillAndStroke('#00A651', '#00A651');
-    doc.fillColor('#FFFFFF').fontSize(12).font('Helvetica-Bold').text('Receipt', left + 10, y + 4);
+    doc.fillColor('#FFFFFF').fontSize(12).font('NotoSans-Bold').text('Receipt', left + 10, y + 4);
 
     y += receiptBarHeight;
     const headerRowHeight = 24;
@@ -155,7 +178,7 @@ const buildMaintenanceReceiptPdf = async ({
       left + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3],
     ];
 
-    doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
+    doc.fillColor('#000000').fontSize(10).font('NotoSans-Bold');
     doc.rect(left, y, pageWidth, headerRowHeight).stroke('#000000');
     for (let i = 1; i < colX.length; i += 1) {
       doc.moveTo(colX[i], y).lineTo(colX[i], y + headerRowHeight + dataRowHeight).stroke();
@@ -175,7 +198,7 @@ const buildMaintenanceReceiptPdf = async ({
 
     y += headerRowHeight;
 
-    doc.font('Helvetica').rect(left, y, pageWidth, dataRowHeight).stroke('#000000');
+    doc.font('NotoSans').rect(left, y, pageWidth, dataRowHeight).stroke('#000000');
 
     const paymentDate = maintenance.transactionDate;
 
@@ -206,7 +229,7 @@ const buildMaintenanceReceiptPdf = async ({
 
     y += dataRowHeight + 24;
 
-    doc.font('Helvetica-Oblique')
+    doc.font('NotoSans-Italic')
       .fontSize(9)
       .fillColor('#555555')
       .text('This is a computer generated receipt and requires no authentication.', left, y, {
