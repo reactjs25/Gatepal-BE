@@ -88,6 +88,14 @@ const DAILY_HELP_CATEGORIES = [
 
 const ALLOWED_WORK_CATEGORY_IDS = new Set(DAILY_HELP_CATEGORIES.map((c) => c.id));
 
+const toCanonicalCategory = (value) => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '_');
+
+const getCategoryName = (categoryKey) => {
+  if (!categoryKey) return null;
+  const category = DAILY_HELP_CATEGORIES.find((c) => c.id === categoryKey);
+  return category ? category.name : categoryKey;
+};
+
 const DAILY_HELP_REJECT_REASON_CATEGORIES = [
   'Incomplete details',
   'Incorrect details',
@@ -198,7 +206,7 @@ const listSocietyDailyHelp = async (req, res, next) => {
       id: String(d._id),
       societyId: String(d.societyId),
       name: d.name,
-      category: d.category,
+      category: getCategoryName(d.category),
       countryCode: d.countryCode || '+91',
       phoneNumber: d.phoneNumber || null,
       imageUrl: d.imageUrl || null,
@@ -227,7 +235,7 @@ const addSocietyDailyHelp = async (req, res, next) => {
     const nm = normalizeString(name);
     if (!nm) return next(createHttpError('name is required', 400));
 
-    const canonicalCategory = normalizeString(category).toLowerCase().replace(/\s+/g, '_');
+    const canonicalCategory = toCanonicalCategory(category);
     if (!canonicalCategory || !ALLOWED_WORK_CATEGORY_IDS.has(canonicalCategory)) {
       return next(createHttpError('Invalid category', 400));
     }
@@ -300,7 +308,7 @@ const addSocietyDailyHelp = async (req, res, next) => {
         id: String(person._id),
         societyId: String(person.societyId),
         name: person.name,
-        category: person.category,
+        category: getCategoryName(person.category),
         countryCode: person.countryCode || '+91',
         phoneNumber: person.phoneNumber || null,
         imageUrl: person.imageUrl || null,
@@ -387,7 +395,7 @@ const getSocietyDailyHelpProfileById = async (req, res, next) => {
         id: String(doc._id),
         societyId: String(doc.societyId),
         name: doc.name,
-        category: doc.category,
+        category: getCategoryName(doc.category),
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
@@ -438,7 +446,7 @@ const approveDailyHelp = async (req, res, next) => {
     }
 
     if (category !== undefined) {
-      const canonicalCategory = normalizeString(category).toLowerCase().replace(/\s+/g, '_');
+      const canonicalCategory = toCanonicalCategory(category);
       if (canonicalCategory !== doc.category) {
         return next(createHttpError('Payload category does not match record', 409));
       }
@@ -511,7 +519,7 @@ const approveDailyHelp = async (req, res, next) => {
         id: String(doc._id),
         societyId: String(doc.societyId),
         name: doc.name,
-        category: doc.category,
+        category: getCategoryName(doc.category),
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
@@ -561,7 +569,7 @@ const rejectDailyHelp = async (req, res, next) => {
     }
 
     if (category !== undefined) {
-      const canonicalCategory = normalizeString(category).toLowerCase().replace(/\s+/g, '_');
+      const canonicalCategory = toCanonicalCategory(category);
       if (canonicalCategory !== doc.category) {
         return next(createHttpError('Payload category does not match record', 409));
       }
@@ -634,7 +642,7 @@ const rejectDailyHelp = async (req, res, next) => {
         id: String(doc._id),
         societyId: String(doc.societyId),
         name: doc.name,
-        category: doc.category,
+        category: getCategoryName(doc.category),
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
@@ -756,7 +764,7 @@ const editSocietyDailyHelpProfile = async (req, res, next) => {
     const updates = {};
 
     if (category !== undefined) {
-      const canonicalCategory = normalizeString(category).toLowerCase().replace(/\s+/g, '_');
+      const canonicalCategory = toCanonicalCategory(category);
       if (!canonicalCategory || !ALLOWED_WORK_CATEGORY_IDS.has(canonicalCategory)) {
         return next(createHttpError('Invalid category', 400));
       }
@@ -822,7 +830,7 @@ const editSocietyDailyHelpProfile = async (req, res, next) => {
           id: String(doc._id),
           societyId: String(doc.societyId),
           name: doc.name,
-          category: doc.category,
+          category: getCategoryName(doc.category),
           countryCode: doc.countryCode || '+91',
           phoneNumber: doc.phoneNumber || null,
           imageUrl: doc.imageUrl || null,
@@ -841,7 +849,7 @@ const editSocietyDailyHelpProfile = async (req, res, next) => {
         id: String(doc._id),
         societyId: String(doc.societyId),
         name: doc.name,
-        category: doc.category,
+        category: getCategoryName(doc.category),
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,

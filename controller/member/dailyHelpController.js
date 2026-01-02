@@ -31,6 +31,12 @@ const isMemberOrSocietyAdmin = (authUser) =>
 
 const toCanonicalCategory = (value) => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '_');
 
+const getCategoryName = (categoryKey) => {
+  if (!categoryKey) return null;
+  const category = DAILY_HELP_CATEGORIES.find((c) => c.id === categoryKey);
+  return category ? category.name : categoryKey;
+};
+
 const getDailyHelpCategories = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -126,7 +132,7 @@ const addDailyHelp = async (req, res, next) => {
           unitId: String(unitDoc._id),
           dailyHelpId: String(person._id),
           name: person.name,
-          category: person.category,
+          category: getCategoryName(person.category),
           countryCode: person.countryCode,
           phoneNumber: person.phoneNumber,
           imageUrl: person.imageUrl,
@@ -151,7 +157,7 @@ const addDailyHelp = async (req, res, next) => {
         unitId: String(unitDoc._id),
         dailyHelpId: String(person._id),
         name: person.name,
-        category: person.category,
+        category: getCategoryName(person.category),
         countryCode: person.countryCode,
         phoneNumber: person.phoneNumber,
         imageUrl: person.imageUrl,
@@ -229,7 +235,7 @@ const getDailyHelpByStatus = async (req, res, next) => {
           unitId: String(unitDoc._id),
           dailyHelpId: String(a.dailyHelpId),
           name: p.name || null,
-          category: p.category || null,
+          category: getCategoryName(p.category),
           countryCode: p.countryCode || '+91',
           phoneNumber: p.phoneNumber || null,
           imageUrl: p.imageUrl || null,
@@ -280,7 +286,7 @@ const searchApprovedSocietyDailyHelp = async (req, res, next) => {
         id: String(d._id),
         societyId: String(d.societyId),
         name: d.name,
-        category: d.category,
+        category: getCategoryName(d.category),
         countryCode: d.countryCode || '+91',
         phoneNumber: d.phoneNumber || null,
         imageUrl: d.imageUrl || null,
@@ -474,7 +480,7 @@ const editDailyHelpProfile = async (req, res, next) => {
           id: String(doc._id),
           societyId: String(doc.societyId),
           name: doc.name,
-          category: doc.category,
+          category: getCategoryName(doc.category),
           countryCode: doc.countryCode || '+91',
           phoneNumber: doc.phoneNumber || null,
           imageUrl: doc.imageUrl || null,
@@ -493,7 +499,7 @@ const editDailyHelpProfile = async (req, res, next) => {
         id: String(doc._id),
         societyId: String(doc.societyId),
         name: doc.name,
-        category: doc.category,
+        category: getCategoryName(doc.category),
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
@@ -549,7 +555,7 @@ const getDailyHelpProfileById = async (req, res, next) => {
         unitId: String(unitDoc._id),
         dailyHelpId: String(doc._id),
         name: doc.name,
-        category: doc.category,
+        category: getCategoryName(doc.category),
         countryCode: doc.countryCode || '+91',
         phoneNumber: doc.phoneNumber || null,
         imageUrl: doc.imageUrl || null,
@@ -609,7 +615,7 @@ const assignExistingDailyHelpToUnit = async (req, res, next) => {
             unitId: String(unitDoc._id),
             dailyHelpId: String(person._id),
             name: person.name,
-            category: person.category,
+            category: getCategoryName(person.category),
             countryCode: person.countryCode || '+91',
             phoneNumber: person.phoneNumber || null,
             imageUrl: person.imageUrl || null,
@@ -625,7 +631,7 @@ const assignExistingDailyHelpToUnit = async (req, res, next) => {
           unitId: String(unitDoc._id),
           dailyHelpId: String(person._id),
           name: person.name,
-          category: person.category,
+          category: getCategoryName(person.category),
           countryCode: person.countryCode || '+91',
           phoneNumber: person.phoneNumber || null,
           imageUrl: person.imageUrl || null,
@@ -649,7 +655,7 @@ const assignExistingDailyHelpToUnit = async (req, res, next) => {
         unitId: String(unitDoc._id),
         dailyHelpId: String(person._id),
         name: person.name,
-        category: person.category,
+        category: getCategoryName(person.category),
         countryCode: person.countryCode || '+91',
         phoneNumber: person.phoneNumber || null,
         imageUrl: person.imageUrl || null,
