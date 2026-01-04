@@ -1,7 +1,7 @@
 const Pet = require('../../model/petSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
-const { normalizeString } = require('../../utils/strings');
+const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { buildCanonicalUnitId, assertUnitAccess } = require('../../utils/unitAccess');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 
@@ -41,7 +41,7 @@ const ensureCertificateMaybe = ({ value, fieldLabel }) => {
 
 const validatePetPayload = (payload = {}) => {
   const petType = normalizeString(payload.petType);
-  const name = normalizeString(payload.name);
+  const name = toTitleCaseName(payload.name);
   const vaccinationStatus = normalizeString(payload.vaccinationStatus);
 
   const lastVaccinationDate = toDateOrNull(payload.lastVaccinationDate);
@@ -83,7 +83,7 @@ const validatePetPatchPayload = (payload = {}) => {
     out.petType = petType;
   }
   if (payload.name !== undefined) {
-    const name = normalizeString(payload.name);
+    const name = toTitleCaseName(payload.name);
     if (!name) throw createHttpError('name is required', 400);
     out.name = name;
   }

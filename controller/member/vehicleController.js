@@ -1,7 +1,7 @@
 const Vehicle = require('../../model/vehicleSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
-const { normalizeString } = require('../../utils/strings');
+const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { buildCanonicalUnitId, assertUnitAccess } = require('../../utils/unitAccess');
 
 const ALLOWED_TYPES = new Set(['Two-Wheeler', 'Four-Wheeler', 'Other']);
@@ -14,7 +14,7 @@ const MAX_VEHICLES_BY_TYPE = {
 
 const validateVehiclePayload = (payload = {}) => {
   const vehicleType = normalizeString(payload.vehicleType);
-  const name = normalizeString(payload.name);
+  const name = toTitleCaseName(payload.name);
   const rawNumber = normalizeString(payload.vehicleNumber).toUpperCase();
   const isElectric = Boolean(payload.isElectric);
 

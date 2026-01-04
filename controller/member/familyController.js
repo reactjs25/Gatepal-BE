@@ -6,7 +6,7 @@ const { normalizeDigits, normalizeCountryCode, getComparablePhoneNumber } = requ
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { sendSuccessResponse } = require('../../utils/response');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
-const { normalizeString } = require('../../utils/strings');
+const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 
 const ALLOWED_CATEGORIES = new Set(['adult', 'child']);
 const FAMILY_LIST_CACHE_TTL_MS = 20000;
@@ -20,15 +20,6 @@ const ensureImageMaybe = ({ value, fieldLabel, minBytes = 512 }) => {
   } catch (e) {
     throw createHttpError(e.message, 400);
   }
-};
-
-const toTitleCaseName = (value) => {
-  const s = normalizeString(value);
-  if (!s) return s;
-  return s
-    .split(/\s+/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
 };
 
 const validateAddFamilyInput = (input = {}) => {
@@ -303,7 +294,7 @@ const updateFamilyMember = async (req, res, next) => {
       }
 
       if (name !== undefined) {
-        const nm = normalizeString(name);
+        const nm = toTitleCaseName(name);
         if (!nm) return next(createHttpError('name cannot be empty', 400));
         updates.fullName = nm;
       }
@@ -408,7 +399,7 @@ const updateFamilyMember = async (req, res, next) => {
     }
 
     if (name !== undefined) {
-      const nm = normalizeString(name);
+      const nm = toTitleCaseName(name);
       if (!nm) return next(createHttpError('name cannot be empty', 400));
       updates.name = nm;
     }

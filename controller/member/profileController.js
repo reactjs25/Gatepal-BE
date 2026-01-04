@@ -8,6 +8,7 @@ const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { countryCityData } = require('../../utils/countryCityData');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 
 const findStateName = (countryName, cityName) => {
   const normalizedCountry = (countryName || '').toString().trim().toLowerCase();
@@ -162,8 +163,6 @@ const getMemberProfile = async (req, res, next) => {
   }
 };
 
-const normalizeString = (value) => (value || '').toString().trim();
-
 const updateMemberProfile = async (req, res, next) => {
   try {
     const user = req.appUser;
@@ -181,7 +180,7 @@ const updateMemberProfile = async (req, res, next) => {
     }
 
     if (name !== undefined || fullName !== undefined) {
-      const candidateName = normalizeString(fullName !== undefined ? fullName : name);
+      const candidateName = toTitleCaseName(fullName !== undefined ? fullName : name);
       if (!candidateName) {
         return next(createHttpError('Name cannot be empty', 400));
       }
