@@ -181,7 +181,7 @@ const createAnnouncement = async (req, res, next) => {
 
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
-    return sendSuccessResponse(res, 201, 'Announcement created successfully', {
+    return sendSuccessResponse(res, 201, 'Announcement details saved successfully.', {
       data: {
         announcementId: doc.announcementId,
         societyId: String(doc.societyId),
