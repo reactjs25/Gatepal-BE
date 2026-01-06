@@ -161,6 +161,7 @@ const getSocietyInfo = async (req, res, next) => {
                 acc[key] = {
                     wingName: u.wingName,
                     unitNumber: u.unitNumber,
+                    occupantType: u.occupantType,
                 };
             }
             return acc;
@@ -206,6 +207,8 @@ const getSocietyInfo = async (req, res, next) => {
                 name: fm.name,
                 category: fm.category,
                 unitNumber: unitNumber || null,
+                occupantType: unitInfo.occupantType || null,
+                imageUrl: fm.imageUrl || null,
             };
         });
 
@@ -254,12 +257,13 @@ const getSocietyInfo = async (req, res, next) => {
             else otherPets += 1;
         });
 
+        // Only send non-zero/non-null counts to frontend
         const petsSummary = {
             title: 'Pets',
-            dogs,
-            cats,
-            parrots,
-            others: otherPets,
+            ...(dogs ? { dogs } : {}),
+            ...(cats ? { cats } : {}),
+            ...(parrots ? { parrots } : {}),
+            ...(otherPets ? { others: otherPets } : {}),
         };
 
         const petsList = pets.map((p) => {
@@ -278,11 +282,9 @@ const getSocietyInfo = async (req, res, next) => {
         const missingUnits = unitList
             .filter((u) => u.occupancyCategory === 'not_registered')
             .map((u) => {
-                const wingName = u.wingName || '';
-                const unitNumber = u.unitNumber || '';
-                const combined = `${wingName} ${unitNumber}`.trim();
+                const unitNumber = (u.unitNumber || '').toString().trim();
                 return {
-                    unitNumber: combined || null,
+                    unitNumber: unitNumber || null,
                     status: 'Not Registered',
                 };
             });
@@ -316,9 +318,9 @@ const getSocietyActivitySummary = async (req, res, next) => {
 
         const viewAsRaw = normalizeString(
             (req.body && req.body.viewAs) ||
-                (req.params && req.params.viewAs) ||
-                (req.query && req.query.viewAs) ||
-                ''
+            (req.params && req.params.viewAs) ||
+            (req.query && req.query.viewAs) ||
+            ''
         );
         const viewAs = viewAsRaw.toLowerCase();
         const isMemberView = authUser.role === 'member' || viewAs === 'member';
@@ -333,9 +335,9 @@ const getSocietyActivitySummary = async (req, res, next) => {
         } else if (isMemberView) {
             const unitIdCandidate = normalizeString(
                 (req.body && req.body.unitId) ||
-                    (req.params && (req.params.unitId || req.params.id)) ||
-                    (req.query && (req.query.unitId || req.query.id)) ||
-                    ''
+                (req.params && (req.params.unitId || req.params.id)) ||
+                (req.query && (req.query.unitId || req.query.id)) ||
+                ''
             );
 
             if (!unitIdCandidate) {
@@ -472,7 +474,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
                 createdAt: doc.createdAt,
                 updatedAt: doc.updatedAt,
                 isRead,
-              };
+            };
 
             if (isUpcoming) {
                 upcomingMeetings.push(payload);

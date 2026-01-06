@@ -1,5 +1,6 @@
 const { createHttpError } = require('../../utils/httpError');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const QRCode = require('qrcode');
 
 const VISITOR_TYPES = {
   GUEST: 'guest',
@@ -23,12 +24,22 @@ const ensureImage = ({ value, fieldLabel }) => {
   }
 };
 
+const buildVisitorQrPayload = (user) =>
+  JSON.stringify({
+    type: 'gatepal_visitor',
+    version: 1,
+    userId: String(user._id),
+    role: user.role,
+    visitorType: user.visitorType || null,
+    fullName: user.fullName || null,
+    phoneNumber: user.phoneNumber || null,
+  });
+
 const handleVisitorOnboarding = async ({ user, payload }) => {
   const {
     visitorType,
     fullName,
     profilePhoto,
-    qrCodeImage,
     companyName,
     vehicleNumber,
     workCategory,
@@ -51,23 +62,13 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
   }
 
   const hasProfilePhoto = Boolean((profilePhoto || '').trim());
-  const hasQrCodeImage = Boolean((qrCodeImage || '').trim());
 
   let sanitizedPhoto = null;
-  let sanitizedQrCodeImage = null;
 
   if (hasProfilePhoto) {
     sanitizedPhoto = ensureImage({
       value: profilePhoto,
       fieldLabel: 'Visitor photo',
-    });
-  }
-
-  if (hasQrCodeImage) {
-    sanitizedQrCodeImage = ensureImage({
-      value: qrCodeImage,
-      fieldLabel: 'Visitor QR code',
-      minBytes: 512,
     });
   }
 
@@ -77,9 +78,23 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
     user.profilePhoto = sanitizedPhoto;
     user.profilePhotoCapturedAt = new Date();
   }
-  if (sanitizedQrCodeImage) {
-    user.qrCodeImage = sanitizedQrCodeImage;
-    user.qrCodeGeneratedAt = new Date();
+
+  // Generate QR code server-side (frontend should not send qrCodeImage)
+  if (!user.qrCodeImage) {
+    try {
+      const qrPayload = buildVisitorQrPayload(user);
+      const qrCodeImage = await QRCode.toDataURL(qrPayload, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 256,
+      });
+      user.qrCodeImage = qrCodeImage;
+      user.qrCodeGeneratedAt = new Date();
+    } catch (e) {
+      // If QR generation fails, keep onboarding flow successful.
+      user.qrCodeImage = user.qrCodeImage || null;
+      user.qrCodeGeneratedAt = user.qrCodeGeneratedAt || null;
+    }
   }
   const onboardingData = {
     ...(user.onboardingData || {}),

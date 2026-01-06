@@ -25,7 +25,6 @@ const mapUserResponse = (user) => ({
   visitorCompanyName: user.visitorCompanyName,
   visitorVehicleNumber: user.visitorVehicleNumber,
   visitorWorkCategory: user.visitorWorkCategory,
-  qrCodeImage: user.qrCodeImage,
   status: user.status,
 });
 
