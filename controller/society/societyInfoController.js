@@ -11,6 +11,7 @@ const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { normalizeString } = require('../../utils/strings');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
+const { toISTDateTimeLabel } = require('../../utils/dateTime');
 
 const resolveAdminSociety = async (authUser) => {
     if (!authUser) throw createHttpError('Unauthorized', 401);
@@ -45,6 +46,32 @@ const classifyUnitGroup = (items) => {
         return 'owner';
     }
     return 'owner';
+};
+
+const buildCreatedAndUpdatedOn = (doc) => {
+    if (!doc) {
+        return {
+            createdOn: '',
+            updatedOn: '',
+        };
+    }
+
+    const createdAt =
+        doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+    const updatedAt =
+        doc.updatedAt instanceof Date ? doc.updatedAt : doc.updatedAt ? new Date(doc.updatedAt) : null;
+
+    const createdOn = createdAt ? toISTDateTimeLabel(createdAt) : '';
+
+    let updatedOn = '';
+    if (createdAt && updatedAt && updatedAt.getTime() !== createdAt.getTime()) {
+        updatedOn = toISTDateTimeLabel(updatedAt);
+    }
+
+    return {
+        createdOn,
+        updatedOn,
+    };
 };
 
 const getSocietyInfo = async (req, res, next) => {
@@ -407,6 +434,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
         let unreadAnnouncementsCount = 0;
         const announcementItems = [];
         announcementDocs.forEach((doc) => {
+            const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
             const createdAt =
                 doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
             let isRead = true;
@@ -427,6 +455,8 @@ const getSocietyActivitySummary = async (req, res, next) => {
                 contentHtml: doc.contentHtml,
                 photos: Array.isArray(doc.photos) ? doc.photos : [],
                 attachments: doc.attachments || [],
+                createdOn,
+                updatedOn,
                 createdAt: doc.createdAt,
                 updatedAt: doc.updatedAt,
                 isRead,
@@ -459,6 +489,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
                 unreadMeetingsCount += 1;
             }
 
+            const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
             const payload = {
                 meetingId: doc.meetingId,
                 societyId: String(doc.societyId),
@@ -471,6 +502,8 @@ const getSocietyActivitySummary = async (req, res, next) => {
                 discussionHtml: doc.discussionHtml || '',
                 discussionPhotos: Array.isArray(doc.discussionPhotos) ? doc.discussionPhotos : [],
                 discussionAttachments: doc.discussionAttachments || [],
+                createdOn,
+                updatedOn,
                 createdAt: doc.createdAt,
                 updatedAt: doc.updatedAt,
                 isRead,
@@ -487,6 +520,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
         const rulesWithMeta = [];
 
         ruleDocs.forEach((doc) => {
+            const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
             const createdAt =
                 doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
             const updatedAt =
@@ -513,6 +547,8 @@ const getSocietyActivitySummary = async (req, res, next) => {
                 contentHtml: doc.contentHtml,
                 photos: Array.isArray(doc.photos) ? doc.photos : [],
                 attachments: doc.attachments || [],
+                createdOn,
+                updatedOn,
                 createdAt: doc.createdAt,
                 updatedAt: doc.updatedAt,
                 effectiveAt,
