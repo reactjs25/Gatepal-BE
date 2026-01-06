@@ -118,11 +118,16 @@ const sanitizeGuests = (guests) => {
     const source = sourceRaw || 'manual';
 
     cleaned.push({
+      guestId: require('crypto').randomUUID(),
       name,
       countryCode: countryCode || '+91',
       phoneNumber,
       phoneDigits,
       source,
+      qrCodeImage: null,
+      qrCodeGeneratedAt: null,
+      hasArrived: false,
+      arrivedAt: null,
     });
   }
 
@@ -318,11 +323,13 @@ const computeFrequentInviteValidityWindow = ({
   return { validFrom: start, validTill: end };
 };
 
-const buildGuestInviteQrPayload = ({ invite, unit, member }) => {
+const buildGuestInviteQrPayload = ({ invite, unit, member, guest }) => {
   const payload = {
     type: 'gatepal_guest_invite',
-    version: 1,
+    version: 2,
     inviteId: invite.inviteId,
+    guestId: guest.guestId,
+    guestName: guest.name,
     societyId: String(invite.societyId),
     unitId: String(invite.unitId),
     unitWing: unit.wingName,
@@ -334,6 +341,32 @@ const buildGuestInviteQrPayload = ({ invite, unit, member }) => {
     validTill: invite.validTill.toISOString(),
   };
   return JSON.stringify(payload);
+};
+
+const generateGuestQrCodes = async ({ invite, unit, member }) => {
+  const updatedGuests = [];
+  for (const guest of invite.guests) {
+    try {
+      const payload = buildGuestInviteQrPayload({ invite, unit, member, guest });
+      const qrCodeImage = await QRCode.toDataURL(payload, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 256,
+      });
+      updatedGuests.push({
+        ...guest.toObject ? guest.toObject() : guest,
+        qrCodeImage,
+        qrCodeGeneratedAt: new Date(),
+      });
+    } catch (e) {
+      updatedGuests.push({
+        ...guest.toObject ? guest.toObject() : guest,
+        qrCodeImage: null,
+        qrCodeGeneratedAt: null,
+      });
+    }
+  }
+  return updatedGuests;
 };
 
 const createGroupInvite = async (req, res, next) => {
@@ -512,23 +545,10 @@ const createFrequentInvite = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    let qrCodeImage = null;
-    try {
-      const payload = buildGuestInviteQrPayload({ invite, unit: unitDoc, member });
-      qrCodeImage = await QRCode.toDataURL(payload, {
-        errorCorrectionLevel: 'M',
-        margin: 1,
-        width: 256,
-      });
-    } catch (e) {
-      qrCodeImage = null;
-    }
-
-    if (qrCodeImage) {
-      invite.qrCodeImage = qrCodeImage;
-      invite.qrCodeGeneratedAt = new Date();
-      await invite.save();
-    }
+    // Generate individual QR codes for each guest
+    const updatedGuests = await generateGuestQrCodes({ invite, unit: unitDoc, member });
+    invite.guests = updatedGuests;
+    await invite.save();
 
     const dateLabelFrom = toISTDateLabel(window.validFrom);
     const dateLabelTill = toISTDateLabel(window.validTill);
@@ -552,14 +572,17 @@ const createFrequentInvite = async (req, res, next) => {
       },
       isPrivateInvite: invite.isPrivateInvite,
       guests: invite.guests.map((g) => ({
+        guestId: g.guestId,
         name: g.name,
         countryCode: g.countryCode,
         phoneNumber: g.phoneNumber,
+        qrCodeImage: g.qrCodeImage || null,
+        hasArrived: g.hasArrived || false,
+        arrivedAt: g.arrivedAt || null,
       })),
       validFrom: invite.validFrom,
       validTill: invite.validTill,
       validityLabel,
-      qrCodeImage: invite.qrCodeImage || null,
       maxEntries: null,
     };
 
@@ -638,28 +661,15 @@ const createQuickInvite = async (req, res, next) => {
       guests: cleanedGuests,
       validFrom: window.validFrom,
       validTill: window.validTill,
-      maxEntries: 1,
+      maxEntries: cleanedGuests.length,
     });
 
     const member = await User.findById(authUser._id).lean();
 
-    let qrCodeImage = null;
-    try {
-      const payload = buildGuestInviteQrPayload({ invite, unit: unitDoc, member });
-      qrCodeImage = await QRCode.toDataURL(payload, {
-        errorCorrectionLevel: 'M',
-        margin: 1,
-        width: 256,
-      });
-    } catch (e) {
-      qrCodeImage = null;
-    }
-
-    if (qrCodeImage) {
-      invite.qrCodeImage = qrCodeImage;
-      invite.qrCodeGeneratedAt = new Date();
-      await invite.save();
-    }
+    // Generate individual QR codes for each guest
+    const updatedGuests = await generateGuestQrCodes({ invite, unit: unitDoc, member });
+    invite.guests = updatedGuests;
+    await invite.save();
 
     const dateLabel = toISTDateLabel(window.validFrom);
     const fromTimeLabel = toISTTimeLabel(window.validFrom);
@@ -682,14 +692,18 @@ const createQuickInvite = async (req, res, next) => {
       },
       isPrivateInvite: invite.isPrivateInvite,
       guests: invite.guests.map((g) => ({
+        guestId: g.guestId,
         name: g.name,
         countryCode: g.countryCode,
         phoneNumber: g.phoneNumber,
+        qrCodeImage: g.qrCodeImage || null,
+        hasArrived: g.hasArrived || false,
+        arrivedAt: g.arrivedAt || null,
       })),
       validFrom: invite.validFrom,
       validTill: invite.validTill,
       validityLabel,
-      qrCodeImage: invite.qrCodeImage || null,
+      maxEntries: invite.maxEntries,
     };
 
     const shareMessage = `${authUser.fullName || 'A member'} has invited you. Show this QR code to the guard at the gate.`;
@@ -764,17 +778,39 @@ const scanGuestInvite = async (req, res, next) => {
       return next(createHttpError('Invite has expired', 400));
     }
 
+    // Find the specific guest from the QR code (for quick/frequent invites with per-guest QR)
+    const guestId = payload.guestId;
+    let arrivingGuest = null;
+    let arrivingGuestIndex = -1;
+
+    if (guestId) {
+      arrivingGuestIndex = invite.guests.findIndex((g) => g.guestId === guestId);
+      if (arrivingGuestIndex === -1) {
+        return next(createHttpError('Guest not found in this invite', 404));
+      }
+      arrivingGuest = invite.guests[arrivingGuestIndex];
+
+      // For quick invites, check if this specific guest has already arrived
+      if (invite.type === 'quick' && arrivingGuest.hasArrived) {
+        return next(createHttpError(`${arrivingGuest.name} has already used this invite`, 400));
+      }
+    }
+
+    // For group invites without guestId, use the old logic
     const usedEntries = Array.isArray(invite.entryLogs) ? invite.entryLogs.length : 0;
-    const hasEntryLimit = invite.type !== 'frequent';
+    const hasEntryLimit = invite.type === 'group';
     if (hasEntryLimit && usedEntries >= invite.maxEntries) {
-      return next(createHttpError('Entry already used for this invite', 400));
+      return next(createHttpError('Entry limit reached for this invite', 400));
     }
 
     const normalizedVehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
     const countNumber = Number(accompanyingCount);
     const safeCount = Number.isFinite(countNumber) && countNumber > 0 ? countNumber : 0;
 
+    // Add entry log with guest information
     invite.entryLogs.push({
+      guestId: guestId || 'group',
+      guestName: arrivingGuest ? arrivingGuest.name : 'Group Guest',
       scannedAt: now,
       guardId: authUser._id,
       gateId: activeDuty.dutyGateId || null,
@@ -782,6 +818,12 @@ const scanGuestInvite = async (req, res, next) => {
       vehicleNumber: normalizedVehicleNumber,
       accompanyingCount: safeCount,
     });
+
+    // Mark the specific guest as arrived (for quick/frequent invites)
+    if (arrivingGuestIndex !== -1) {
+      invite.guests[arrivingGuestIndex].hasArrived = true;
+      invite.guests[arrivingGuestIndex].arrivedAt = now;
+    }
 
     await invite.save();
 
@@ -793,10 +835,16 @@ const scanGuestInvite = async (req, res, next) => {
     const tillTimeLabel = toISTTimeLabel(invite.validTill);
 
     const usedEntriesAfterScan = usedEntries + 1;
-    const remainingEntries =
-      hasEntryLimit && Number.isFinite(invite.maxEntries)
-        ? Math.max(invite.maxEntries - usedEntriesAfterScan, 0)
-        : null;
+    
+    // Calculate remaining entries based on invite type
+    let remainingEntries = null;
+    if (invite.type === 'quick') {
+      // For quick invites, remaining = guests who haven't arrived
+      remainingEntries = invite.guests.filter((g) => !g.hasArrived).length;
+    } else if (invite.type === 'group') {
+      remainingEntries = Math.max(invite.maxEntries - usedEntriesAfterScan, 0);
+    }
+    // For frequent invites, remainingEntries stays null (unlimited)
 
     const responseData = {
       inviteId: invite.inviteId,
@@ -817,20 +865,34 @@ const scanGuestInvite = async (req, res, next) => {
             phoneNumber: member.phoneNumber || null,
           }
         : null,
+      arrivingGuest: arrivingGuest
+        ? {
+            guestId: arrivingGuest.guestId,
+            name: arrivingGuest.name,
+            countryCode: arrivingGuest.countryCode,
+            phoneNumber: arrivingGuest.phoneNumber,
+            arrivedAt: now,
+          }
+        : null,
       guests: invite.guests.map((g) => ({
+        guestId: g.guestId,
         name: g.name,
         countryCode: g.countryCode,
         phoneNumber: g.phoneNumber,
+        hasArrived: g.hasArrived || false,
+        arrivedAt: g.arrivedAt || null,
       })),
       validFrom: invite.validFrom,
       validTill: invite.validTill,
       validityLabel: `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`,
       vehicleNumber: normalizedVehicleNumber,
       accompanyingCount: safeCount,
-      maxEntries: hasEntryLimit ? invite.maxEntries : null,
+      maxEntries: invite.type === 'frequent' ? null : invite.maxEntries,
       usedEntries: usedEntriesAfterScan,
       remainingEntries,
-      message: 'QR validated successfully. Click a picture to continue.',
+      message: arrivingGuest
+        ? `${arrivingGuest.name} verified successfully. Click a picture to continue.`
+        : 'QR validated successfully. Click a picture to continue.',
     };
 
     return sendSuccessResponse(res, 200, 'Guest invite validated successfully', {

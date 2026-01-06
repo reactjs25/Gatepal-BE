@@ -5,6 +5,11 @@ const GUEST_INVITE_TYPES = ['quick', 'group', 'frequent'];
 
 const guestSchema = new mongoose.Schema(
   {
+    guestId: {
+      type: String,
+      required: true,
+      default: () => randomUUID(),
+    },
     name: { type: String, required: true, trim: true },
     countryCode: { type: String, trim: true, default: '+91' },
     phoneNumber: { type: String, trim: true, default: null },
@@ -22,12 +27,18 @@ const guestSchema = new mongoose.Schema(
       enum: ['phonebook', 'manual', 'recent'],
       default: 'manual',
     },
+    qrCodeImage: { type: String, default: null },
+    qrCodeGeneratedAt: { type: Date, default: null },
+    hasArrived: { type: Boolean, default: false },
+    arrivedAt: { type: Date, default: null },
   },
   { _id: false }
 );
 
 const entryLogSchema = new mongoose.Schema(
   {
+    guestId: { type: String, required: true },
+    guestName: { type: String, trim: true, default: null },
     scannedAt: { type: Date, required: true, default: Date.now },
     guardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     gateId: { type: mongoose.Schema.Types.ObjectId, default: null },
@@ -105,14 +116,6 @@ const guestInviteSchema = new mongoose.Schema(
       enum: ['active', 'expired', 'cancelled'],
       default: 'active',
       index: true,
-    },
-    qrCodeImage: {
-      type: String,
-      default: null,
-    },
-    qrCodeGeneratedAt: {
-      type: Date,
-      default: null,
     },
     entryLogs: {
       type: [entryLogSchema],
