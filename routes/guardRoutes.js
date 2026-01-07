@@ -7,7 +7,7 @@ const {
   startDuty,
   endDuty,
 } = require('../controller/guard/guardController');
-const { scanGuestInvite } = require('../controller/guestInviteController');
+const { scanGuestInvite, updateGuestInviteEntryDetails } = require('../controller/guestInviteController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 
 const router = express.Router();
@@ -19,5 +19,6 @@ router.post('/addSociety', userAuthMiddleware, addSociety);
 router.post('/startDuty', userAuthMiddleware, startDuty);
 router.post('/endDuty', userAuthMiddleware, endDuty);
 router.post('/scanGuestInvite', userAuthMiddleware, scanGuestInvite);
+router.patch('/entryDetails', userAuthMiddleware, updateGuestInviteEntryDetails);
 
 module.exports = router;

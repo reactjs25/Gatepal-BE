@@ -37,14 +37,33 @@ const guestSchema = new mongoose.Schema(
 
 const entryLogSchema = new mongoose.Schema(
   {
+    entryLogId: {
+      type: String,
+      required: true,
+      default: () => randomUUID(),
+      index: true,
+    },
     guestId: { type: String, required: true },
     guestName: { type: String, trim: true, default: null },
+    guestCountryCode: { type: String, trim: true, default: '+91' },
+    guestPhoneNumber: { type: String, trim: true, default: null },
+    guestPhoneDigits: {
+      type: String,
+      default: null,
+      index: true,
+      validate: {
+        validator: (v) => v == null || /^\d{10}$/.test(v),
+        message: 'guestPhoneNumber must contain exactly 10 digits',
+      },
+    },
     scannedAt: { type: Date, required: true, default: Date.now },
     guardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     gateId: { type: mongoose.Schema.Types.ObjectId, default: null },
     gateName: { type: String, trim: true, default: null },
     vehicleNumber: { type: String, trim: true, default: null },
     accompanyingCount: { type: Number, default: 0 },
+    imageUrl: { type: String, trim: true, default: null },
+    imageCapturedAt: { type: Date, default: null },
   },
   { _id: false }
 );

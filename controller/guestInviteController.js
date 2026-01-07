@@ -2,6 +2,7 @@ const QRCode = require('qrcode');
 const GuestInvite = require('../model/guestInviteSchema');
 const MemberUnit = require('../model/memberUnitSchema');
 const User = require('../model/userSchema');
+const { randomUUID } = require('crypto');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
@@ -12,6 +13,18 @@ const {
   isTenDigitPhone,
 } = require('../utils/phoneNumber');
 const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
+
+const canCreateGuestInvites = (req) => {
+  const user = req.appUser;
+  if (!user) return false;
+  // Standard member flow
+  if (user.role === 'member') return true;
+  // Society admin flow: the session effective role is society_admin, and the linked app user may or may not
+  // have role=member depending on how the account was created/migrated.
+  if (user.role === 'society_admin') return true;
+  if (req.user?.effectiveRole === 'society_admin') return true;
+  return false;
+};
 
 const normalizeOption = (value) =>
   (value || '')
@@ -376,8 +389,8 @@ const createGroupInvite = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'member') {
-      return next(createHttpError('Only members can create guest invites', 403));
+    if (!canCreateGuestInvites(req)) {
+      return next(createHttpError('Only members (including society admins) can create guest invites', 403));
     }
 
     const { unitId, selectedDate, startingFrom, validityHours, guestCount } = req.body || {};
@@ -494,8 +507,8 @@ const createFrequentInvite = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'member') {
-      return next(createHttpError('Only members can create guest invites', 403));
+    if (!canCreateGuestInvites(req)) {
+      return next(createHttpError('Only members (including society admins) can create guest invites', 403));
     }
 
     const {
@@ -604,8 +617,8 @@ const createQuickInvite = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'member') {
-      return next(createHttpError('Only members can create guest invites', 403));
+    if (!canCreateGuestInvites(req)) {
+      return next(createHttpError('Only members (including society admins) can create guest invites', 403));
     }
 
     const {
@@ -808,7 +821,9 @@ const scanGuestInvite = async (req, res, next) => {
     const safeCount = Number.isFinite(countNumber) && countNumber > 0 ? countNumber : 0;
 
     // Add entry log with guest information
+    const entryLogId = randomUUID();
     invite.entryLogs.push({
+      entryLogId,
       guestId: guestId || 'group',
       guestName: arrivingGuest ? arrivingGuest.name : 'Group Guest',
       scannedAt: now,
@@ -817,6 +832,8 @@ const scanGuestInvite = async (req, res, next) => {
       gateName: activeDuty.dutyGateName || null,
       vehicleNumber: normalizedVehicleNumber,
       accompanyingCount: safeCount,
+      imageUrl: null,
+      imageCapturedAt: null,
     });
 
     // Mark the specific guest as arrived (for quick/frequent invites)
@@ -851,6 +868,7 @@ const scanGuestInvite = async (req, res, next) => {
       inviteType: invite.type,
       societyId: String(invite.societyId),
       unitId: String(invite.unitId),
+      entryLogId,
       unit: unit
         ? {
             wingName: unit.wingName,
@@ -885,8 +903,6 @@ const scanGuestInvite = async (req, res, next) => {
       validFrom: invite.validFrom,
       validTill: invite.validTill,
       validityLabel: `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`,
-      vehicleNumber: normalizedVehicleNumber,
-      accompanyingCount: safeCount,
       maxEntries: invite.type === 'frequent' ? null : invite.maxEntries,
       usedEntries: usedEntriesAfterScan,
       remainingEntries,
@@ -903,9 +919,174 @@ const scanGuestInvite = async (req, res, next) => {
   }
 };
 
+const updateGuestInviteEntryDetails = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    if (authUser.role !== 'guard') {
+      return next(createHttpError('Only guards can update guest invite entry details', 403));
+    }
+
+    const {
+      inviteId,
+      entryLogId,
+      vehicleNumber,
+      accompanyingCount,
+      imageUrl,
+      fullName,
+      phoneNumber,
+      countryCode,
+    } = req.body || {};
+
+    const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
+    const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
+
+    if (!activeDuty) {
+      return next(createHttpError('You must be on duty to update guest invite entry details', 400));
+    }
+
+    const normalizedInviteId = normalizeString(inviteId);
+    const normalizedEntryLogId = normalizeString(entryLogId);
+    if (!normalizedInviteId) {
+      return next(createHttpError('inviteId is required', 400));
+    }
+    if (!normalizedEntryLogId) {
+      return next(createHttpError('entryLogId is required', 400));
+    }
+
+    const invite = await GuestInvite.findOne({ inviteId: normalizedInviteId });
+    if (!invite) {
+      return next(createHttpError('Guest invite not found', 404));
+    }
+
+    if (String(invite.societyId) !== String(activeDuty.societyId)) {
+      return next(createHttpError('Invite does not belong to this society', 403));
+    }
+
+    const idx = (invite.entryLogs || []).findIndex((l) => l.entryLogId === normalizedEntryLogId);
+    if (idx === -1) {
+      return next(createHttpError('Entry log not found for this invite', 404));
+    }
+
+    // Only the scanning guard (same duty session user) should be able to update that entry.
+    if (String(invite.entryLogs[idx].guardId) !== String(authUser._id)) {
+      return next(createHttpError('Forbidden: only the scanning guard can update these details', 403));
+    }
+
+    // For group/party invites, guard must provide guest's name + phone number as it isn't available via QR.
+    if (invite.type === 'group') {
+      const normalizedName = normalizeString(fullName);
+      const normalizedPhone = normalizeString(phoneNumber);
+      if (!normalizedName) {
+        return next(createHttpError('fullName is required for group invites', 400));
+      }
+      if (!normalizedPhone) {
+        return next(createHttpError('phoneNumber is required for group invites', 400));
+      }
+      if (!isTenDigitPhone(normalizedPhone)) {
+        return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+      }
+    }
+
+    const updates = {};
+
+    if (vehicleNumber !== undefined) {
+      updates.vehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
+    }
+
+    if (accompanyingCount !== undefined) {
+      const countNumber = Number(accompanyingCount);
+      updates.accompanyingCount = Number.isFinite(countNumber) && countNumber > 0 ? countNumber : 0;
+    }
+
+    if (imageUrl !== undefined) {
+      const img = normalizeString(imageUrl);
+      updates.imageUrl = img || null;
+      updates.imageCapturedAt = img ? new Date() : null;
+    }
+
+    if (fullName !== undefined) {
+      const name = normalizeString(fullName);
+      updates.guestName = name || null;
+    }
+
+    if (phoneNumber !== undefined) {
+      const raw = normalizeString(phoneNumber);
+      if (raw) {
+        if (!isTenDigitPhone(raw)) {
+          return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+        }
+        const digits = normalizeDigits(raw);
+        updates.guestPhoneDigits = digits;
+        updates.guestPhoneNumber = digits;
+        updates.guestCountryCode = normalizeCountryCode(countryCode || '+91');
+      } else {
+        updates.guestPhoneDigits = null;
+        updates.guestPhoneNumber = null;
+        updates.guestCountryCode = normalizeCountryCode(countryCode || '+91');
+      }
+    } else if (countryCode !== undefined) {
+      updates.guestCountryCode = normalizeCountryCode(countryCode || '+91');
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return sendSuccessResponse(res, 200, 'No changes provided', {
+        data: {
+          inviteId: invite.inviteId,
+          entryLogId: invite.entryLogs[idx].entryLogId,
+        },
+      });
+    }
+
+    Object.assign(invite.entryLogs[idx], updates);
+    await invite.save();
+
+    const updated = invite.entryLogs[idx];
+
+  
+    const unit = await MemberUnit.findById(invite.unitId).lean();
+    const guest =
+      updated.guestId && updated.guestId !== 'group'
+        ? (invite.guests || []).find((g) => g.guestId === updated.guestId) || null
+        : null;
+
+    return sendSuccessResponse(res, 200, 'Guest invite entry details updated successfully', {
+      data: {
+        status: 'Approved',
+        category: 'Guest',
+        inviteId: invite.inviteId,
+        entryLogId: updated.entryLogId,
+        guestId: updated.guestId,
+        guestName: updated.guestName,
+        guest: {
+          name: updated.guestName || null,
+          countryCode: updated.guestCountryCode || guest?.countryCode || null,
+          phoneNumber: updated.guestPhoneNumber || guest?.phoneNumber || null,
+        },
+        unit: unit
+          ? {
+              id: String(unit._id),
+              wingName: unit.wingName,
+              unitNumber: unit.unitNumber,
+            }
+          : null,
+        vehicleNumber: updated.vehicleNumber || null,
+        accompanyingCount: updated.accompanyingCount || 0,
+        imageUrl: updated.imageUrl || null,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update guest invite entry details'));
+  }
+};
+
 module.exports = {
   createGroupInvite,
   createFrequentInvite,
   createQuickInvite,
   scanGuestInvite,
+  updateGuestInviteEntryDetails,
 };
