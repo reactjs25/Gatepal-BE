@@ -26,6 +26,129 @@ const canCreateGuestInvites = (req) => {
   return false;
 };
 
+const getRecentGuests = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    // Keep consistent with invite creation: allow members and society admins.
+    if (!canCreateGuestInvites(req)) {
+      return next(createHttpError('Only members (including society admins) can view recent guests', 403));
+    }
+
+    const unitId = normalizeString(req.body?.unitId);
+    const daysNumber = Number(req.body?.days);
+
+    const limit = 20;
+    const days = Number.isFinite(daysNumber) && daysNumber > 0 ? Math.min(daysNumber, 365) : 30;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    if (!unitId) {
+      return next(createHttpError('unitId is required', 400));
+    }
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const invites = await GuestInvite.find(
+      {
+        unitId: unitDoc._id,
+        createdAt: { $gte: since },
+        $or: [
+          { 'entryLogs.0': { $exists: true } },
+          { 'guests.hasArrived': true },
+        ],
+      },
+      {
+        type: 1,
+        guests: 1,
+        entryLogs: 1,
+        createdAt: 1,
+      }
+    )
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    const byKey = new Map();
+
+    const upsert = (key, candidate) => {
+      if (!key) return;
+      const existing = byKey.get(key);
+      if (!existing || new Date(candidate.lastVisitedAt).getTime() > new Date(existing.lastVisitedAt).getTime()) {
+        byKey.set(key, candidate);
+      }
+    };
+
+    for (const invite of invites) {
+      // Quick / frequent: use per-guest arrival info
+      if (invite.type === 'quick' || invite.type === 'frequent') {
+        for (const g of invite.guests || []) {
+          if (!g || !g.hasArrived || !g.arrivedAt) continue;
+          const phoneDigits = g.phoneDigits || (g.phoneNumber ? normalizeDigits(g.phoneNumber) : null);
+          const key = phoneDigits || `${(g.name || '').toLowerCase()}|${String(g.guestId || '')}`;
+          upsert(key, {
+            name: g.name || null,
+            countryCode: g.countryCode || null,
+            phoneNumber: g.phoneNumber || null,
+            lastVisitedAt: g.arrivedAt,
+            imageUrl: null,
+            source: g.source || 'recent',
+          });
+        }
+      }
+
+      // Group / party: use entry logs (which can include phone/name via entryDetails)
+      if (invite.type === 'group') {
+        for (const log of invite.entryLogs || []) {
+          if (!log) continue;
+          const name = (log.guestName || '').toString().trim();
+          const isPlaceholderName = name.toLowerCase() === 'group guest';
+          const hasPhone = Boolean((log.guestPhoneDigits || log.guestPhoneNumber || '').toString().trim());
+          if (isPlaceholderName && !hasPhone) {
+            // Skip placeholder group scans where guard hasn't filled identity yet
+            continue;
+          }
+          const phoneDigits = log.guestPhoneDigits || (log.guestPhoneNumber ? normalizeDigits(log.guestPhoneNumber) : null);
+          const key = phoneDigits || `${(log.guestName || '').toLowerCase()}|${String(log.entryLogId || '')}`;
+          upsert(key, {
+            name: log.guestName || null,
+            countryCode: log.guestCountryCode || (log.guestPhoneNumber ? '+91' : null),
+            phoneNumber: log.guestPhoneNumber || null,
+            lastVisitedAt: log.scannedAt || invite.createdAt,
+            imageUrl: log.imageUrl || null,
+            source: 'recent',
+          });
+        }
+      }
+    }
+
+    const recentGuests = Array.from(byKey.values())
+      .filter((g) => g.name || g.phoneNumber)
+      .sort((a, b) => new Date(b.lastVisitedAt).getTime() - new Date(a.lastVisitedAt).getTime())
+      .slice(0, limit);
+
+    return sendSuccessResponse(res, 200, 'Recent guests fetched successfully', {
+      data: {
+        unit: {
+          id: String(unitDoc._id),
+          wingName: unitDoc.wingName,
+          unitNumber: unitDoc.unitNumber,
+        },
+        guests: recentGuests,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch recent guests'));
+  }
+};
+
 const normalizeOption = (value) =>
   (value || '')
     .toString()
@@ -971,23 +1094,31 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       return next(createHttpError('Entry log not found for this invite', 404));
     }
 
-    // Only the scanning guard (same duty session user) should be able to update that entry.
+   
     if (String(invite.entryLogs[idx].guardId) !== String(authUser._id)) {
       return next(createHttpError('Forbidden: only the scanning guard can update these details', 403));
     }
 
-    // For group/party invites, guard must provide guest's name + phone number as it isn't available via QR.
+ 
     if (invite.type === 'group') {
-      const normalizedName = normalizeString(fullName);
-      const normalizedPhone = normalizeString(phoneNumber);
-      if (!normalizedName) {
-        return next(createHttpError('fullName is required for group invites', 400));
-      }
-      if (!normalizedPhone) {
-        return next(createHttpError('phoneNumber is required for group invites', 400));
-      }
-      if (!isTenDigitPhone(normalizedPhone)) {
-        return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+      const existingLog = invite.entryLogs[idx] || {};
+      const existingName = normalizeString(existingLog.guestName);
+      const existingPhone = normalizeString(existingLog.guestPhoneNumber);
+      const isPlaceholderName = !existingName || existingName.toLowerCase() === 'group guest';
+      const needsIdentity = isPlaceholderName || !existingPhone;
+
+      if (needsIdentity) {
+        const normalizedName = normalizeString(fullName);
+        const normalizedPhone = normalizeString(phoneNumber);
+        if (!normalizedName) {
+          return next(createHttpError('fullName is required for group invites', 400));
+        }
+        if (!normalizedPhone) {
+          return next(createHttpError('phoneNumber is required for group invites', 400));
+        }
+        if (!isTenDigitPhone(normalizedPhone)) {
+          return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+        }
       }
     }
 
@@ -1087,6 +1218,7 @@ module.exports = {
   createGroupInvite,
   createFrequentInvite,
   createQuickInvite,
+  getRecentGuests,
   scanGuestInvite,
   updateGuestInviteEntryDetails,
 };
