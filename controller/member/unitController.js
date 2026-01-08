@@ -329,7 +329,12 @@ const getUnitDashboard = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    const unitIdCandidate = normalizeString((req.body || {}).unitId);
+    const unitIdCandidate = normalizeString(
+      (req.body && req.body.unitId) ||
+      (req.params && (req.params.unitId || req.params.id)) ||
+      (req.query && (req.query.unitId || req.query.id)) ||
+      ''
+    );
     if (!unitIdCandidate) {
       return next(createHttpError('unitId is required', 400));
     }
@@ -357,9 +362,52 @@ const getUnitDashboard = async (req, res, next) => {
     const addedItems = [familyCount > 0, vehicleCount > 0, petCount > 0].filter(Boolean).length;
     const progressPercent = Math.round((addedItems / 3) * 100);
 
-    const announcementCount = announcementDocs.length;
-    const meetingCount = meetingDocs.length;
-    const society_rules = ruleDocs.length;
+    const toValidTimestamp = (value) => {
+      if (!value) return null;
+      const d = value instanceof Date ? value : new Date(value);
+      const ts = d.getTime();
+      return Number.isNaN(ts) ? null : ts;
+    };
+
+    const lastAnnouncementsSeenAtTs = toValidTimestamp(authUser.lastAnnouncementsSeenAt);
+    const lastMeetingsSeenAtTs = toValidTimestamp(authUser.lastMeetingsSeenAt);
+    const lastRulesSeenByCategoryTs = {};
+    const rawRulesSeen = authUser.lastSocietyRulesSeenAtByCategory || {};
+    if (rawRulesSeen && typeof rawRulesSeen === 'object') {
+      Object.keys(rawRulesSeen).forEach((key) => {
+        const ts = toValidTimestamp(rawRulesSeen[key]);
+        if (ts) lastRulesSeenByCategoryTs[key] = ts;
+      });
+    }
+
+    const unreadAnnouncementCount = announcementDocs.reduce((count, doc) => {
+      const createdAt = doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+      if (!createdAt) return count;
+      if (!lastAnnouncementsSeenAtTs) return count + 1; // never opened -> everything is unread
+      return createdAt.getTime() > lastAnnouncementsSeenAtTs ? count + 1 : count;
+    }, 0);
+
+    const unreadMeetingCount = meetingDocs.reduce((count, doc) => {
+      const createdAt = doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+      if (!createdAt) return count;
+      if (!lastMeetingsSeenAtTs) return count + 1; // never opened -> everything is unread
+      return createdAt.getTime() > lastMeetingsSeenAtTs ? count + 1 : count;
+    }, 0);
+
+    const unreadSocietyRulesCount = ruleDocs.reduce((count, doc) => {
+      const createdAt = doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
+      const updatedAt = doc.updatedAt instanceof Date ? doc.updatedAt : doc.updatedAt ? new Date(doc.updatedAt) : null;
+      const effectiveAt = updatedAt || createdAt;
+      if (!effectiveAt) return count;
+      const key = doc.categoryKey || '__uncategorized__';
+      const lastSeenTs = lastRulesSeenByCategoryTs[key] || 0;
+      if (!lastSeenTs) return count + 1;
+      return effectiveAt.getTime() > lastSeenTs ? count + 1 : count;
+    }, 0);
+
+    const announcementCount = unreadAnnouncementCount;
+    const meetingCount = unreadMeetingCount;
+    const society_rules = unreadSocietyRulesCount;
 
     const recentAnnouncement = announcementDocs[0] || null;
     let recent_announcement = null;

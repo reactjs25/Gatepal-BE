@@ -13,6 +13,13 @@ const { normalizeString } = require('../../utils/strings');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 
+const toValidTimestamp = (value) => {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    const ts = d.getTime();
+    return Number.isNaN(ts) ? null : ts;
+};
+
 const resolveAdminSociety = async (authUser) => {
     if (!authUser) throw createHttpError('Unauthorized', 401);
     if (authUser.adminSocietyId) {
@@ -394,41 +401,15 @@ const getSocietyActivitySummary = async (req, res, next) => {
             SocietyRule.find({ societyId, deletedAt: null }).lean(),
         ]);
 
-        let lastAnnouncementsSeenAtTs = null;
-        let lastMeetingsSeenAtTs = null;
-        let lastRulesSeenByCategoryTs = {};
-
-        if (isMemberView) {
-            if (authUser.lastAnnouncementsSeenAt) {
-                const lastAnnouncementsSeenAt =
-                    authUser.lastAnnouncementsSeenAt instanceof Date
-                        ? authUser.lastAnnouncementsSeenAt
-                        : new Date(authUser.lastAnnouncementsSeenAt);
-                if (!Number.isNaN(lastAnnouncementsSeenAt.getTime())) {
-                    lastAnnouncementsSeenAtTs = lastAnnouncementsSeenAt.getTime();
-                }
-            }
-
-            if (authUser.lastMeetingsSeenAt) {
-                const lastMeetingsSeenAt =
-                    authUser.lastMeetingsSeenAt instanceof Date
-                        ? authUser.lastMeetingsSeenAt
-                        : new Date(authUser.lastMeetingsSeenAt);
-                if (!Number.isNaN(lastMeetingsSeenAt.getTime())) {
-                    lastMeetingsSeenAtTs = lastMeetingsSeenAt.getTime();
-                }
-            }
-
-            const rawRulesSeen = authUser.lastSocietyRulesSeenAtByCategory || {};
-            if (rawRulesSeen && typeof rawRulesSeen === 'object') {
-                Object.keys(rawRulesSeen).forEach((key) => {
-                    const value = rawRulesSeen[key];
-                    const date = value instanceof Date ? value : value ? new Date(value) : null;
-                    if (date && !Number.isNaN(date.getTime())) {
-                        lastRulesSeenByCategoryTs[key] = date.getTime();
-                    }
-                });
-            }
+        const lastAnnouncementsSeenAtTs = toValidTimestamp(authUser.lastAnnouncementsSeenAt);
+        const lastMeetingsSeenAtTs = toValidTimestamp(authUser.lastMeetingsSeenAt);
+        const lastRulesSeenByCategoryTs = {};
+        const rawRulesSeen = authUser.lastSocietyRulesSeenAtByCategory || {};
+        if (rawRulesSeen && typeof rawRulesSeen === 'object') {
+            Object.keys(rawRulesSeen).forEach((key) => {
+                const ts = toValidTimestamp(rawRulesSeen[key]);
+                if (ts) lastRulesSeenByCategoryTs[key] = ts;
+            });
         }
 
         let unreadAnnouncementsCount = 0;
@@ -438,12 +419,9 @@ const getSocietyActivitySummary = async (req, res, next) => {
             const createdAt =
                 doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
             let isRead = true;
-            if (isMemberView) {
-                if (lastAnnouncementsSeenAtTs && createdAt) {
-                    isRead = createdAt.getTime() <= lastAnnouncementsSeenAtTs;
-                } else {
-                    isRead = true;
-                }
+            if (createdAt) {
+                if (lastAnnouncementsSeenAtTs) isRead = createdAt.getTime() <= lastAnnouncementsSeenAtTs;
+                else isRead = false; // never opened -> everything is unread
             }
             if (!isRead) {
                 unreadAnnouncementsCount += 1;
@@ -478,12 +456,9 @@ const getSocietyActivitySummary = async (req, res, next) => {
                 doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
 
             let isRead = true;
-            if (isMemberView) {
-                if (lastMeetingsSeenAtTs && createdAt) {
-                    isRead = createdAt.getTime() <= lastMeetingsSeenAtTs;
-                } else {
-                    isRead = true;
-                }
+            if (createdAt) {
+                if (lastMeetingsSeenAtTs) isRead = createdAt.getTime() <= lastMeetingsSeenAtTs;
+                else isRead = false; // never opened -> everything is unread
             }
             if (!isRead) {
                 unreadMeetingsCount += 1;
@@ -528,8 +503,8 @@ const getSocietyActivitySummary = async (req, res, next) => {
             const effectiveAt = updatedAt || createdAt;
 
             let isRead = true;
-            if (isMemberView && effectiveAt) {
-                const key = doc.categoryKey;
+            if (effectiveAt) {
+                const key = doc.categoryKey || '__uncategorized__';
                 const lastSeenTs = lastRulesSeenByCategoryTs[key] || 0;
                 const effectiveTs = effectiveAt.getTime();
                 if (!lastSeenTs || effectiveTs > lastSeenTs) {
