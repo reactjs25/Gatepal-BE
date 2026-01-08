@@ -22,6 +22,10 @@ const {
   createFrequentInvite,
   getRecentGuests,
 } = require('../controller/guestInviteController');
+const {
+  listGuestEntryRequestsForMember,
+  decideGuestEntryRequest,
+} = require('../controller/guestEntryRequestController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const router = express.Router();
 
@@ -40,6 +44,8 @@ router.post('/guestInvites/quick', userAuthMiddleware, createQuickInvite);
 router.post('/guestInvites/group', userAuthMiddleware, createGroupInvite);
 router.post('/guestInvites/frequent', userAuthMiddleware, createFrequentInvite);
 router.post('/guestInvites/recentGuests', userAuthMiddleware, getRecentGuests);
+router.post('/guestEntryRequests/list', userAuthMiddleware, listGuestEntryRequestsForMember);
+router.patch('/guestEntryRequests/:requestId/decision', userAuthMiddleware, decideGuestEntryRequest);
 
 
 module.exports = router;
