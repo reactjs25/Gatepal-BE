@@ -12,6 +12,10 @@ const ALLOWED_CATEGORIES = new Set(['adult', 'child']);
 const FAMILY_LIST_CACHE_TTL_MS = 20000;
 const familyListCache = new Map();
 
+const getFamilyDisplayStatus = ({ category, status }) => {
+  return category === 'child' ? 'No access for child' : status;
+};
+
 const ensureImageMaybe = ({ value, fieldLabel, minBytes = 512 }) => {
   const trimmed = normalizeString(value);
   if (!trimmed) return null;
@@ -97,7 +101,7 @@ const addFamilyMember = async (req, res, next) => {
 
     let doc = await FamilyMember.create(payload);
 
-    if (validated.phoneDigits) {
+    if (validated.phoneDigits && validated.category !== 'child') {
       const matchedUser = await User.findOne({ phoneNumber: validated.phoneDigits });
       if (matchedUser) {
         doc.status = 'Active on GatePal™';
@@ -115,7 +119,7 @@ const addFamilyMember = async (req, res, next) => {
         countryCode: doc.countryCode,
         phoneNumber: doc.phoneNumber,
         imageUrl: doc.imageUrl,
-        status: doc.status,
+        status: getFamilyDisplayStatus({ category: doc.category, status: doc.status }),
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -237,7 +241,7 @@ const getFamilyMembersByUnit = async (req, res, next) => {
         phoneNumber: m.phoneNumber,
         imageUrl: m.imageUrl,
         occupantType: unitTypeMap[String(m.unitId)] || null,
-        status: m.status,
+        status: getFamilyDisplayStatus({ category: m.category, status: m.status }),
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
       }))
@@ -460,7 +464,7 @@ const updateFamilyMember = async (req, res, next) => {
           countryCode: doc.countryCode,
           phoneNumber: doc.phoneNumber,
           imageUrl: doc.imageUrl,
-          status: doc.status,
+          status: getFamilyDisplayStatus({ category: doc.category, status: doc.status }),
           createdAt: doc.createdAt,
           updatedAt: doc.updatedAt,
         },
@@ -495,7 +499,7 @@ const updateFamilyMember = async (req, res, next) => {
         countryCode: doc.countryCode,
         phoneNumber: doc.phoneNumber,
         imageUrl: doc.imageUrl,
-        status: doc.status,
+        status: getFamilyDisplayStatus({ category: doc.category, status: doc.status }),
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       },
@@ -594,7 +598,7 @@ const getFamilyMemberById = async (req, res, next) => {
           phoneNumber: fm.phoneNumber,
           imageUrl: fm.imageUrl,
           occupantType: unitDoc.occupantType || null,
-          status: fm.status,
+          status: getFamilyDisplayStatus({ category: fm.category, status: fm.status }),
           createdAt: fm.createdAt,
           updatedAt: fm.updatedAt,
         },
