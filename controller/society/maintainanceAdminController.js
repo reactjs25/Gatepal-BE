@@ -315,7 +315,9 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
       return next(createHttpError('year must be a 4-digit number', 400));
     }
 
-    const currentYear = new Date().getFullYear();
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthIndex = now.getMonth(); // 0 = Jan, 11 = Dec
     const minYear = currentYear - 2;
     const maxYear = currentYear + 2;
     if (year < minYear || year > maxYear) {
@@ -373,7 +375,21 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
       return { wingLower: parts[1] || '', unitLower: parts[2] || '' };
     };
 
-    const data = MONTH_LABELS.map((month) => {
+    let monthsToReturn = MONTH_LABELS;
+    if (year > currentYear) {
+      // For future years, only show months that have any uploads/records.
+      monthsToReturn = MONTH_LABELS.filter((m) => (docsByMonth[m] || []).length > 0);
+      if (monthsToReturn.length === 0) {
+        return sendSuccessResponse(res, 200, 'Maintenance yearly summary fetched successfully', {
+          data: null,
+        });
+      }
+    } else if (year === currentYear) {
+      // For current year, show Jan..current month only.
+      monthsToReturn = MONTH_LABELS.slice(0, currentMonthIndex + 1);
+    }
+
+    const data = monthsToReturn.map((month) => {
       const maintDocs = docsByMonth[month] || [];
 
       const statusMap = maintDocs.reduce((acc, d) => {
