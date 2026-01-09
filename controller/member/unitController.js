@@ -369,7 +369,16 @@ const getUnitDashboard = async (req, res, next) => {
       return Number.isNaN(ts) ? null : ts;
     };
 
-    const lastAnnouncementsSeenAtTs = toValidTimestamp(authUser.lastAnnouncementsSeenAt);
+    const readAnnouncementIdsSet = new Set(
+      Array.isArray(authUser.readAnnouncementIds)
+        ? authUser.readAnnouncementIds.map((id) => String(id))
+        : []
+    );
+    const readMeetingIdsSet = new Set(
+      Array.isArray(authUser.readMeetingIds)
+        ? authUser.readMeetingIds.map((id) => String(id))
+        : []
+    );
     const lastMeetingsSeenAtTs = toValidTimestamp(authUser.lastMeetingsSeenAt);
     const lastRulesSeenByCategoryTs = {};
     const rawRulesSeen = authUser.lastSocietyRulesSeenAtByCategory || {};
@@ -381,17 +390,15 @@ const getUnitDashboard = async (req, res, next) => {
     }
 
     const unreadAnnouncementCount = announcementDocs.reduce((count, doc) => {
-      const createdAt = doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
-      if (!createdAt) return count;
-      if (!lastAnnouncementsSeenAtTs) return count + 1; // never opened -> everything is unread
-      return createdAt.getTime() > lastAnnouncementsSeenAtTs ? count + 1 : count;
+      const id = doc && doc.announcementId ? String(doc.announcementId) : '';
+      if (!id) return count + 1;
+      return readAnnouncementIdsSet.has(id) ? count : count + 1;
     }, 0);
 
     const unreadMeetingCount = meetingDocs.reduce((count, doc) => {
-      const createdAt = doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
-      if (!createdAt) return count;
-      if (!lastMeetingsSeenAtTs) return count + 1; // never opened -> everything is unread
-      return createdAt.getTime() > lastMeetingsSeenAtTs ? count + 1 : count;
+      const id = doc && doc.meetingId ? String(doc.meetingId) : '';
+      if (!id) return count + 1;
+      return readMeetingIdsSet.has(id) ? count : count + 1;
     }, 0);
 
     const unreadSocietyRulesCount = ruleDocs.reduce((count, doc) => {

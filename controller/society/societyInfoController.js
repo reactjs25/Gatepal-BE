@@ -401,7 +401,16 @@ const getSocietyActivitySummary = async (req, res, next) => {
             SocietyRule.find({ societyId, deletedAt: null }).lean(),
         ]);
 
-        const lastAnnouncementsSeenAtTs = toValidTimestamp(authUser.lastAnnouncementsSeenAt);
+        const readAnnouncementIdsSet = new Set(
+            Array.isArray(authUser.readAnnouncementIds)
+                ? authUser.readAnnouncementIds.map((id) => String(id))
+                : []
+        );
+        const readMeetingIdsSet = new Set(
+            Array.isArray(authUser.readMeetingIds)
+                ? authUser.readMeetingIds.map((id) => String(id))
+                : []
+        );
         const lastMeetingsSeenAtTs = toValidTimestamp(authUser.lastMeetingsSeenAt);
         const lastRulesSeenByCategoryTs = {};
         const rawRulesSeen = authUser.lastSocietyRulesSeenAtByCategory || {};
@@ -416,13 +425,9 @@ const getSocietyActivitySummary = async (req, res, next) => {
         const announcementItems = [];
         announcementDocs.forEach((doc) => {
             const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
-            const createdAt =
-                doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
-            let isRead = true;
-            if (createdAt) {
-                if (lastAnnouncementsSeenAtTs) isRead = createdAt.getTime() <= lastAnnouncementsSeenAtTs;
-                else isRead = false; // never opened -> everything is unread
-            }
+            const isRead = doc && doc.announcementId
+                ? readAnnouncementIdsSet.has(String(doc.announcementId))
+                : false;
             if (!isRead) {
                 unreadAnnouncementsCount += 1;
             }
@@ -452,14 +457,9 @@ const getSocietyActivitySummary = async (req, res, next) => {
             const combinedDateTime = meetingDateStr && meetingTimeStr ? new Date(`${meetingDateStr} ${meetingTimeStr}`) : null;
             const isUpcoming = combinedDateTime && combinedDateTime > now;
 
-            const createdAt =
-                doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
-
-            let isRead = true;
-            if (createdAt) {
-                if (lastMeetingsSeenAtTs) isRead = createdAt.getTime() <= lastMeetingsSeenAtTs;
-                else isRead = false; // never opened -> everything is unread
-            }
+            const isRead = doc && doc.meetingId
+                ? readMeetingIdsSet.has(String(doc.meetingId))
+                : false;
             if (!isRead) {
                 unreadMeetingsCount += 1;
             }
@@ -553,7 +553,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
             unreadCounts: {
                 announcementCount: unreadAnnouncementsCount,
                 meetingCount: unreadMeetingsCount,
-                society_rules: unreadSocietyRulesCount,
+                societyRules: unreadSocietyRulesCount,
             },
             announcements: recentAnnouncements,
             meetings: recentMeetings,

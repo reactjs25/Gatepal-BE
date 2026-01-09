@@ -227,6 +227,14 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    readAnnouncementIds: {
+      type: [String],
+      default: [],
+    },
+    readMeetingIds: {
+      type: [String],
+      default: [],
+    },
     lastAnnouncementsSeenAt: {
       type: Date,
       default: null,

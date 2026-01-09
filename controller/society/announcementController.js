@@ -256,16 +256,13 @@ const getAnnouncements = async (req, res, next) => {
     const currentYear = now.getFullYear();
     const currentMonthIndex = now.getMonth();
 
-    let lastAnnouncementsSeenAtTs = null;
-    if (isMemberView) {
-      const lastSeen =
-        authUser.lastAnnouncementsSeenAt instanceof Date
-          ? authUser.lastAnnouncementsSeenAt
-          : authUser.lastAnnouncementsSeenAt
-          ? new Date(authUser.lastAnnouncementsSeenAt)
-          : null;
-      lastAnnouncementsSeenAtTs = lastSeen ? lastSeen.getTime() : null;
-    }
+    const readAnnouncementIdsSet = isMemberView
+      ? new Set(
+          Array.isArray(authUser.readAnnouncementIds)
+            ? authUser.readAnnouncementIds.map((id) => String(id))
+            : []
+        )
+      : null;
 
     const groupsByKey = {};
 
@@ -293,14 +290,7 @@ const getAnnouncements = async (req, res, next) => {
 
       const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
-      let isRead = true;
-      if (isMemberView) {
-        if (lastAnnouncementsSeenAtTs) {
-          isRead = createdAt.getTime() <= lastAnnouncementsSeenAtTs;
-        } else {
-          isRead = true;
-        }
-      }
+      const isRead = isMemberView ? readAnnouncementIdsSet.has(String(doc.announcementId)) : true;
 
       groupsByKey[groupKey].announcements.push({
         announcementId: doc.announcementId,
@@ -400,20 +390,9 @@ const getAnnouncementById = async (req, res, next) => {
     }
 
     if (isMemberView) {
-      const createdAt =
-        doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
-
-      if (createdAt) {
-        const lastSeenRaw = authUser.lastAnnouncementsSeenAt;
-        const lastSeen =
-          lastSeenRaw instanceof Date ? lastSeenRaw : lastSeenRaw ? new Date(lastSeenRaw) : null;
-        const lastSeenTs = lastSeen ? lastSeen.getTime() : 0;
-        const createdAtTs = createdAt.getTime();
-
-        if (createdAtTs > lastSeenTs) {
-          await User.findByIdAndUpdate(authUser._id, { lastAnnouncementsSeenAt: createdAt }).exec();
-        }
-      }
+      await User.findByIdAndUpdate(authUser._id, {
+        $addToSet: { readAnnouncementIds: String(doc.announcementId) },
+      }).exec();
     }
 
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);

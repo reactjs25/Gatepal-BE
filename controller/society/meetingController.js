@@ -331,17 +331,13 @@ const getMeetings = async (req, res, next) => {
     const items = await Meeting.find({ societyId, deletedAt: null }).lean();
 
     const now = new Date();
-
-    let lastMeetingsSeenAtTs = null;
-    if (isMemberView) {
-      const lastSeen =
-        authUser.lastMeetingsSeenAt instanceof Date
-          ? authUser.lastMeetingsSeenAt
-          : authUser.lastMeetingsSeenAt
-          ? new Date(authUser.lastMeetingsSeenAt)
-          : null;
-      lastMeetingsSeenAtTs = lastSeen ? lastSeen.getTime() : null;
-    }
+    const readMeetingIdsSet = isMemberView
+      ? new Set(
+          Array.isArray(authUser.readMeetingIds)
+            ? authUser.readMeetingIds.map((id) => String(id))
+            : []
+        )
+      : null;
 
     const upcomingMeetings = [];
     const pastMeetings = [];
@@ -350,20 +346,8 @@ const getMeetings = async (req, res, next) => {
       const meetingDateTime = parseMeetingDateTime(doc.meetingDate, doc.meetingStartingFrom);
       const target = meetingDateTime && meetingDateTime > now ? upcomingMeetings : pastMeetings;
 
-      const createdAt =
-        doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
-
-      let isRead = true;
-      if (isMemberView) {
-        if (lastMeetingsSeenAtTs && createdAt) {
-          isRead = createdAt.getTime() <= lastMeetingsSeenAtTs;
-        } else {
-          isRead = true;
-        }
-      }
-
       const payload = buildMeetingResponse(doc);
-      payload.isRead = isRead;
+      payload.isRead = isMemberView ? readMeetingIdsSet.has(String(doc.meetingId)) : true;
 
       target.push(payload);
     });
@@ -447,20 +431,9 @@ const getMeetingById = async (req, res, next) => {
     }
 
     if (isMemberView) {
-      const createdAt =
-        doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
-
-      if (createdAt) {
-        const lastSeenRaw = authUser.lastMeetingsSeenAt;
-        const lastSeen =
-          lastSeenRaw instanceof Date ? lastSeenRaw : lastSeenRaw ? new Date(lastSeenRaw) : null;
-        const lastSeenTs = lastSeen ? lastSeen.getTime() : 0;
-        const createdAtTs = createdAt.getTime();
-
-        if (createdAtTs > lastSeenTs) {
-          await User.findByIdAndUpdate(authUser._id, { lastMeetingsSeenAt: createdAt }).exec();
-        }
-      }
+      await User.findByIdAndUpdate(authUser._id, {
+        $addToSet: { readMeetingIds: String(doc.meetingId) },
+      }).exec();
     }
 
     return sendSuccessResponse(res, 200, 'Meeting fetched successfully', {
