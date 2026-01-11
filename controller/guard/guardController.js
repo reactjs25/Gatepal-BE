@@ -5,6 +5,7 @@ const GuardDutyLog = require('../../model/guardDutyLogSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
+const { toTitleCaseName } = require('../../utils/strings');
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -46,7 +47,7 @@ const getAllSociety = async (req, res, next) => {
 };
 
 
-const updateGuardProfile = async (req, res, next) => {
+  const updateGuardProfile = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
@@ -72,7 +73,7 @@ const updateGuardProfile = async (req, res, next) => {
 
   
     if (name !== undefined) {
-      const candidateName = normalizeString(name);
+      const candidateName = toTitleCaseName(name);
       if (!candidateName) {
         return next(createHttpError('Name cannot be empty', 400));
       }

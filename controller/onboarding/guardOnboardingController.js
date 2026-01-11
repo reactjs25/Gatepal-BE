@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const { createHttpError } = require('../../utils/httpError');
 const Society = require('../../model/societySchema');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
-
+const { toTitleCaseName } = require('../../utils/strings');
 
 const ensureBase64ImageDataUrlGuard = ({ value, fieldLabel }) => {
   try {
@@ -17,7 +17,7 @@ const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const handleGuardOnboarding = async ({ user, payload }) => {
   const { fullName, profilePhoto, societyName, societyPin } = payload;
 
-  const sanitizedFullName = fullName?.trim();
+  const sanitizedFullName = toTitleCaseName(fullName);
   if (!sanitizedFullName) {
     throw createHttpError('Full name is required for guard onboarding', 400);
   }

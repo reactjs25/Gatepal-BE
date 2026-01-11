@@ -1,6 +1,7 @@
 const { createHttpError } = require('../../utils/httpError');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const QRCode = require('qrcode');
+const { toTitleCaseName } = require('../../utils/strings');
 
 const VISITOR_TYPES = {
   GUEST: 'guest',
@@ -55,7 +56,7 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
     throw createHttpError('Unsupported visitor type provided', 400);
   }
 
-  const sanitizedFullName = fullName?.trim();
+  const sanitizedFullName = toTitleCaseName(fullName);
 
   if (!sanitizedFullName) {
     throw createHttpError('Full name is required for visitor onboarding', 400);

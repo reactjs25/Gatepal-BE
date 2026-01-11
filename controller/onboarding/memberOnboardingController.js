@@ -3,9 +3,8 @@ const Society = require('../../model/societySchema');
 const MemberUnit = require('../../model/memberUnitSchema');
 const { ROLE_TYPES } = require('../../utils/userRoleUtils');
 const { normalizeDigits } = require('../../utils/phoneNumber');
-const { normalizeString } = require('../../utils/strings');
+const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { OCCUPANT_TYPES, OCCUPANCY_STATUSES, toCanonicalOccupantType, toCanonicalOccupancyStatus } = require('../../utils/enums/memberEnums');
-
 
 const maybeUpgradeSocietyAdmin = (user, society) => {
   if (!user || !society || user.role === ROLE_TYPES.SOCIETY_ADMIN) {
@@ -45,7 +44,7 @@ const maybeUpgradeSocietyAdmin = (user, society) => {
 };
 
 const handleMemberOnboarding = async ({ user, payload }) => {
-  const fullName = normalizeString(payload.fullName);
+  const fullName = toTitleCaseName(payload.fullName);
   const email = normalizeString(payload.email);
   const country = normalizeString(payload.country);
   const city = normalizeString(payload.city);
