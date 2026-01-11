@@ -6,7 +6,7 @@ const MemberUnit = require('../../model/memberUnitSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const User = require('../../model/userSchema');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
-const { normalizeString } = require('../../utils/strings');
+const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { normalizeDigits, normalizeCountryCode } = require('../../utils/phoneNumber');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
@@ -232,7 +232,7 @@ const addSocietyDailyHelp = async (req, res, next) => {
     const society = await resolveAdminSociety(authUser);
 
     const { category, name, countryCode, phoneNumber, imageUrl, complianceConfirmed } = req.body || {};
-    const nm = normalizeString(name);
+    const nm = toTitleCaseName(name);
     if (!nm) return next(createHttpError('name is required', 400));
 
     const canonicalCategory = toCanonicalCategory(category);
@@ -296,11 +296,18 @@ const addSocietyDailyHelp = async (req, res, next) => {
       person.rejectedAt = null;
       person.rejectReasonCode = null;
       person.rejectReasonText = null;
+      if (nm && normalizeString(person.name).toLowerCase() !== nm.toLowerCase()) {
+        person.name = nm;
+      }
       await person.save();
       await DailyHelpAssignment.updateMany(
         { dailyHelpId: person._id, status: 'PENDING' },
         { $set: { status: 'APPROVED' } }
       );
+    } else if (nm && normalizeString(person.name).toLowerCase() !== nm.toLowerCase()) {
+      // Keep persisted name consistently formatted when re-submitted.
+      person.name = nm;
+      await person.save();
     }
 
     return sendSuccessResponse(res, 201, 'Society daily help added successfully.', {
@@ -772,7 +779,7 @@ const editSocietyDailyHelpProfile = async (req, res, next) => {
     }
 
     if (name !== undefined) {
-      const nm = normalizeString(name);
+      const nm = toTitleCaseName(name);
       if (!nm) return next(createHttpError('name cannot be empty', 400));
       if (nm.length < 2 || nm.length > 50) {
         return next(createHttpError('name must be between 2 and 50 characters', 400));

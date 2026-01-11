@@ -6,7 +6,7 @@ const FamilyMember = require('../../model/familyMemberSchema');
 const mongoose = require('mongoose');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
-const { normalizeString } = require('../../utils/strings');
+const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { normalizeDigits, normalizeCountryCode } = require('../../utils/phoneNumber');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { assertUnitAccess, buildCanonicalUnitId } = require('../../utils/unitAccess');
@@ -70,7 +70,7 @@ const addDailyHelp = async (req, res, next) => {
     }
 
     const { category, name, countryCode, phoneNumber, imageUrl, complianceConfirmed } = req.body || {};
-    const nm = normalizeString(name);
+    const nm = toTitleCaseName(name);
     if (!nm) return next(createHttpError('name is required', 400));
 
     const canonicalCategory = toCanonicalCategory(category);
@@ -121,6 +121,10 @@ const addDailyHelp = async (req, res, next) => {
         createdByUserId: authUser._id,
         createdByRole: authUser.role,
       });
+    } else if (nm && normalizeString(person.name).toLowerCase() !== nm.toLowerCase()) {
+      // Keep persisted name consistently formatted when re-submitted.
+      person.name = nm;
+      await person.save();
     }
 
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
@@ -418,7 +422,7 @@ const editDailyHelpProfile = async (req, res, next) => {
     }
 
     if (name !== undefined) {
-      const nm = normalizeString(name);
+      const nm = toTitleCaseName(name);
       if (!nm) return next(createHttpError('name cannot be empty', 400));
       if (nm.length < 2 || nm.length > 50) {
         return next(createHttpError('name must be between 2 and 50 characters', 400));
