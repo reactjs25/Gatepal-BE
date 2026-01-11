@@ -28,7 +28,8 @@ router.post('/scanGuestInvite', userAuthMiddleware, scanGuestInvite);
 router.patch('/entryDetails', userAuthMiddleware, updateGuestInviteEntryDetails);
 router.post('/guestEntryRequests/recentGuests', userAuthMiddleware, getRecentGuestsForGuard);
 router.post('/guestEntryRequests', userAuthMiddleware, createGuestEntryRequest);
-router.get('/guestEntryRequests/:requestId', userAuthMiddleware, getGuestEntryRequestForGuard);
-router.post('/guestEntryRequests/:requestId/allowEntry', userAuthMiddleware, allowGuestEntry);
+router.get('/guestEntryRequests', userAuthMiddleware, getGuestEntryRequestForGuard);
+router.post('/guestEntryRequests/allowEntry', userAuthMiddleware, allowGuestEntry);
+
 
 module.exports = router;

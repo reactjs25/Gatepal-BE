@@ -19,7 +19,7 @@ const requireGuardOnDuty = (authUser) => {
 };
 
 const resolveUnitResidents = async ({ societyId, wingNameLower, unitNumberLower }) => {
-  
+
   const unitDocs = await MemberUnit.find(
     {
       societyId,
@@ -43,49 +43,51 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser }) => {
     reqDoc.status === 'approved'
       ? 'Approved'
       : reqDoc.status === 'rejected'
-      ? 'Rejected'
-      : reqDoc.status === 'entered'
-      ? 'Entered'
-      : reqDoc.status === 'expired'
-      ? 'Expired'
-      : reqDoc.status === 'cancelled'
-      ? 'Cancelled'
-      : 'Awaiting Approval';
+        ? 'Rejected'
+        : reqDoc.status === 'entered'
+          ? 'Entered'
+          : reqDoc.status === 'expired'
+            ? 'Expired'
+            : reqDoc.status === 'cancelled'
+              ? 'Cancelled'
+              : 'Awaiting Approval';
+
 
   return {
+
     requestId: reqDoc.requestId,
-    status: statusLabel,
     category: 'Guest',
+    status: statusLabel,
+    name: reqDoc.guestName,
+    visitorType: 'Guest',
+    phone: {
+      countryCode: reqDoc.guestCountryCode || '+91',
+      phoneNumber: reqDoc.guestPhoneNumber,
+
+    },
+    accompanyingPerson: reqDoc.accompanyingCount || 0,
+    vehicleNumber: reqDoc.vehicleNumber || null,
     unit: {
       wingName: reqDoc.wingName,
       unitNumber: reqDoc.unitNumber,
+
     },
-    guest: {
-      name: reqDoc.guestName,
-      countryCode: reqDoc.guestCountryCode || '+91',
-      phoneNumber: reqDoc.guestPhoneNumber,
-      imageUrl: reqDoc.guestImageUrl || null,
-    },
-    accompanyingCount: reqDoc.accompanyingCount || 0,
-    vehicleNumber: reqDoc.vehicleNumber || null,
+    imageUrl: reqDoc.guestImageUrl || null,
     approvedBy: approvedByUser
       ? {
-          id: String(approvedByUser._id),
-          name: approvedByUser.fullName || null,
-          countryCode: approvedByUser.countryCode || '+91',
-          phoneNumber: approvedByUser.phoneNumber || null,
-        }
+        id: String(approvedByUser._id),
+        name: approvedByUser.fullName || null,
+        countryCode: approvedByUser.countryCode || '+91',
+        phoneNumber: approvedByUser.phoneNumber || null,
+      }
       : null,
-    approvedAt: reqDoc.approvedAt || null,
+
     approvedOn: reqDoc.approvedAt ? toISTDateTimeLabel(reqDoc.approvedAt) : null,
-    createdAt: reqDoc.createdAt || null,
+    requestedOn: reqDoc.createdAt ? toISTDateTimeLabel(reqDoc.createdAt) : null,
   };
 };
 
-/**
- * Guard: recent guests for a unit (no QR flow helper).
- * Body: { wingName, unitNumber, days? }
- */
+
 const getRecentGuestsForGuard = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -205,10 +207,7 @@ const getRecentGuestsForGuard = async (req, res, next) => {
   }
 };
 
-/**
- * Guard creates an approval request for a guest WITHOUT a QR code.
- * Body: { wingName, unitNumber, guestName/fullName, phoneNumber, countryCode?, imageUrl?, accompanyingCount?, vehicleNumber? }
- */
+
 const createGuestEntryRequest = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -248,7 +247,7 @@ const createGuestEntryRequest = async (req, res, next) => {
       return next(createHttpError('No residents found for this unit. Cannot send approval request.', 404));
     }
 
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
     const doc = await GuestEntryRequest.create({
       societyId: activeDuty.societyId,
@@ -271,7 +270,6 @@ const createGuestEntryRequest = async (req, res, next) => {
       recipientUserIds,
     });
 
-    // No push infra in this server right now; members will fetch pending requests via API.
     return sendSuccessResponse(res, 201, 'Guest approval request created successfully', {
       data: {
         requestId: doc.requestId,
@@ -294,9 +292,7 @@ const createGuestEntryRequest = async (req, res, next) => {
   }
 };
 
-/**
- * Guard fetches request status + card payload.
- */
+
 const getGuestEntryRequestForGuard = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -305,7 +301,9 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
 
     const activeDuty = requireGuardOnDuty(authUser);
 
-    const requestId = normalizeString(req.params?.requestId || req.body?.requestId);
+
+
+    const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
     if (!requestId) return next(createHttpError('requestId is required', 400));
 
     const doc = await GuestEntryRequest.findOne({ requestId });
@@ -315,7 +313,7 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
       return next(createHttpError('Request does not belong to this society', 403));
     }
 
-    // auto-expire
+
     if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
       doc.status = 'expired';
       await doc.save();
@@ -330,10 +328,7 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
   }
 };
 
-/**
- * Members: list pending requests for a unit (all residents can see/act).
- * Body: { unitId, status? } status defaults to "pending"
- */
+
 const listGuestEntryRequestsForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -381,21 +376,40 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       .limit(50)
       .lean();
 
-    const mapped = (items || []).map((d) => ({
-      requestId: d.requestId,
-      status: d.status,
-      unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
-      guest: {
-        name: d.guestName,
-        countryCode: d.guestCountryCode || '+91',
-        phoneNumber: d.guestPhoneNumber,
-        imageUrl: d.guestImageUrl || null,
-      },
-      accompanyingCount: d.accompanyingCount || 0,
-      vehicleNumber: d.vehicleNumber || null,
-      createdAt: d.createdAt || null,
-      expiresAt: d.expiresAt || null,
-    }));
+    const toStatusLabel = (key) =>
+      key === 'approved'
+        ? 'Approved'
+        : key === 'rejected'
+          ? 'Rejected'
+          : key === 'entered'
+            ? 'Entered'
+            : key === 'expired'
+              ? 'Expired'
+              : key === 'cancelled'
+                ? 'Cancelled'
+                : 'Awaiting Approval';
+
+    const mapped = (items || []).map((d) => {
+      const statusLabel = toStatusLabel(d.status);
+      return {
+        requestId: d.requestId,
+        status: statusLabel,
+        statusKey: d.status,
+        category: 'Guest',
+        visitorType: 'Guest',
+        requestedOn: d.createdAt ? toISTDateTimeLabel(d.createdAt) : null,
+        unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
+        guest: {
+          name: d.guestName,
+          countryCode: d.guestCountryCode || '+91',
+          phoneNumber: d.guestPhoneNumber,
+          imageUrl: d.guestImageUrl || null,
+        },
+        accompanyingCount: d.accompanyingCount || 0,
+        vehicleNumber: d.vehicleNumber || null,
+
+      };
+    });
 
     return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully', { data: mapped });
   } catch (error) {
@@ -403,10 +417,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
   }
 };
 
-/**
- * Members approve/reject.
- * Body: { unitId, requestId, decision: 'approve'|'reject' }
- */
+
 const decideGuestEntryRequest = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -477,9 +488,7 @@ const decideGuestEntryRequest = async (req, res, next) => {
   }
 };
 
-/**
- * Guard allows entry after approval.
- */
+
 const allowGuestEntry = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -488,7 +497,7 @@ const allowGuestEntry = async (req, res, next) => {
 
     const activeDuty = requireGuardOnDuty(authUser);
 
-    const requestId = normalizeString(req.params?.requestId || req.body?.requestId);
+    const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
     if (!requestId) return next(createHttpError('requestId is required', 400));
 
     const doc = await GuestEntryRequest.findOne({ requestId });
@@ -498,7 +507,6 @@ const allowGuestEntry = async (req, res, next) => {
       return next(createHttpError('Request does not belong to this society', 403));
     }
 
-    // auto-expire
     if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
       doc.status = 'expired';
       await doc.save();
@@ -509,9 +517,9 @@ const allowGuestEntry = async (req, res, next) => {
     }
 
     if (doc.status === 'entered') {
-      return sendSuccessResponse(res, 200, 'Entry already allowed', {
-        data: { requestId: doc.requestId, status: 'Entered', entryAllowedAt: doc.entryAllowedAt || null },
-      });
+      const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
+      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+      return sendSuccessResponse(res, 200, 'Entry already allowed', { data: payload });
     }
 
     doc.status = 'entered';
@@ -522,13 +530,9 @@ const allowGuestEntry = async (req, res, next) => {
 
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Entry allowed successfully', {
-      data: {
-        requestId: doc.requestId,
-        status: 'Entered',
-        entryAllowedAt: doc.entryAllowedAt,
-      },
-    });
+    const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
+    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+    return sendSuccessResponse(res, 200, 'Entry allowed successfully', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to allow entry'));
   }
