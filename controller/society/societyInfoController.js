@@ -6,6 +6,7 @@ const Pet = require('../../model/petSchema');
 const Announcement = require('../../model/announcementSchema');
 const Meeting = require('../../model/meetingSchema');
 const SocietyRule = require('../../model/societyRuleSchema');
+const MissingUnitRequest = require('../../model/missingUnitRequestSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
@@ -189,6 +190,18 @@ const getSocietyInfo = async (req, res, next) => {
             }
         });
 
+        const officialStructureKeys = new Set();
+        wings.forEach((wing) => {
+            const wingLower = (wing.wingName || '').toString().trim().toLowerCase();
+            const units = Array.isArray(wing.units) ? wing.units : [];
+            units.forEach((u) => {
+                const unitLower = (u.unitNumber || '').toString().trim().toLowerCase();
+                if (wingLower && unitLower) {
+                    officialStructureKeys.add(`${wingLower}:${unitLower}`);
+                }
+            });
+        });
+
         const unitObjectIdMap = occupants.reduce((acc, u) => {
             const key = String(u._id);
             if (!acc[key]) {
@@ -313,13 +326,31 @@ const getSocietyInfo = async (req, res, next) => {
             };
         });
 
-        const missingUnits = unitList
-            .filter((u) => u.occupancyCategory === 'not_registered')
-            .map((u) => {
-                const unitNumber = (u.unitNumber || '').toString().trim();
+        // missingUnits should reflect units requested via /notify, but not yet officially created.
+        const pendingMissing = await MissingUnitRequest.find(
+            { societyId: society._id, status: 'pending' },
+            { wingName: 1, wingNameLower: 1, unitNumber: 1, unitNumberLower: 1, requestCount: 1, lastRequestedAt: 1 }
+        )
+            .sort({ lastRequestedAt: -1 })
+            .lean();
+
+        const pendingByKey = pendingMissing.reduce((acc, doc) => {
+            const key = `${(doc.wingNameLower || '').toString()}:${(doc.unitNumberLower || '').toString()}`;
+            if (!acc[key]) acc[key] = doc;
+            return acc;
+        }, {});
+
+        const missingUnits = Object.keys(pendingByKey)
+            .filter((key) => {
+                // If the unit exists officially, it should not appear (even if cleanup hasn't happened yet).
+                return !officialStructureKeys.has(key);
+            })
+            .map((key) => {
+                const doc = pendingByKey[key];
                 return {
-                    unitNumber: unitNumber || null,
-                    status: 'Not Registered',
+                    unitNumber: doc.unitNumber || null,
+                    ...(doc.wingName ? { wingName: doc.wingName } : {}),
+                    status: 'Requested',
                 };
             });
 

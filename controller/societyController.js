@@ -1,4 +1,5 @@
 const Society = require('../model/societySchema');
+const MissingUnitRequest = require('../model/missingUnitRequestSchema');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ensureAdminListIsUnique, normalizeAdminEmail, normalizeAdminMobile } = require('../utils/societyAdminUtils');
 const { sendSuccessResponse } = require('../utils/response');
@@ -178,6 +179,35 @@ const updateSocietyById = async (req, res, next) => {
 
     if (!updatedSociety) {
       return next(createHttpError('Society not found', 404));
+    }
+
+    // Auto-resolve/remove missing unit requests once unit is officially added.
+    try {
+      const wings = Array.isArray(updatedSociety.structure) ? updatedSociety.structure : [];
+      const officialKeys = new Set();
+      wings.forEach((wing) => {
+        const wingLower = (wing.wingName || '').toString().trim().toLowerCase();
+        const units = Array.isArray(wing.units) ? wing.units : [];
+        units.forEach((u) => {
+          const unitLower = (u.unitNumber || '').toString().trim().toLowerCase();
+          if (wingLower && unitLower) officialKeys.add(`${wingLower}:${unitLower}`);
+        });
+      });
+
+      const pending = await MissingUnitRequest.find(
+        { societyId: updatedSociety._id, status: 'pending' },
+        { _id: 1, wingNameLower: 1, unitNumberLower: 1 }
+      ).lean();
+
+      const toDelete = pending
+        .filter((d) => officialKeys.has(`${(d.wingNameLower || '').toString()}:${(d.unitNumberLower || '').toString()}`))
+        .map((d) => d._id);
+
+      if (toDelete.length > 0) {
+        await MissingUnitRequest.deleteMany({ _id: { $in: toDelete } });
+      }
+    } catch (e) {
+      // Non-fatal: society update should still succeed even if cleanup fails.
     }
 
     return sendSuccessResponse(res, 200, 'Society updated successfully', { data: updatedSociety });

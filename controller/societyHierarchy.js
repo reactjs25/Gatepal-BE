@@ -4,6 +4,7 @@ const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { sendSystemAlertEmail } = require('../utils/systemAlertEmail');
 const { normalizeString } = require('../utils/strings');
+const MissingUnitRequest = require('../model/missingUnitRequestSchema');
 
 const getCountryCityOptions = async (req, res) => {
     const options = countryCityData.map((c) => {
@@ -241,6 +242,61 @@ const notifyMissingLocation = async (req, res, next) => {
         }
 
         const html = htmlSections.join('');
+
+        // Persist missing unit requests so society admin can view them later.
+        // (We keep emailing too, for ops visibility.)
+        if (normalizedType === 'unit') {
+            let society = null;
+
+            if (normalizedSocietyPin) {
+                society = await Society.findOne({ societyPin: normalizedSocietyPin }).lean();
+            }
+
+            if (!society && normalizedSocietyName) {
+                const cityFilter = normalizedCity ? { city: normalizedCity } : {};
+                society = await Society.findOne({ societyName: normalizedSocietyName, ...cityFilter }).lean();
+            }
+
+            if (society) {
+                const unitNumber = normalizedName;
+                const wingLower = normalizedWingName ? normalizedWingName.toLowerCase() : null;
+                const unitLower = unitNumber.toLowerCase();
+
+                const requesterPhone = authUser
+                    ? `${(authUser.countryCode || '').toString()} ${(authUser.phoneNumber || '').toString()}`.trim()
+                    : null;
+
+                const update = {
+                    $set: {
+                        lastRequestedAt: new Date(),
+                        ...(normalizedNotes ? { notes: normalizedNotes } : {}),
+                    },
+                    $inc: { requestCount: 1 },
+                    $addToSet: {
+                        ...(authUser?._id ? { requestedByUserIds: authUser._id } : {}),
+                        ...(requesterPhone ? { requestedByPhones: requesterPhone } : {}),
+                    },
+                    $setOnInsert: {
+                        societyId: society._id,
+                        societyPin: society.societyPin || null,
+                        societyName: society.societyName || null,
+                        city: society.city || null,
+                        country: society.country || null,
+                        wingName: normalizedWingName || null,
+                        wingNameLower: wingLower,
+                        unitNumber,
+                        unitNumberLower: unitLower,
+                        status: 'pending',
+                    },
+                };
+
+                await MissingUnitRequest.updateOne(
+                    { societyId: society._id, wingNameLower: wingLower, unitNumberLower: unitLower, status: 'pending' },
+                    update,
+                    { upsert: true }
+                );
+            }
+        }
 
         await sendSystemAlertEmail({
             subject,
