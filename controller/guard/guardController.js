@@ -233,7 +233,11 @@ const getGuardProfile = async (req, res, next) => {
   
     const guardSocieties = Array.isArray(user.guardSocieties) ? user.guardSocieties : [];
     const societyIds = guardSocieties.map((s) => s.societyId).filter(Boolean);
-    const isOnDuty = guardSocieties.some((s) => s && s.isOnDuty === true);
+    const guardSocietyById = new Map(
+      guardSocieties
+        .filter((s) => s && s.societyId)
+        .map((s) => [String(s.societyId), s])
+    );
 
  
     if (user.societyId && !societyIds.some((id) => String(id) === String(user.societyId))) {
@@ -246,6 +250,7 @@ const getGuardProfile = async (req, res, next) => {
       : [];
 
     const societies = societiesFromDb.map((society) => {
+      const guardSociety = guardSocietyById.get(String(society._id)) || null;
       const entryGates = Array.isArray(society.entryGates) ? society.entryGates : [];
       const exitGates = Array.isArray(society.exitGates) ? society.exitGates : [];
 
@@ -266,6 +271,7 @@ const getGuardProfile = async (req, res, next) => {
         societyId: String(society._id),
         societyName: society.societyName,
         societyPin: society.societyPin,
+        isOnDuty: guardSociety?.isOnDuty === true,
         gates,
       };
     });
@@ -278,7 +284,6 @@ const getGuardProfile = async (req, res, next) => {
         phoneNumber: user.phoneNumber,
         imageUrl: user.profilePhoto || null,
         role: user.role,
-        isOnDuty,
         societies,
       },
     });
