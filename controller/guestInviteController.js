@@ -1,5 +1,6 @@
 const QRCode = require('qrcode');
 const GuestInvite = require('../model/guestInviteSchema');
+const GuestEntryRequest = require('../model/guestEntryRequestSchema');
 const MemberUnit = require('../model/memberUnitSchema');
 const User = require('../model/userSchema');
 const { randomUUID } = require('crypto');
@@ -13,6 +14,34 @@ const {
   isTenDigitPhone,
 } = require('../utils/phoneNumber');
 const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
+
+const requireGuardOnDuty = (authUser) => {
+  const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
+  const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
+  if (!activeDuty) {
+    throw createHttpError('You must be on duty to perform this action', 400);
+  }
+  return activeDuty;
+};
+
+const resolveUnitResidents = async ({ societyId, wingNameLower, unitNumberLower }) => {
+  const unitDocs = await MemberUnit.find(
+    {
+      societyId,
+      wingNameLower,
+      unitNumberLower,
+      $or: [
+        { occupancyStatus: 'currently_residing' },
+        { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
+      ],
+    },
+    { memberId: 1 }
+  ).lean();
+
+  const memberIds = unitDocs.map((u) => u.memberId).filter(Boolean);
+  const unique = Array.from(new Set(memberIds.map((id) => String(id)))).map((id) => id);
+  return unique;
+};
 
 const canCreateGuestInvites = (req) => {
   const user = req.appUser;
@@ -864,13 +893,15 @@ const scanGuestInvite = async (req, res, next) => {
       return next(createHttpError('Only guards can scan guest invites', 403));
     }
 
-    const { qrData, vehicleNumber, accompanyingCount } = req.body || {};
+    // Scan only validates QR and returns visitor/invite details.
+    // Entry-related details (vehicleNumber, accompanyingCount, imageUrl, units) are submitted via /api/guard/entryDetails.
+    const { qrData } = req.body || {};
 
-    const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
-    const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
-
-    if (!activeDuty) {
-      return next(createHttpError('You must be on duty to scan guest invites', 400));
+    let activeDuty;
+    try {
+      activeDuty = requireGuardOnDuty(authUser);
+    } catch (e) {
+      return next(e);
     }
 
     let payload;
@@ -882,6 +913,35 @@ const scanGuestInvite = async (req, res, next) => {
       payload = JSON.parse(text);
     } catch (e) {
       return next(createHttpError('Invalid QR data', 400));
+    }
+
+    // Delivery Executive (already onboarded visitors) flow
+    if (payload.type === 'gatepal_visitor' && payload.userId) {
+      const visitor = await User.findById(payload.userId).lean();
+      if (!visitor) return next(createHttpError('Visitor not found', 404));
+      if (visitor.role !== 'visitor') return next(createHttpError('QR code is not a valid visitor', 400));
+      if ((visitor.visitorType || '').toLowerCase() !== 'delivery_executive') {
+        return next(createHttpError('QR code is not a delivery executive', 400));
+      }
+      if (visitor.status && visitor.status !== 'active') {
+        return next(createHttpError('Visitor is not active', 403));
+      }
+
+      return sendSuccessResponse(res, 200, 'Delivery executive validated successfully', {
+        data: {
+          scanType: 'delivery_executive',
+          visitorUserId: String(visitor._id),
+          name: visitor.fullName || null,
+          phone: {
+            countryCode: visitor.countryCode || '+91',
+            phoneNumber: visitor.phoneNumber || null,
+          },
+          companyName: visitor.visitorCompanyName || null,
+          // Keep naming consistent with guest flow cards
+          imageUrl: visitor.profilePhoto || null,
+          message: 'QR validated successfully.Click a picture to continue.',
+        },
+      });
     }
 
     if (payload.type !== 'gatepal_guest_invite' || !payload.inviteId) {
@@ -975,7 +1035,7 @@ const scanGuestInvite = async (req, res, next) => {
     const tillTimeLabel = toISTTimeLabel(invite.validTill);
 
     const usedEntriesAfterScan = usedEntries + 1;
-    
+
     // Calculate remaining entries based on invite type
     let remainingEntries = null;
     if (invite.type === 'quick') {
@@ -994,26 +1054,26 @@ const scanGuestInvite = async (req, res, next) => {
       entryLogId,
       unit: unit
         ? {
-            wingName: unit.wingName,
-            unitNumber: unit.unitNumber,
-          }
+          wingName: unit.wingName,
+          unitNumber: unit.unitNumber,
+        }
         : null,
       invitedBy: member
         ? {
-            id: String(member._id),
-            name: member.fullName || null,
-            countryCode: member.countryCode || '+91',
-            phoneNumber: member.phoneNumber || null,
-          }
+          id: String(member._id),
+          name: member.fullName || null,
+          countryCode: member.countryCode || '+91',
+          phoneNumber: member.phoneNumber || null,
+        }
         : null,
       arrivingGuest: arrivingGuest
         ? {
-            guestId: arrivingGuest.guestId,
-            name: arrivingGuest.name,
-            countryCode: arrivingGuest.countryCode,
-            phoneNumber: arrivingGuest.phoneNumber,
-            arrivedAt: now,
-          }
+          guestId: arrivingGuest.guestId,
+          name: arrivingGuest.name,
+          countryCode: arrivingGuest.countryCode,
+          phoneNumber: arrivingGuest.phoneNumber,
+          arrivedAt: now,
+        }
         : null,
       guests: invite.guests.map((g) => ({
         guestId: g.guestId,
@@ -1062,17 +1122,147 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       fullName,
       phoneNumber,
       countryCode,
+      visitorUserId,
+      unitNumber,
+      unitNumbers,
+      wing,
+      wingName,
     } = req.body || {};
 
-    const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
-    const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
-
-    if (!activeDuty) {
-      return next(createHttpError('You must be on duty to update guest invite entry details', 400));
+    let activeDuty;
+    try {
+      activeDuty = requireGuardOnDuty(authUser);
+    } catch (e) {
+      return next(e);
     }
 
+    // Delivery Executive entry details submission (creates approval requests to multiple units)
+    const normalizedVisitorUserId = normalizeString(visitorUserId);
     const normalizedInviteId = normalizeString(inviteId);
     const normalizedEntryLogId = normalizeString(entryLogId);
+
+    if (!normalizedInviteId && !normalizedEntryLogId && normalizedVisitorUserId) {
+      const v = await User.findById(normalizedVisitorUserId).lean();
+      if (!v) return next(createHttpError('Visitor not found', 404));
+      if (v.role !== 'visitor') return next(createHttpError('visitorUserId is invalid', 400));
+      if ((v.visitorType || '').toLowerCase() !== 'delivery_executive') {
+        return next(createHttpError('Visitor is not a delivery executive', 400));
+      }
+
+      const normalizedWingName = normalizeString(wingName ?? wing);
+      if (!normalizedWingName) return next(createHttpError('wing is required', 400));
+
+      const requestedUnitsRaw =
+        Array.isArray(unitNumbers) && unitNumbers.length > 0
+          ? unitNumbers
+          : unitNumber
+            ? [unitNumber]
+            : [];
+
+      const requestedUnits = requestedUnitsRaw.map((u) => normalizeString(u)).filter(Boolean);
+      if (requestedUnits.length === 0) return next(createHttpError('unitNumber(s) is required', 400));
+
+      // Photo rule:
+      // - If visitor already has onboarded photo, imageUrl is optional (we can reuse it)
+      // - If visitor has no onboarded photo, imageUrl is mandatory (guard must capture)
+      const onboardedPhoto = normalizeString(v.profilePhoto) || null;
+      const providedPhoto = normalizeString(imageUrl) || null;
+      const finalImageUrl = providedPhoto || onboardedPhoto || null;
+      if (!finalImageUrl) {
+        return next(createHttpError('imageUrl is required', 400));
+      }
+
+      const vehicle = normalizeString(vehicleNumber).toUpperCase() || (v.visitorVehicleNumber || '').toString().trim().toUpperCase() || null;
+      const countNumber = Number(accompanyingCount);
+      const safeCount = Number.isFinite(countNumber) && countNumber > 0 ? countNumber : 0;
+
+      const phoneRaw = normalizeString(v.phoneNumber);
+      if (!phoneRaw || !isTenDigitPhone(phoneRaw)) {
+        return next(createHttpError('Visitor phone number is invalid', 400));
+      }
+      const phoneDigits = normalizeDigits(phoneRaw);
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+      const created = [];
+      for (const unitNo of requestedUnits) {
+        const recipientUserIds = await resolveUnitResidents({
+          societyId: activeDuty.societyId,
+          wingNameLower: normalizedWingName.toLowerCase(),
+          unitNumberLower: unitNo.toLowerCase(),
+        });
+
+        if (!recipientUserIds || recipientUserIds.length === 0) {
+          created.push({
+            requestId: null,
+            unit: { wingName: normalizedWingName, unitNumber: unitNo },
+            status: 'No residents found',
+            statusKey: 'invalid_unit',
+          });
+          continue;
+        }
+
+        const doc = await GuestEntryRequest.create({
+          societyId: activeDuty.societyId,
+          wingName: normalizedWingName,
+          wingNameLower: normalizedWingName.toLowerCase(),
+          unitNumber: unitNo,
+          unitNumberLower: unitNo.toLowerCase(),
+          createdByGuardId: authUser._id,
+          gateId: activeDuty.dutyGateId || null,
+          gateName: activeDuty.dutyGateName || null,
+          guestName: v.fullName || 'Delivery Executive',
+          guestCountryCode: normalizeCountryCode(v.countryCode || '+91'),
+          guestPhoneNumber: phoneDigits,
+          guestPhoneDigits: phoneDigits,
+          guestImageUrl: finalImageUrl,
+          accompanyingCount: safeCount,
+          vehicleNumber: vehicle,
+          status: 'pending',
+          expiresAt,
+          recipientUserIds,
+          visitorType: 'delivery_executive',
+          visitorUserId: v._id,
+          visitorCompanyName: v.visitorCompanyName || null,
+        });
+
+        created.push({
+          requestId: doc.requestId,
+          unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
+          status: 'Awaiting Approval',
+          statusKey: doc.status,
+        });
+      }
+
+      const validCreated = created.filter((x) => x.requestId);
+      const overallStatus =
+        validCreated.length === 0 ? 'Rejected' : 'Awaiting Approval';
+
+      return sendSuccessResponse(res, 201, 'Delivery entry requests created successfully', {
+        data: {
+          category: 'Delivery',
+          visitorType: 'Delivery Executive',
+          status: overallStatus,
+          expiresAt,
+          visitor: {
+            id: String(v._id),
+            name: v.fullName || null,
+            companyName: v.visitorCompanyName || null,
+            // Single, consistent image field for UI
+            imageUrl: finalImageUrl,
+            phone: {
+              countryCode: v.countryCode || '+91',
+              phoneNumber: v.phoneNumber || null,
+            },
+          },
+          entry: {
+            vehicleNumber: vehicle,
+            accompanyingCount: safeCount,
+          },
+          requests: created,
+        },
+      });
+    }
+
     if (!normalizedInviteId) {
       return next(createHttpError('inviteId is required', 400));
     }
@@ -1094,12 +1284,12 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       return next(createHttpError('Entry log not found for this invite', 404));
     }
 
-   
+
     if (String(invite.entryLogs[idx].guardId) !== String(authUser._id)) {
       return next(createHttpError('Forbidden: only the scanning guard can update these details', 403));
     }
 
- 
+
     if (invite.type === 'group') {
       const existingLog = invite.entryLogs[idx] || {};
       const existingName = normalizeString(existingLog.guestName);
@@ -1177,7 +1367,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
 
     const updated = invite.entryLogs[idx];
 
-  
+
     const unit = await MemberUnit.findById(invite.unitId).lean();
     const guest =
       updated.guestId && updated.guestId !== 'group'
@@ -1199,10 +1389,10 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
         },
         unit: unit
           ? {
-              id: String(unit._id),
-              wingName: unit.wingName,
-              unitNumber: unit.unitNumber,
-            }
+            id: String(unit._id),
+            wingName: unit.wingName,
+            unitNumber: unit.unitNumber,
+          }
           : null,
         vehicleNumber: updated.vehicleNumber || null,
         accompanyingCount: updated.accompanyingCount || 0,

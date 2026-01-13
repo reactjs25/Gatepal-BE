@@ -25,6 +25,7 @@ router.post('/addSociety', userAuthMiddleware, addSociety);
 router.post('/startDuty', userAuthMiddleware, startDuty);
 router.post('/endDuty', userAuthMiddleware, endDuty);
 router.post('/scanGuestInvite', userAuthMiddleware, scanGuestInvite);
+router.post('/entryDetails', userAuthMiddleware, updateGuestInviteEntryDetails);
 router.patch('/entryDetails', userAuthMiddleware, updateGuestInviteEntryDetails);
 router.post('/guestEntryRequests/recentGuests', userAuthMiddleware, getRecentGuestsForGuard);
 router.post('/guestEntryRequests', userAuthMiddleware, createGuestEntryRequest);

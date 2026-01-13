@@ -233,6 +233,7 @@ const getGuardProfile = async (req, res, next) => {
   
     const guardSocieties = Array.isArray(user.guardSocieties) ? user.guardSocieties : [];
     const societyIds = guardSocieties.map((s) => s.societyId).filter(Boolean);
+    const isOnDuty = guardSocieties.some((s) => s && s.isOnDuty === true);
 
  
     if (user.societyId && !societyIds.some((id) => String(id) === String(user.societyId))) {
@@ -277,6 +278,7 @@ const getGuardProfile = async (req, res, next) => {
         phoneNumber: user.phoneNumber,
         imageUrl: user.profilePhoto || null,
         role: user.role,
+        isOnDuty,
         societies,
       },
     });

@@ -9,6 +9,16 @@ const { normalizeCountryCode, normalizeDigits, isTenDigitPhone } = require('../u
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { toISTDateTimeLabel } = require('../utils/dateTime');
 
+const VISITOR_TYPE_LABELS = {
+  guest: { category: 'Guest', visitorType: 'Guest' },
+  delivery_executive: { category: 'Delivery', visitorType: 'Delivery Executive' },
+  taxi_vehicle_driver: { category: 'Taxi', visitorType: 'Taxi Vehicle Driver' },
+  other_visitor: { category: 'Visitor', visitorType: 'Other Visitor' },
+};
+
+const toVisitorLabels = (visitorTypeKey) =>
+  VISITOR_TYPE_LABELS[visitorTypeKey] || VISITOR_TYPE_LABELS.guest;
+
 const requireGuardOnDuty = (authUser) => {
   const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
   const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
@@ -53,13 +63,15 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser }) => {
               : 'Awaiting Approval';
 
 
+  const labels = toVisitorLabels(reqDoc.visitorType || 'guest');
+
   return {
 
     requestId: reqDoc.requestId,
-    category: 'Guest',
+    category: labels.category,
     status: statusLabel,
     name: reqDoc.guestName,
-    visitorType: 'Guest',
+    visitorType: labels.visitorType,
     phone: {
       countryCode: reqDoc.guestCountryCode || '+91',
       phoneNumber: reqDoc.guestPhoneNumber,
@@ -301,18 +313,91 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
 
     const activeDuty = requireGuardOnDuty(authUser);
 
-
-
     const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
-    if (!requestId) return next(createHttpError('requestId is required', 400));
+    const requestIdsRaw = req.query?.requestIds ?? req.body?.requestIds;
 
+    const requestIds =
+      Array.isArray(requestIdsRaw)
+        ? requestIdsRaw.map((x) => normalizeString(x)).filter(Boolean)
+        : typeof requestIdsRaw === 'string'
+          ? requestIdsRaw
+              .split(',')
+              .map((x) => normalizeString(x))
+              .filter(Boolean)
+          : [];
+
+    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
+
+    // Multi-request fetch: used for Delivery Executive "partial approved" UI.
+    if (!requestId && requestIds.length > 0) {
+      const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
+      if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
+
+      const filtered = docs.filter((d) => String(d.societyId) === String(activeDuty.societyId));
+      if (filtered.length === 0) return next(createHttpError('Request does not belong to this society', 403));
+
+      // auto-expire pending requests
+      const nowMs = Date.now();
+      const toSave = [];
+      for (const d of filtered) {
+        if (d.status === 'pending' && d.expiresAt && d.expiresAt.getTime() <= nowMs) {
+          d.status = 'expired';
+          toSave.push(d.save());
+        }
+      }
+      if (toSave.length > 0) await Promise.allSettled(toSave);
+
+      const refreshed = await GuestEntryRequest.find({ requestId: { $in: requestIds } }).lean();
+      const sameSociety = refreshed.filter((d) => String(d.societyId) === String(activeDuty.societyId));
+
+      const first = sameSociety[0];
+      const labels = toVisitorLabels(first?.visitorType || 'guest');
+
+      const approved = sameSociety.filter((d) => d.status === 'approved' || d.status === 'entered');
+      const notApproved = sameSociety.filter((d) => !(d.status === 'approved' || d.status === 'entered'));
+
+      const overallStatus =
+        approved.length === 0
+          ? 'Awaiting Approval'
+          : notApproved.length === 0
+            ? approved.some((d) => d.status === 'entered')
+              ? 'Entered'
+              : 'Approved'
+            : 'Partial Approved';
+
+      const payload = {
+        requestIds: sameSociety.map((d) => d.requestId),
+        category: labels.category,
+        visitorType: labels.visitorType,
+        status: overallStatus,
+        name: first?.guestName || null,
+        phone: {
+          countryCode: first?.guestCountryCode || '+91',
+          phoneNumber: first?.guestPhoneNumber || null,
+        },
+        accompanyingPerson: first?.accompanyingCount || 0,
+        vehicleNumber: first?.vehicleNumber || null,
+        imageUrl: first?.guestImageUrl || null,
+        approvedFor: approved.map((d) => ({ wingName: d.wingName, unitNumber: d.unitNumber })),
+        notApprovedFor: notApproved.map((d) => ({ wingName: d.wingName, unitNumber: d.unitNumber })),
+        requests: await Promise.all(
+          sameSociety.map(async (d) => {
+            const approvedByUser = d.approvedByUserId ? await User.findById(d.approvedByUserId).lean() : null;
+            return toGuardCardPayload({ reqDoc: d, approvedByUser });
+          })
+        ),
+      };
+
+      return sendSuccessResponse(res, 200, 'Entry requests fetched successfully', { data: payload });
+    }
+
+    // Single request fetch (existing behavior)
     const doc = await GuestEntryRequest.findOne({ requestId });
     if (!doc) return next(createHttpError('Request not found', 404));
 
     if (String(doc.societyId) !== String(activeDuty.societyId)) {
       return next(createHttpError('Request does not belong to this society', 403));
     }
-
 
     if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
       doc.status = 'expired';
@@ -361,6 +446,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       },
       {
         requestId: 1,
+        visitorType: 1,
         guestName: 1,
         guestCountryCode: 1,
         guestPhoneNumber: 1,
@@ -391,12 +477,13 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
     const mapped = (items || []).map((d) => {
       const statusLabel = toStatusLabel(d.status);
+      const labels = toVisitorLabels(d.visitorType || 'guest');
       return {
         requestId: d.requestId,
         status: statusLabel,
         statusKey: d.status,
-        category: 'Guest',
-        visitorType: 'Guest',
+        category: labels.category,
+        visitorType: labels.visitorType,
         requestedOn: d.createdAt ? toISTDateTimeLabel(d.createdAt) : null,
         unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
         guest: {
@@ -498,8 +585,58 @@ const allowGuestEntry = async (req, res, next) => {
     const activeDuty = requireGuardOnDuty(authUser);
 
     const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
-    if (!requestId) return next(createHttpError('requestId is required', 400));
+    const requestIdsRaw = req.body?.requestIds ?? req.query?.requestIds;
 
+    const requestIds =
+      Array.isArray(requestIdsRaw)
+        ? requestIdsRaw.map((x) => normalizeString(x)).filter(Boolean)
+        : typeof requestIdsRaw === 'string'
+          ? requestIdsRaw
+              .split(',')
+              .map((x) => normalizeString(x))
+              .filter(Boolean)
+          : [];
+
+    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
+
+    // Multi-request allow: mark all approved requests as entered.
+    if (!requestId && requestIds.length > 0) {
+      const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
+      if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
+
+      const sameSociety = docs.filter((d) => String(d.societyId) === String(activeDuty.societyId));
+      if (sameSociety.length === 0) return next(createHttpError('Request does not belong to this society', 403));
+
+      const nowMs = Date.now();
+      let anyApproved = false;
+
+      for (const d of sameSociety) {
+        if (d.status === 'pending' && d.expiresAt && d.expiresAt.getTime() <= nowMs) {
+          d.status = 'expired';
+        }
+        if (d.status === 'approved') {
+          anyApproved = true;
+          d.status = 'entered';
+          d.entryAllowedByGuardId = authUser._id;
+          d.entryAllowedAt = new Date();
+          d.gateId = activeDuty.dutyGateId || d.gateId;
+          d.gateName = activeDuty.dutyGateName || d.gateName;
+        }
+      }
+
+      if (!anyApproved && !sameSociety.some((d) => d.status === 'entered')) {
+        return next(createHttpError('Entry can only be allowed for approved requests', 409));
+      }
+
+      await Promise.all(sameSociety.map((d) => d.save()));
+
+      // Return aggregated payload (same shape as multi-fetch)
+      req.query.requestIds = requestIds.join(',');
+      req.query.requestId = undefined;
+      return getGuestEntryRequestForGuard(req, res, next);
+    }
+
+    // Single request allow (existing behavior)
     const doc = await GuestEntryRequest.findOne({ requestId });
     if (!doc) return next(createHttpError('Request not found', 404));
 

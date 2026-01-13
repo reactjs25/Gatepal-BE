@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 
 const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered'];
+const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
 
 const guestEntryRequestSchema = new mongoose.Schema(
   {
@@ -42,6 +43,11 @@ const guestEntryRequestSchema = new mongoose.Schema(
       },
     },
     guestImageUrl: { type: String, trim: true, default: null },
+
+    // Visitor metadata (used for delivery executive / other visitor types)
+    visitorType: { type: String, enum: VISITOR_TYPES, default: 'guest', index: true },
+    visitorUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    visitorCompanyName: { type: String, trim: true, default: null },
 
     accompanyingCount: { type: Number, default: 0 },
     vehicleNumber: { type: String, trim: true, default: null },
