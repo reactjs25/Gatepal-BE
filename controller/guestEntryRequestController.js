@@ -16,6 +16,8 @@ const VISITOR_TYPE_LABELS = {
   other_visitor: { category: 'Visitor', visitorType: 'Other Visitor' },
 };
 
+const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
+
 const toVisitorLabels = (visitorTypeKey) =>
   VISITOR_TYPE_LABELS[visitorTypeKey] || VISITOR_TYPE_LABELS.guest;
 
@@ -85,6 +87,8 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser }) => {
 
     },
     imageUrl: reqDoc.guestImageUrl || null,
+    companyName: reqDoc.visitorCompanyName || null,
+    workCategory: reqDoc.visitorWorkCategory || null,
     approvedBy: approvedByUser
       ? {
         id: String(approvedByUser._id),
@@ -234,8 +238,16 @@ const createGuestEntryRequest = async (req, res, next) => {
     const phoneRaw = normalizeString(req.body?.phoneNumber ?? req.body?.mobileNumber ?? req.body?.mobile);
     const countryCode = normalizeCountryCode(req.body?.countryCode || '+91');
     const imageUrl = normalizeString(req.body?.imageUrl) || null;
+    const companyNameRaw = normalizeString(
+      req.body?.deliveryCompanyName ?? req.body?.companyName ?? req.body?.visitorCompanyName
+    );
+    const workCategoryRaw = normalizeString(req.body?.workCategory ?? req.body?.visitorWorkCategory);
+    const visitorTypeRaw = normalizeString(
+      req.body?.visitorType ?? req.body?.visitorTypeKey ?? req.body?.visitorCategory ?? req.body?.category
+    );
 
-    const accompanyingCountRaw = req.body?.accompanyingCount ?? req.body?.accompanyingPerson ?? req.body?.accompanyingPersons;
+    const accompanyingCountRaw =
+      req.body?.accompanyingCount ?? req.body?.accompanyingPerson ?? req.body?.accompanyingPersons;
     const accompanyingCountNumber = Number(accompanyingCountRaw);
     const accompanyingCount = Number.isFinite(accompanyingCountNumber) && accompanyingCountNumber > 0 ? accompanyingCountNumber : 0;
 
@@ -246,6 +258,30 @@ const createGuestEntryRequest = async (req, res, next) => {
     if (!guestName) return next(createHttpError('guestName is required', 400));
     if (!phoneRaw) return next(createHttpError('phoneNumber is required', 400));
     if (!isTenDigitPhone(phoneRaw)) return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+
+    let visitorType = (visitorTypeRaw || '').toLowerCase().replace(/\s+/g, '_') || 'guest';
+    if (!visitorTypeRaw && companyNameRaw) visitorType = 'delivery_executive';
+    if (!VISITOR_TYPES.includes(visitorType)) {
+      return next(createHttpError('visitorType is invalid', 400));
+    }
+    if (visitorType === 'delivery_executive' && !companyNameRaw) {
+      return next(createHttpError('deliveryCompanyName is required for delivery executive', 400));
+    }
+    if (visitorType === 'taxi_vehicle_driver' && !companyNameRaw) {
+      return next(createHttpError('companyName is required for taxi vehicle driver', 400));
+    }
+    if (visitorType === 'taxi_vehicle_driver' && !imageUrl) {
+      return next(createHttpError('imageUrl is required for taxi vehicle driver', 400));
+    }
+    if (visitorType === 'other_visitor' && !workCategoryRaw) {
+      return next(createHttpError('workCategory is required for other visitor', 400));
+    }
+    if (visitorType === 'other_visitor' && !companyNameRaw) {
+      return next(createHttpError('companyName is required for other visitor', 400));
+    }
+    if (visitorType === 'other_visitor' && !imageUrl) {
+      return next(createHttpError('imageUrl is required for other visitor', 400));
+    }
 
     const phoneDigits = normalizeDigits(phoneRaw);
 
@@ -275,6 +311,9 @@ const createGuestEntryRequest = async (req, res, next) => {
       guestPhoneNumber: phoneDigits,
       guestPhoneDigits: phoneDigits,
       guestImageUrl: imageUrl,
+      visitorType,
+      visitorCompanyName: companyNameRaw || null,
+      visitorWorkCategory: workCategoryRaw || null,
       accompanyingCount,
       vehicleNumber,
       status: 'pending',
@@ -282,17 +321,24 @@ const createGuestEntryRequest = async (req, res, next) => {
       recipientUserIds,
     });
 
+    const labels = toVisitorLabels(visitorType);
+
     return sendSuccessResponse(res, 201, 'Guest approval request created successfully', {
       data: {
         requestId: doc.requestId,
         status: 'Awaiting Approval',
-        expiresAt: doc.expiresAt,
+        category: labels.category,
+        visitorType: labels.visitorType,
+        requestsendat: doc.createdAt ? toISTDateTimeLabel(doc.createdAt) : null,
+        expiresAt: doc.expiresAt ? toISTDateTimeLabel(doc.expiresAt) : null,
         unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
         guest: {
           name: doc.guestName,
           countryCode: doc.guestCountryCode || '+91',
           phoneNumber: doc.guestPhoneNumber,
           imageUrl: doc.guestImageUrl || null,
+          companyName: doc.visitorCompanyName || null,
+          workCategory: doc.visitorWorkCategory || null,
         },
         accompanyingCount: doc.accompanyingCount || 0,
         vehicleNumber: doc.vehicleNumber || null,
@@ -491,6 +537,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           countryCode: d.guestCountryCode || '+91',
           phoneNumber: d.guestPhoneNumber,
           imageUrl: d.guestImageUrl || null,
+          companyName: d.visitorCompanyName || null,
+          workCategory: d.visitorWorkCategory || null,
         },
         accompanyingCount: d.accompanyingCount || 0,
         vehicleNumber: d.vehicleNumber || null,

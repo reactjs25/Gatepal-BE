@@ -895,7 +895,7 @@ const scanGuestInvite = async (req, res, next) => {
 
     // Scan only validates QR and returns visitor/invite details.
     // Entry-related details (vehicleNumber, accompanyingCount, imageUrl, units) are submitted via /api/guard/entryDetails.
-    const { qrData } = req.body || {};
+    const { qrData, vehicleNumber, accompanyingCount } = req.body || {};
 
     let activeDuty;
     try {
@@ -920,28 +920,67 @@ const scanGuestInvite = async (req, res, next) => {
       const visitor = await User.findById(payload.userId).lean();
       if (!visitor) return next(createHttpError('Visitor not found', 404));
       if (visitor.role !== 'visitor') return next(createHttpError('QR code is not a valid visitor', 400));
-      if ((visitor.visitorType || '').toLowerCase() !== 'delivery_executive') {
-        return next(createHttpError('QR code is not a delivery executive', 400));
-      }
       if (visitor.status && visitor.status !== 'active') {
         return next(createHttpError('Visitor is not active', 403));
       }
 
-      return sendSuccessResponse(res, 200, 'Delivery executive validated successfully', {
-        data: {
-          scanType: 'delivery_executive',
-          visitorUserId: String(visitor._id),
-          name: visitor.fullName || null,
-          phone: {
-            countryCode: visitor.countryCode || '+91',
-            phoneNumber: visitor.phoneNumber || null,
+      const normalizedVisitorType = (visitor.visitorType || '').toString().trim().toLowerCase();
+
+      if (normalizedVisitorType === 'delivery_executive') {
+        return sendSuccessResponse(res, 200, 'Delivery executive validated successfully', {
+          data: {
+            scanType: 'delivery_executive',
+            visitorUserId: String(visitor._id),
+            name: visitor.fullName || null,
+            phone: {
+              countryCode: visitor.countryCode || '+91',
+              phoneNumber: visitor.phoneNumber || null,
+            },
+            companyName: visitor.visitorCompanyName || null,
+            imageUrl: visitor.profilePhoto || null,
+            message: 'QR validated successfully.Click a picture to continue.',
           },
-          companyName: visitor.visitorCompanyName || null,
-          // Keep naming consistent with guest flow cards
-          imageUrl: visitor.profilePhoto || null,
-          message: 'QR validated successfully.Click a picture to continue.',
-        },
-      });
+        });
+      }
+
+      if (normalizedVisitorType === 'taxi_vehicle_driver') {
+        return sendSuccessResponse(res, 200, 'Taxi vehicle driver validated successfully', {
+          data: {
+            scanType: 'taxi_vehicle_driver',
+            visitorUserId: String(visitor._id),
+            name: visitor.fullName || null,
+            phone: {
+              countryCode: visitor.countryCode || '+91',
+              phoneNumber: visitor.phoneNumber || null,
+            },
+            companyName: visitor.visitorCompanyName || null,
+            vehicleNumber: visitor.visitorVehicleNumber || null,
+            imageUrl: visitor.profilePhoto || null,
+            message: 'QR validated successfully.Click a picture to continue.',
+          },
+        });
+      }
+
+      if (normalizedVisitorType === 'other_visitor') {
+        return sendSuccessResponse(res, 200, 'Other visitor validated successfully', {
+          data: {
+            scanType: 'other_visitor',
+            visitorUserId: String(visitor._id),
+            name: visitor.fullName || null,
+            phone: {
+              countryCode: visitor.countryCode || '+91',
+              phoneNumber: visitor.phoneNumber || null,
+            },
+            companyName: visitor.visitorCompanyName || null,
+            vehicleNumber: visitor.visitorVehicleNumber || null,
+            workCategory: visitor.visitorWorkCategory || null,
+            imageUrl: visitor.profilePhoto || null,
+            message: 'QR validated successfully.Click a picture to continue.',
+          },
+        });
+      }
+
+      return next(createHttpError('QR code is not a supported visitor type', 400));
     }
 
     if (payload.type !== 'gatepal_guest_invite' || !payload.inviteId) {
@@ -999,6 +1038,8 @@ const scanGuestInvite = async (req, res, next) => {
       return next(createHttpError('Entry limit reached for this invite', 400));
     }
 
+    // Scan step should work with only qrData. Vehicle/accompanyingCount are optional here
+    // and can be updated later via /api/guard/entryDetails.
     const normalizedVehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
     const countNumber = Number(accompanyingCount);
     const safeCount = Number.isFinite(countNumber) && countNumber > 0 ? countNumber : 0;

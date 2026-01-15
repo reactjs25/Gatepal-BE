@@ -48,6 +48,7 @@ const guestEntryRequestSchema = new mongoose.Schema(
     visitorType: { type: String, enum: VISITOR_TYPES, default: 'guest', index: true },
     visitorUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     visitorCompanyName: { type: String, trim: true, default: null },
+    visitorWorkCategory: { type: String, trim: true, default: null },
 
     accompanyingCount: { type: Number, default: 0 },
     vehicleNumber: { type: String, trim: true, default: null },
