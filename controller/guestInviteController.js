@@ -8,6 +8,7 @@ const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
+const { decodeQrImageDataUrl } = require('../utils/qrDecoder');
 const {
   normalizeCountryCode,
   normalizeDigits,
@@ -489,21 +490,12 @@ const computeFrequentInviteValidityWindow = ({
 };
 
 const buildGuestInviteQrPayload = ({ invite, unit, member, guest }) => {
+
   const payload = {
     type: 'gatepal_guest_invite',
     version: 2,
     inviteId: invite.inviteId,
     guestId: guest.guestId,
-    guestName: guest.name,
-    societyId: String(invite.societyId),
-    unitId: String(invite.unitId),
-    unitWing: unit.wingName,
-    unitNumber: unit.unitNumber,
-    invitedByUserId: String(invite.invitedByUserId),
-    invitedByName: member.fullName || '',
-    inviteType: invite.type,
-    validFrom: invite.validFrom.toISOString(),
-    validTill: invite.validTill.toISOString(),
   };
   return JSON.stringify(payload);
 };
@@ -895,7 +887,8 @@ const scanGuestInvite = async (req, res, next) => {
 
     // Scan only validates QR and returns visitor/invite details.
     // Entry-related details (vehicleNumber, accompanyingCount, imageUrl, units) are submitted via /api/guard/entryDetails.
-    const { qrData, vehicleNumber, accompanyingCount } = req.body || {};
+    const { qrData, qrCodeImage, qrCodeImageUrl, qrImage, vehicleNumber, accompanyingCount } =
+      req.body || {};
 
     let activeDuty;
     try {
@@ -906,9 +899,25 @@ const scanGuestInvite = async (req, res, next) => {
 
     let payload;
     try {
-      const text = normalizeString(qrData);
+      let text = normalizeString(qrData);
+      const imageCandidate = qrCodeImage || qrCodeImageUrl || qrImage;
+      const looksLikeImageDataUrl = !!(text && /^data:image\/[a-z0-9.+-]+;base64,/i.test(text));
+      if (!text || looksLikeImageDataUrl) {
+        const imageSource = looksLikeImageDataUrl ? text : imageCandidate;
+        if (!imageSource) {
+          return next(createHttpError('qrData or qrCodeImage is required', 400));
+        }
+        try {
+          text = normalizeString(await decodeQrImageDataUrl(imageSource));
+        } catch (e) {
+          return next(createHttpError(e.message, 400));
+        }
+        if (!text) {
+          return next(createHttpError('Unable to decode QR code image', 400));
+        }
+      }
       if (!text) {
-        return next(createHttpError('qrData is required', 400));
+        return next(createHttpError('qrData or qrCodeImage is required', 400));
       }
       payload = JSON.parse(text);
     } catch (e) {
