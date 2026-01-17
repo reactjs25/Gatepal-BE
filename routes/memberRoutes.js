@@ -45,7 +45,7 @@ router.post('/guestInvites/group', userAuthMiddleware, createGroupInvite);
 router.post('/guestInvites/frequent', userAuthMiddleware, createFrequentInvite);
 router.post('/guestInvites/recentGuests', userAuthMiddleware, getRecentGuests);
 router.post('/guestEntryRequests/list', userAuthMiddleware, listGuestEntryRequestsForMember);
-router.patch('/guestEntryRequests/:requestId/decision', userAuthMiddleware, decideGuestEntryRequest);
+router.patch('/guestEntryRequests/decision', userAuthMiddleware, decideGuestEntryRequest);
 
 
 module.exports = router;
