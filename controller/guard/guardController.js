@@ -251,6 +251,7 @@ const getGuardProfile = async (req, res, next) => {
 
     const societies = societiesFromDb.map((society) => {
       const guardSociety = guardSocietyById.get(String(society._id)) || null;
+      const dutyGateId = guardSociety?.dutyGateId ? String(guardSociety.dutyGateId) : null;
       const entryGates = Array.isArray(society.entryGates) ? society.entryGates : [];
       const exitGates = Array.isArray(society.exitGates) ? society.exitGates : [];
 
@@ -259,11 +260,13 @@ const getGuardProfile = async (req, res, next) => {
           gateId: String(g._id),
           gateName: g.name,
           gateType: 'entry',
+          isOnDuty: guardSociety?.isOnDuty === true && String(g._id) === dutyGateId,
         })),
         ...exitGates.map((g) => ({
           gateId: String(g._id),
           gateName: g.name,
           gateType: 'exit',
+          isOnDuty: guardSociety?.isOnDuty === true && String(g._id) === dutyGateId,
         })),
       ];
 
@@ -271,7 +274,6 @@ const getGuardProfile = async (req, res, next) => {
         societyId: String(society._id),
         societyName: society.societyName,
         societyPin: society.societyPin,
-        isOnDuty: guardSociety?.isOnDuty === true,
         gates,
       };
     });
@@ -285,6 +287,8 @@ const getGuardProfile = async (req, res, next) => {
         imageUrl: user.profilePhoto || null,
         role: user.role,
         societies,
+        message:
+          'Hello, our society is using GatePal™ app to manage our society. It is a wonderful application to manage guest entries and approvals. I strongly recommend for your society. You can download it from https://maplink.com',
       },
     });
   } catch (error) {
