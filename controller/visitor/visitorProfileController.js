@@ -5,12 +5,39 @@ const { toTitleCaseName, normalizeString } = require('../../utils/strings');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const User = require('../../model/userSchema');
 const SuperAdmin = require('../../model/superAdminSchema');
+const DeliveryCompany = require('../../model/deliveryCompanySchema');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 
 const toVisitorTypeLabel = (visitorType) => {
     const raw = (visitorType || '').toString().trim();
     if (!raw) return null;
     return toTitleCaseName(raw.replace(/_/g, ' '));
+};
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeCompanyId = (name) =>
+    (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const resolveCompanyLogo = async (companyName) => {
+    const trimmed = (companyName || '').toString().trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const base = normalizeCompanyId(trimmed);
+    let record = null;
+
+    if (base) {
+        record = await DeliveryCompany.findOne({ id: base }).lean();
+    }
+
+    if (!record) {
+        const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+        record = await DeliveryCompany.findOne({ name: nameRegex }).lean();
+    }
+
+    return record ? record.imageUrl : '/assets/Default.png';
 };
 
 const buildVisitorQrPayload = (user) =>
@@ -46,6 +73,7 @@ const ensureVisitorQrCode = async (user) => {
 
 const buildVisitorProfileResponse = (user, options = {}) => {
     const includeQr = options.includeQr === true;
+    const companyLogo = options.companyLogo !== undefined ? options.companyLogo : null;
     return {
         id: String(user._id),
         name: user.fullName || null,
@@ -54,9 +82,12 @@ const buildVisitorProfileResponse = (user, options = {}) => {
         countryCode: user.countryCode || '+91',
         phoneNumber: user.phoneNumber || null,
         companyName: user.visitorCompanyName || null,
+        companyLogo,
         subCategory: user.visitorWorkCategory || null,
         vehicleNumber: user.visitorVehicleNumber || null,
         imageUrl: user.profilePhoto || null,
+        message:
+            'Hello, our society is using GatePal™ app to manage our society. It is a wonderful application to manage guest entries and approvals. I strongly recommend for your society. You can download it from https://maplink.com',
         ...(includeQr ? { qrCodeImageUrl: user.qrCodeImage || null } : {}),
     };
 };
@@ -73,10 +104,11 @@ const getVisitorProfile = async (req, res, next) => {
         }
 
         const qrCodeImageUrl = await ensureVisitorQrCode(user);
+        const companyLogo = await resolveCompanyLogo(user.visitorCompanyName);
         user.qrCodeImage = qrCodeImageUrl;
 
         return sendSuccessResponse(res, 200, 'Visitor profile fetched successfully', {
-            data: buildVisitorProfileResponse(user, { includeQr: true }),
+            data: buildVisitorProfileResponse(user, { includeQr: true, companyLogo }),
         });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to fetch visitor profile'));
@@ -231,10 +263,11 @@ const updateVisitorProfile = async (req, res, next) => {
 
         // Return same payload as getProfile, including fresh QR if invalidated.
         const qrCodeImageUrl = await ensureVisitorQrCode(user);
+        const companyLogo = await resolveCompanyLogo(user.visitorCompanyName);
         user.qrCodeImage = qrCodeImageUrl;
 
         return sendSuccessResponse(res, 200, 'Visitor profile updated successfully', {
-            data: buildVisitorProfileResponse(user, { includeQr: true }),
+            data: buildVisitorProfileResponse(user, { includeQr: true, companyLogo }),
         });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to update visitor profile'));
