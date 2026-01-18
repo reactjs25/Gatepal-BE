@@ -490,13 +490,14 @@ const computeFrequentInviteValidityWindow = ({
 };
 
 const buildGuestInviteQrPayload = ({ invite, unit, member, guest }) => {
-
   const payload = {
     type: 'gatepal_guest_invite',
     version: 2,
     inviteId: invite.inviteId,
-    guestId: guest.guestId,
   };
+  if (guest && guest.guestId) {
+    payload.guestId = guest.guestId;
+  }
   return JSON.stringify(payload);
 };
 

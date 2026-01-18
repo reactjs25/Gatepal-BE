@@ -12,7 +12,7 @@ const { toISTDateTimeLabel } = require('../utils/dateTime');
 const VISITOR_TYPE_LABELS = {
   guest: { category: 'Guest', visitorType: 'Guest' },
   delivery_executive: { category: 'Delivery', visitorType: 'Delivery Executive' },
-  taxi_vehicle_driver: { category: 'Taxi', visitorType: 'Taxi Vehicle Driver' },
+  taxi_vehicle_driver: { category: 'Taxi', visitorType: 'Taxi' },
   other_visitor: { category: 'Visitor', visitorType: 'Other Visitor' },
 };
 
@@ -79,7 +79,7 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser }) => {
       phoneNumber: reqDoc.guestPhoneNumber,
 
     },
-    accompanyingPerson: reqDoc.accompanyingCount || 0,
+    accompanyingPerson: String(reqDoc.accompanyingCount || 0),
     vehicleNumber: reqDoc.vehicleNumber || null,
     unit: {
       wingName: reqDoc.wingName,
@@ -270,17 +270,11 @@ const createGuestEntryRequest = async (req, res, next) => {
     if (visitorType === 'taxi_vehicle_driver' && !companyNameRaw) {
       return next(createHttpError('companyName is required for taxi vehicle driver', 400));
     }
-    if (visitorType === 'taxi_vehicle_driver' && !imageUrl) {
-      return next(createHttpError('imageUrl is required for taxi vehicle driver', 400));
-    }
     if (visitorType === 'other_visitor' && !workCategoryRaw) {
       return next(createHttpError('workCategory is required for other visitor', 400));
     }
     if (visitorType === 'other_visitor' && !companyNameRaw) {
       return next(createHttpError('companyName is required for other visitor', 400));
-    }
-    if (visitorType === 'other_visitor' && !imageUrl) {
-      return next(createHttpError('imageUrl is required for other visitor', 400));
     }
 
     const phoneDigits = normalizeDigits(phoneRaw);
@@ -336,13 +330,12 @@ const createGuestEntryRequest = async (req, res, next) => {
           name: doc.guestName,
           countryCode: doc.guestCountryCode || '+91',
           phoneNumber: doc.guestPhoneNumber,
-          imageUrl: doc.guestImageUrl || null,
+          imageUrl: doc.guestImageUrl || '',
           companyName: doc.visitorCompanyName || null,
           workCategory: doc.visitorWorkCategory || null,
         },
-        accompanyingCount: doc.accompanyingCount || 0,
+        accompanyingCount: String(doc.accompanyingCount || 0),
         vehicleNumber: doc.vehicleNumber || null,
-        recipientCount: Array.isArray(recipientUserIds) ? recipientUserIds.length : 0,
       },
     });
   } catch (error) {
@@ -540,7 +533,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           companyName: d.visitorCompanyName || null,
           workCategory: d.visitorWorkCategory || null,
         },
-        accompanyingCount: d.accompanyingCount || 0,
+        accompanyingCount: String(d.accompanyingCount || 0),
         vehicleNumber: d.vehicleNumber || null,
 
       };
