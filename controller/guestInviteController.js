@@ -14,7 +14,7 @@ const {
   normalizeDigits,
   isTenDigitPhone,
 } = require('../utils/phoneNumber');
-const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
+const { toISTDateLabel, toISTTimeLabel, toISTDateTimeLabel } = require('../utils/dateTime');
 
 const requireGuardOnDuty = (authUser) => {
   const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
@@ -940,6 +940,7 @@ const scanGuestInvite = async (req, res, next) => {
         return sendSuccessResponse(res, 200, 'Delivery executive validated successfully', {
           data: {
             scanType: 'delivery_executive',
+            category: 'Delivery',
             visitorUserId: String(visitor._id),
             name: visitor.fullName || null,
             phone: {
@@ -957,6 +958,7 @@ const scanGuestInvite = async (req, res, next) => {
         return sendSuccessResponse(res, 200, 'Taxi vehicle driver validated successfully', {
           data: {
             scanType: 'taxi_vehicle_driver',
+            category: 'Taxi',
             visitorUserId: String(visitor._id),
             name: visitor.fullName || null,
             phone: {
@@ -975,6 +977,7 @@ const scanGuestInvite = async (req, res, next) => {
         return sendSuccessResponse(res, 200, 'Other visitor validated successfully', {
           data: {
             scanType: 'other_visitor',
+            category: 'Other Visitor',
             visitorUserId: String(visitor._id),
             name: visitor.fullName || null,
             phone: {
@@ -1100,6 +1103,7 @@ const scanGuestInvite = async (req, res, next) => {
     const responseData = {
       inviteId: invite.inviteId,
       inviteType: invite.type,
+      category: 'Guest',
       societyId: String(invite.societyId),
       unitId: String(invite.unitId),
       entryLogId,
@@ -1187,7 +1191,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       return next(e);
     }
 
-    // Delivery Executive entry details submission (creates approval requests to multiple units)
+  
     const normalizedVisitorUserId = normalizeString(visitorUserId);
     const normalizedInviteId = normalizeString(inviteId);
     const normalizedEntryLogId = normalizeString(entryLogId);
@@ -1196,34 +1200,32 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       const v = await User.findById(normalizedVisitorUserId).lean();
       if (!v) return next(createHttpError('Visitor not found', 404));
       if (v.role !== 'visitor') return next(createHttpError('visitorUserId is invalid', 400));
-      if ((v.visitorType || '').toLowerCase() !== 'delivery_executive') {
-        return next(createHttpError('Visitor is not a delivery executive', 400));
+      const visitorTypeKey = (v.visitorType || '').toString().trim().toLowerCase();
+      if (!['delivery_executive', 'taxi_vehicle_driver', 'other_visitor'].includes(visitorTypeKey)) {
+        return next(createHttpError('Visitor is not a supported type', 400));
       }
 
-      const normalizedWingName = normalizeString(wingName ?? wing);
-      if (!normalizedWingName) return next(createHttpError('wing is required', 400));
+      const normalizedWingName = normalizeString(wingName);
+      if (!normalizedWingName) return next(createHttpError('wingName is required', 400));
 
-      const requestedUnitsRaw =
-        Array.isArray(unitNumbers) && unitNumbers.length > 0
-          ? unitNumbers
-          : unitNumber
-            ? [unitNumber]
-            : [];
+      const requestedUnitsRaw = Array.isArray(unitNumber)
+        ? unitNumber
+        : unitNumber
+          ? [unitNumber]
+          : [];
 
       const requestedUnits = requestedUnitsRaw.map((u) => normalizeString(u)).filter(Boolean);
-      if (requestedUnits.length === 0) return next(createHttpError('unitNumber(s) is required', 400));
+      if (requestedUnits.length === 0) return next(createHttpError('unitNumber is required', 400));
 
-      // Photo rule:
-      // - If visitor already has onboarded photo, imageUrl is optional (we can reuse it)
-      // - If visitor has no onboarded photo, imageUrl is mandatory (guard must capture)
+     
       const onboardedPhoto = normalizeString(v.profilePhoto) || null;
       const providedPhoto = normalizeString(imageUrl) || null;
       const finalImageUrl = providedPhoto || onboardedPhoto || null;
-      if (!finalImageUrl) {
-        return next(createHttpError('imageUrl is required', 400));
-      }
 
-      const vehicle = normalizeString(vehicleNumber).toUpperCase() || (v.visitorVehicleNumber || '').toString().trim().toUpperCase() || null;
+      const vehicle =
+        normalizeString(vehicleNumber).toUpperCase() ||
+        (v.visitorVehicleNumber || '').toString().trim().toUpperCase() ||
+        null;
       const countNumber = Number(accompanyingCount);
       const safeCount = Number.isFinite(countNumber) && countNumber > 0 ? countNumber : 0;
 
@@ -1232,7 +1234,21 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
         return next(createHttpError('Visitor phone number is invalid', 400));
       }
       const phoneDigits = normalizeDigits(phoneRaw);
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+      const requestSentAt = new Date();
+      const expiresAt = new Date(requestSentAt.getTime() + 30 * 60 * 1000);
+
+      const categoryLabel =
+        visitorTypeKey === 'delivery_executive'
+          ? 'Delivery'
+          : visitorTypeKey === 'taxi_vehicle_driver'
+            ? 'Taxi'
+            : 'Visitor';
+      const visitorLabel =
+        visitorTypeKey === 'delivery_executive'
+          ? 'Delivery Executive'
+          : visitorTypeKey === 'taxi_vehicle_driver'
+            ? 'Taxi'
+            : 'Other Visitor';
 
       const created = [];
       for (const unitNo of requestedUnits) {
@@ -1261,7 +1277,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
           createdByGuardId: authUser._id,
           gateId: activeDuty.dutyGateId || null,
           gateName: activeDuty.dutyGateName || null,
-          guestName: v.fullName || 'Delivery Executive',
+          guestName: v.fullName || visitorLabel,
           guestCountryCode: normalizeCountryCode(v.countryCode || '+91'),
           guestPhoneNumber: phoneDigits,
           guestPhoneDigits: phoneDigits,
@@ -1271,9 +1287,10 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
           status: 'pending',
           expiresAt,
           recipientUserIds,
-          visitorType: 'delivery_executive',
+          visitorType: visitorTypeKey,
           visitorUserId: v._id,
           visitorCompanyName: v.visitorCompanyName || null,
+          visitorWorkCategory: v.visitorWorkCategory || null,
         });
 
         created.push({
@@ -1288,16 +1305,18 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       const overallStatus =
         validCreated.length === 0 ? 'Rejected' : 'Awaiting Approval';
 
-      return sendSuccessResponse(res, 201, 'Delivery entry requests created successfully', {
+      return sendSuccessResponse(res, 201, 'Visitor entry requests created successfully', {
         data: {
-          category: 'Delivery',
-          visitorType: 'Delivery Executive',
+          category: categoryLabel,
+          visitorType: visitorLabel,
           status: overallStatus,
-          expiresAt,
+          requestsendat: toISTDateTimeLabel(requestSentAt),
+          expiresAt: toISTDateTimeLabel(expiresAt),
           visitor: {
             id: String(v._id),
             name: v.fullName || null,
             companyName: v.visitorCompanyName || null,
+            workCategory: v.visitorWorkCategory || null,
             // Single, consistent image field for UI
             imageUrl: finalImageUrl,
             phone: {
@@ -1417,6 +1436,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
     await invite.save();
 
     const updated = invite.entryLogs[idx];
+    const requestSentAt = updated.scannedAt || new Date();
 
 
     const unit = await MemberUnit.findById(invite.unitId).lean();
@@ -1433,6 +1453,8 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
         entryLogId: updated.entryLogId,
         guestId: updated.guestId,
         guestName: updated.guestName,
+        requestsendat: toISTDateTimeLabel(requestSentAt),
+        expiresAt: toISTDateTimeLabel(invite.validTill),
         guest: {
           name: updated.guestName || null,
           countryCode: updated.guestCountryCode || guest?.countryCode || null,

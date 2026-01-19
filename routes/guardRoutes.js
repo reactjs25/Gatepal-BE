@@ -10,6 +10,7 @@ const {
 const { scanGuestInvite, updateGuestInviteEntryDetails } = require('../controller/guestInviteController');
 const {
   getRecentGuestsForGuard,
+  listGuestEntryRequestsForGuard,
   createGuestEntryRequest,
   getGuestEntryRequestForGuard,
   allowGuestEntry,
@@ -28,6 +29,7 @@ router.post('/scanGuestInvite', userAuthMiddleware, scanGuestInvite);
 router.post('/entryDetails', userAuthMiddleware, updateGuestInviteEntryDetails);
 router.patch('/entryDetails', userAuthMiddleware, updateGuestInviteEntryDetails);
 router.post('/guestEntryRequests/recentGuests', userAuthMiddleware, getRecentGuestsForGuard);
+router.post('/guestEntryRequests/list', userAuthMiddleware, listGuestEntryRequestsForGuard);
 router.post('/guestEntryRequests', userAuthMiddleware, createGuestEntryRequest);
 router.get('/guestEntryRequests', userAuthMiddleware, getGuestEntryRequestForGuard);
 router.post('/guestEntryRequests/allowEntry', userAuthMiddleware, allowGuestEntry);

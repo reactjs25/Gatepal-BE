@@ -17,9 +17,29 @@ const VISITOR_TYPE_LABELS = {
 };
 
 const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
+const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered'];
+const STATUS_FILTERS = {
+  awaiting_approval: ['pending'],
+  pending: ['pending'],
+  approved: ['approved'],
+  inside_society: ['entered'],
+  entered: ['entered'],
+  left_society: ['rejected', 'cancelled', 'expired'],
+  rejected: ['rejected'],
+  cancelled: ['cancelled'],
+  expired: ['expired'],
+  all: REQUEST_STATUSES,
+};
 
 const toVisitorLabels = (visitorTypeKey) =>
   VISITOR_TYPE_LABELS[visitorTypeKey] || VISITOR_TYPE_LABELS.guest;
+
+const normalizeOption = (value) =>
+  (value || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
 
 const requireGuardOnDuty = (authUser) => {
   const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
@@ -223,6 +243,105 @@ const getRecentGuestsForGuard = async (req, res, next) => {
   }
 };
 
+const listGuestEntryRequestsForGuard = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+
+    const activeDuty = requireGuardOnDuty(authUser);
+
+    const statusKey = normalizeOption(req.body?.status ?? req.body?.statusKey ?? 'awaiting_approval');
+    const visitorTypeRaw = req.body?.visitorType ?? req.body?.visitorTypeKey;
+
+    const visitorTypes =
+      Array.isArray(visitorTypeRaw)
+        ? visitorTypeRaw.map((v) => normalizeOption(v)).filter(Boolean)
+        : normalizeOption(visitorTypeRaw)
+          ? [normalizeOption(visitorTypeRaw)]
+          : [];
+
+    const normalizedVisitorTypes =
+      visitorTypes.length > 0
+        ? visitorTypes.filter((t) => VISITOR_TYPES.includes(t))
+        : VISITOR_TYPES;
+
+    if (visitorTypes.length > 0 && normalizedVisitorTypes.length === 0) {
+      return next(createHttpError('visitorType is invalid', 400));
+    }
+
+    const statusFilter = STATUS_FILTERS[statusKey] || STATUS_FILTERS.awaiting_approval;
+
+    const now = new Date();
+    await GuestEntryRequest.updateMany(
+      {
+        societyId: activeDuty.societyId,
+        status: 'pending',
+        expiresAt: { $ne: null, $lte: now },
+      },
+      { $set: { status: 'expired' } }
+    );
+
+    const docs = await GuestEntryRequest.find(
+      {
+        societyId: activeDuty.societyId,
+        status: { $in: statusFilter },
+        visitorType: { $in: normalizedVisitorTypes },
+      },
+      {
+        requestId: 1,
+        visitorType: 1,
+        guestName: 1,
+        guestCountryCode: 1,
+        guestPhoneNumber: 1,
+        guestImageUrl: 1,
+        accompanyingCount: 1,
+        vehicleNumber: 1,
+        status: 1,
+        wingName: 1,
+        unitNumber: 1,
+        visitorCompanyName: 1,
+        visitorWorkCategory: 1,
+        approvedByUserId: 1,
+        approvedAt: 1,
+        createdAt: 1,
+      }
+    )
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    const approverIds = Array.from(
+      new Set(
+        docs
+          .map((d) => d.approvedByUserId)
+          .filter(Boolean)
+          .map((id) => String(id))
+      )
+    );
+
+    const approvers = approverIds.length
+      ? await User.find({ _id: { $in: approverIds } }, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
+      : [];
+    const approverById = new Map(approvers.map((u) => [String(u._id), u]));
+
+    const mapped = docs.map((doc) => {
+      const approvedByUser = doc.approvedByUserId ? approverById.get(String(doc.approvedByUserId)) : null;
+      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+      return {
+        ...payload,
+        statusKey: doc.status,
+        visitorTypeKey: doc.visitorType || 'guest',
+      };
+    });
+
+    return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully', {
+      data: mapped,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch guest entry requests'));
+  }
+};
 
 const createGuestEntryRequest = async (req, res, next) => {
   try {
@@ -718,6 +837,7 @@ const allowGuestEntry = async (req, res, next) => {
 
 module.exports = {
   getRecentGuestsForGuard,
+  listGuestEntryRequestsForGuard,
   createGuestEntryRequest,
   getGuestEntryRequestForGuard,
   listGuestEntryRequestsForMember,
