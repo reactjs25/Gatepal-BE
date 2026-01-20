@@ -13,6 +13,14 @@ const toDisplayName = (filenameBase) =>
 
 const getDeliveryCompanies = async (req, res, next) => {
   try {
+    const user = req.appUser;
+    if (!user) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+    if (!['visitor', 'member', 'society_admin'].includes(user.role)) {
+      return next(createHttpError('Only visitors or members can access delivery companies', 403));
+    }
+
     const existing = await DeliveryCompany.find().lean();
 
     if (existing && existing.length > 0) {

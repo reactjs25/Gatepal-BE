@@ -26,6 +26,7 @@ const {
   listGuestEntryRequestsForMember,
   decideGuestEntryRequest,
 } = require('../controller/guestEntryRequestController');
+const { createDeliveryPreApproval } = require('../controller/deliveryPreApprovalController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const router = express.Router();
 
@@ -46,6 +47,7 @@ router.post('/guestInvites/frequent', userAuthMiddleware, createFrequentInvite);
 router.post('/guestInvites/recentGuests', userAuthMiddleware, getRecentGuests);
 router.post('/guestEntryRequests/list', userAuthMiddleware, listGuestEntryRequestsForMember);
 router.patch('/guestEntryRequests/decision', userAuthMiddleware, decideGuestEntryRequest);
+router.post('/deliveryPreApprovals/quick', userAuthMiddleware, createDeliveryPreApproval);
 
 
 module.exports = router;

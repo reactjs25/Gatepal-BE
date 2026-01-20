@@ -13,7 +13,13 @@ const normalizeString = (value) => (value || '').toString().trim();
 
 const getAllSociety = async (req, res, next) => {
   try {
-    const societies = await Society.find({}, 'societyName societyPin city country structure').lean();
+    const rawSocietyId = normalizeString(req?.body?.societyId || req?.query?.societyId);
+    if (rawSocietyId && !validator.isMongoId(rawSocietyId)) {
+      return next(createHttpError('Invalid societyId', 400));
+    }
+
+    const filter = rawSocietyId ? { _id: rawSocietyId } : {};
+    const societies = await Society.find(filter, 'societyName societyPin city country structure').lean();
     const mapped = societies.map((s) => {
       const wings = Array.isArray(s.structure) ? s.structure : [];
       const normalizedWings = wings.map((w) => {
