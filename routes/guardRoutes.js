@@ -14,6 +14,7 @@ const {
   createGuestEntryRequest,
   getGuestEntryRequestForGuard,
   allowGuestEntry,
+  allowGuestExit,
 } = require('../controller/guestEntryRequestController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 
@@ -33,6 +34,7 @@ router.post('/guestEntryRequests/list', userAuthMiddleware, listGuestEntryReques
 router.post('/guestEntryRequests', userAuthMiddleware, createGuestEntryRequest);
 router.get('/guestEntryRequests', userAuthMiddleware, getGuestEntryRequestForGuard);
 router.post('/guestEntryRequests/allowEntry', userAuthMiddleware, allowGuestEntry);
+router.post('/guestEntryRequests/allowExit', userAuthMiddleware, allowGuestExit);
 
 
 module.exports = router;

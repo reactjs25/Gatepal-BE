@@ -17,14 +17,14 @@ const VISITOR_TYPE_LABELS = {
 };
 
 const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
-const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered'];
+const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered', 'left'];
 const STATUS_FILTERS = {
   awaiting_approval: ['pending'],
   pending: ['pending'],
   approved: ['approved'],
   inside_society: ['entered'],
   entered: ['entered'],
-  left_society: ['rejected', 'cancelled', 'expired'],
+  left_society: ['rejected', 'cancelled', 'expired', 'left'],
   rejected: ['rejected'],
   cancelled: ['cancelled'],
   expired: ['expired'],
@@ -76,8 +76,10 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser }) => {
       ? 'Approved'
       : reqDoc.status === 'rejected'
         ? 'Rejected'
-        : reqDoc.status === 'entered'
-          ? 'Entered'
+      : reqDoc.status === 'entered'
+          ? 'Inside Society'
+          : reqDoc.status === 'left'
+            ? 'Left Society'
           : reqDoc.status === 'expired'
             ? 'Expired'
             : reqDoc.status === 'cancelled'
@@ -519,7 +521,7 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
           ? 'Awaiting Approval'
           : notApproved.length === 0
             ? approved.some((d) => d.status === 'entered')
-              ? 'Entered'
+              ? 'Inside Society'
               : 'Approved'
             : 'Partial Approved';
 
@@ -626,7 +628,9 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         : key === 'rejected'
           ? 'Rejected'
           : key === 'entered'
-            ? 'Entered'
+            ? 'Inside Society'
+            : key === 'left'
+              ? 'Left Society'
             : key === 'expired'
               ? 'Expired'
               : key === 'cancelled'
@@ -835,6 +839,89 @@ const allowGuestEntry = async (req, res, next) => {
   }
 };
 
+const allowGuestExit = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+
+    const activeDuty = requireGuardOnDuty(authUser);
+
+    const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
+    const requestIdsRaw = req.body?.requestIds ?? req.query?.requestIds;
+
+    const requestIds =
+      Array.isArray(requestIdsRaw)
+        ? requestIdsRaw.map((x) => normalizeString(x)).filter(Boolean)
+        : typeof requestIdsRaw === 'string'
+          ? requestIdsRaw
+              .split(',')
+              .map((x) => normalizeString(x))
+              .filter(Boolean)
+          : [];
+
+    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
+
+    // Multi-request exit: mark all entered requests as left.
+    if (!requestId && requestIds.length > 0) {
+      const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
+      if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
+
+      const sameSociety = docs.filter((d) => String(d.societyId) === String(activeDuty.societyId));
+      if (sameSociety.length === 0) return next(createHttpError('Request does not belong to this society', 403));
+
+      let anyEntered = false;
+      for (const d of sameSociety) {
+        if (d.status === 'entered') {
+          anyEntered = true;
+          d.status = 'left';
+          d.entryLeftByGuardId = authUser._id;
+          d.entryLeftAt = new Date();
+        }
+      }
+
+      if (!anyEntered && !sameSociety.some((d) => d.status === 'left')) {
+        return next(createHttpError('Exit can only be allowed for inside society requests', 409));
+      }
+
+      await Promise.all(sameSociety.map((d) => d.save()));
+
+      req.query.requestIds = requestIds.join(',');
+      req.query.requestId = undefined;
+      return getGuestEntryRequestForGuard(req, res, next);
+    }
+
+    const doc = await GuestEntryRequest.findOne({ requestId });
+    if (!doc) return next(createHttpError('Request not found', 404));
+
+    if (String(doc.societyId) !== String(activeDuty.societyId)) {
+      return next(createHttpError('Request does not belong to this society', 403));
+    }
+
+    if (doc.status !== 'entered' && doc.status !== 'left') {
+      return next(createHttpError('Exit can only be allowed for inside society requests', 409));
+    }
+
+    if (doc.status === 'left') {
+      const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
+      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+      return sendSuccessResponse(res, 200, 'Exit already allowed', { data: payload });
+    }
+
+    doc.status = 'left';
+    doc.entryLeftByGuardId = authUser._id;
+    doc.entryLeftAt = new Date();
+
+    await doc.save();
+
+    const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
+    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+    return sendSuccessResponse(res, 200, 'Exit allowed successfully', { data: payload });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to allow exit'));
+  }
+};
+
 module.exports = {
   getRecentGuestsForGuard,
   listGuestEntryRequestsForGuard,
@@ -843,6 +930,7 @@ module.exports = {
   listGuestEntryRequestsForMember,
   decideGuestEntryRequest,
   allowGuestEntry,
+  allowGuestExit,
 };
 
 

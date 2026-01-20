@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 
-const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered'];
+const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered', 'left'];
 const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
 
 const guestEntryRequestSchema = new mongoose.Schema(
@@ -71,6 +71,8 @@ const guestEntryRequestSchema = new mongoose.Schema(
 
     entryAllowedByGuardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     entryAllowedAt: { type: Date, default: null },
+    entryLeftByGuardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    entryLeftAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
