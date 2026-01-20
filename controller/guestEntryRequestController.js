@@ -5,6 +5,7 @@ const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { normalizeString } = require('../utils/strings');
+const { getTaxiCompanyDisplayName } = require('../utils/taxiDriverCompanies');
 const { normalizeCountryCode, normalizeDigits, isTenDigitPhone } = require('../utils/phoneNumber');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { toISTDateTimeLabel } = require('../utils/dateTime');
@@ -398,6 +399,17 @@ const createGuestEntryRequest = async (req, res, next) => {
       return next(createHttpError('companyName is required for other visitor', 400));
     }
 
+    let companyName = companyNameRaw;
+    if (visitorType === 'taxi_vehicle_driver' && companyName) {
+      const matchedTaxiCompany = getTaxiCompanyDisplayName(companyName);
+      if (!matchedTaxiCompany) {
+        return next(
+          createHttpError('Taxi company must be one of: Ola, Uber, Meru, Rapido', 400)
+        );
+      }
+      companyName = matchedTaxiCompany;
+    }
+
     const phoneDigits = normalizeDigits(phoneRaw);
 
     const recipientUserIds = await resolveUnitResidents({
@@ -427,7 +439,7 @@ const createGuestEntryRequest = async (req, res, next) => {
       guestPhoneDigits: phoneDigits,
       guestImageUrl: imageUrl,
       visitorType,
-      visitorCompanyName: companyNameRaw || null,
+      visitorCompanyName: companyName || null,
       visitorWorkCategory: workCategoryRaw || null,
       accompanyingCount,
       vehicleNumber,

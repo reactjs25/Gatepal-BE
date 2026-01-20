@@ -2,6 +2,7 @@ const { createHttpError } = require('../../utils/httpError');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const QRCode = require('qrcode');
 const { toTitleCaseName } = require('../../utils/strings');
+const { getTaxiCompanyDisplayName } = require('../../utils/taxiDriverCompanies');
 
 const VISITOR_TYPES = {
   GUEST: 'guest',
@@ -130,6 +131,17 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
         'Vehicle number must be alphanumeric without spaces or special characters',
         400
       );
+    }
+
+    if (normalizedVisitorType === VISITOR_TYPES.TAXI_VEHICLE_DRIVER) {
+      const matchedTaxiCompany = getTaxiCompanyDisplayName(sanitizedCompanyName);
+      if (!matchedTaxiCompany) {
+        throw createHttpError(
+          'Taxi company must be one of: Ola, Uber, Meru, Rapido',
+          400
+        );
+      }
+      sanitizedCompanyName = matchedTaxiCompany;
     }
   }
 

@@ -3,6 +3,7 @@ const path = require('path');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const DeliveryCompany = require('../../model/deliveryCompanySchema');
+const { TAXI_DRIVER_COMPANIES } = require('../../utils/taxiDriverCompanies');
 
 const ALLOWED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const assetsDirPath = path.join(__dirname, '..', '..', 'assets');
@@ -17,8 +18,8 @@ const getDeliveryCompanies = async (req, res, next) => {
     if (!user) {
       return next(createHttpError('Unauthorized', 401));
     }
-    if (!['visitor', 'member', 'society_admin'].includes(user.role)) {
-      return next(createHttpError('Only visitors or members can access delivery companies', 403));
+    if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
+      return next(createHttpError('Only visitors, members, or guards can access delivery companies', 403));
     }
 
     const existing = await DeliveryCompany.find().lean();
@@ -105,6 +106,23 @@ const getWorkCategories = async (req, res, next) => {
   }
 };
 
+const getTaxiDriverCompanies = async (req, res, next) => {
+  try {
+    const user = req.appUser;
+    if (!user) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+    if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
+      return next(createHttpError('Only visitors, members, or guards can access taxi driver companies', 403));
+    }
+    return sendSuccessResponse(res, 200, 'Taxi driver companies fetched successfully', {
+      data: TAXI_DRIVER_COMPANIES,
+    });
+  } catch (error) {
+    next(setErrorDefaults(error, 'Failed to fetch taxi driver companies'));
+  }
+};
+
 const addDeliveryCompany = async (req, res, next) => {
   try {
     const { companyName } = req.body || {};
@@ -142,5 +160,6 @@ const addDeliveryCompany = async (req, res, next) => {
 module.exports = {
   getDeliveryCompanies,
   getWorkCategories,
+  getTaxiDriverCompanies,
   addDeliveryCompany,
 };
