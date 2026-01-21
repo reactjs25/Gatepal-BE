@@ -6,6 +6,7 @@ const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
 const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
+const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 
 const normalizeOption = (value) =>
   (value || '')
@@ -194,12 +195,27 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
       return next(e);
     }
 
+    let resolvedCompanyName = null;
+    const trimmedCompany = normalizeString(companyName);
+    if (trimmedCompany) {
+      const matchedCompany = getOtherVisitorCompanyInfo(trimmedCompany);
+      if (!matchedCompany) {
+        return next(
+          createHttpError(
+            'companyName must be one of: Urban Company, Jio, Tata Sky, Airtel',
+            400
+          )
+        );
+      }
+      resolvedCompanyName = matchedCompany.name;
+    }
+
     const approval = await OtherVisitorPreApproval.create({
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
       invitedByUserId: authUser._id,
       workCategory: resolvedWorkCategory,
-      companyName: normalizeString(companyName) || null,
+      companyName: resolvedCompanyName,
       isPrivateInvite: Boolean(isPrivateInvite),
       validFrom: window.validFrom,
       validTill: window.validTill,
