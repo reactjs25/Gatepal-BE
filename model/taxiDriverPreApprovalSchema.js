@@ -37,6 +37,7 @@ const taxiDriverPreApprovalSchema = new mongoose.Schema(
     companyName: { type: String, trim: true, required: true },
     companyImageUrl: { type: String, trim: true, default: null },
     vehicleNumber: { type: String, trim: true, default: null },
+    isPrivateInvite: { type: Boolean, default: false },
     validFrom: {
       type: Date,
       required: true,

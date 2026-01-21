@@ -93,6 +93,13 @@ const WORK_CATEGORIES = [
 
 const getWorkCategories = async (req, res, next) => {
   try {
+    const user = req.appUser;
+    if (!user) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+    if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
+      return next(createHttpError('Only visitors, members, or guards can access work categories', 403));
+    }
     const categories = WORK_CATEGORIES.map((name) => ({
       id: name.toLowerCase().replace(/\s+/g, '_'),
       name,

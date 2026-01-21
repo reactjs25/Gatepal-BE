@@ -14,7 +14,6 @@ router.get('/getProfile', userAuthMiddleware, getVisitorProfile);
 router.put('/updateProfile', userAuthMiddleware, updateVisitorProfile);
 router.get('/deliveryCompanies', userAuthMiddleware, getDeliveryCompanies);
 router.get('/taxiDriverCompanies', userAuthMiddleware, getTaxiDriverCompanies);
-router.get('/workCategories', userAuthMiddleware, getWorkCategories);
 router.post('/deliveryCompanies', userAuthMiddleware, addDeliveryCompany);
 
 module.exports = router;

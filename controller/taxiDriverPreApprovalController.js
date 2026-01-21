@@ -174,6 +174,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       untilTimeOption,
       companyName,
       vehicleNumber,
+      isPrivateInvite,
     } = req.body || {};
 
     let unitDoc;
@@ -205,6 +206,8 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       return next(e);
     }
 
+    const privateFlag = Boolean(isPrivateInvite);
+
     const approval = await TaxiDriverPreApproval.create({
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
@@ -213,6 +216,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       companyName: resolvedCompany.name,
       companyImageUrl: resolvedCompany.imageUrl || null,
       vehicleNumber: normalizeString(vehicleNumber).toUpperCase() || null,
+      isPrivateInvite: privateFlag,
       validFrom: window.validFrom,
       validTill: window.validTill,
     });
@@ -224,7 +228,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
     const tillTimeLabel = toISTTimeLabel(window.validTill);
     const validityLabel = `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`;
 
-    return sendSuccessResponse(res, 201, 'Taxi driver pre-approval created successfully', {
+    return sendSuccessResponse(res, 201, 'Taxi/Cab pre-approval created successfully', {
       data: {
         preApprovalId: approval.preApprovalId,
         category: 'Taxi',
@@ -247,6 +251,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
         validTill: approval.validTill,
         validityLabel,
         vehicleNumber: approval.vehicleNumber || null,
+        isPrivateInvite: approval.isPrivateInvite,
       },
     });
   } catch (error) {
