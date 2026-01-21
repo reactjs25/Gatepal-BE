@@ -6,6 +6,10 @@ const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const User = require('../../model/userSchema');
 const SuperAdmin = require('../../model/superAdminSchema');
 const DeliveryCompany = require('../../model/deliveryCompanySchema');
+const TaxiDriverCompany = require('../../model/taxiDriverCompanySchema');
+const OtherVisitorCompany = require('../../model/otherVisitorCompanySchema');
+const { getOtherVisitorCompanyInfo } = require('../../utils/otherVisitorCompanies');
+const { getTaxiCompanyInfo } = require('../../utils/taxiDriverCompanies');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 
 const toVisitorTypeLabel = (visitorType) => {
@@ -19,7 +23,7 @@ const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const normalizeCompanyId = (name) =>
     (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
-const resolveCompanyLogo = async (companyName) => {
+const resolveCompanyLogo = async (visitorType, companyName) => {
     const trimmed = (companyName || '').toString().trim();
     if (!trimmed) {
         return null;
@@ -27,17 +31,44 @@ const resolveCompanyLogo = async (companyName) => {
 
     const base = normalizeCompanyId(trimmed);
     let record = null;
+    let fallback = null;
 
-    if (base) {
-        record = await DeliveryCompany.findOne({ id: base }).lean();
+    switch ((visitorType || '').toString().trim().toLowerCase()) {
+        case 'taxi_vehicle_driver': {
+            if (base) {
+                record = await TaxiDriverCompany.findOne({ id: base }).lean();
+            }
+            if (!record) {
+                const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+                record = await TaxiDriverCompany.findOne({ name: nameRegex }).lean();
+            }
+            fallback = getTaxiCompanyInfo(trimmed)?.imageUrl || null;
+            break;
+        }
+        case 'other_visitor': {
+            if (base) {
+                record = await OtherVisitorCompany.findOne({ id: base }).lean();
+            }
+            if (!record) {
+                const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+                record = await OtherVisitorCompany.findOne({ name: nameRegex }).lean();
+            }
+            fallback = getOtherVisitorCompanyInfo(trimmed)?.imageUrl || null;
+            break;
+        }
+        case 'delivery_executive':
+        default: {
+            if (base) {
+                record = await DeliveryCompany.findOne({ id: base }).lean();
+            }
+            if (!record) {
+                const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+                record = await DeliveryCompany.findOne({ name: nameRegex }).lean();
+            }
+            break;
+        }
     }
-
-    if (!record) {
-        const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
-        record = await DeliveryCompany.findOne({ name: nameRegex }).lean();
-    }
-
-    return record ? record.imageUrl : '/assets/Default.png';
+    return record?.imageUrl || fallback || '/assets/Default.png';
 };
 
 const buildVisitorQrPayload = (user) =>
@@ -104,7 +135,7 @@ const getVisitorProfile = async (req, res, next) => {
         }
 
         const qrCodeImageUrl = await ensureVisitorQrCode(user);
-        const companyLogo = await resolveCompanyLogo(user.visitorCompanyName);
+        const companyLogo = await resolveCompanyLogo(user.visitorType, user.visitorCompanyName);
         user.qrCodeImage = qrCodeImageUrl;
 
         return sendSuccessResponse(res, 200, 'Visitor profile fetched successfully', {
@@ -263,7 +294,7 @@ const updateVisitorProfile = async (req, res, next) => {
 
         // Return same payload as getProfile, including fresh QR if invalidated.
         const qrCodeImageUrl = await ensureVisitorQrCode(user);
-        const companyLogo = await resolveCompanyLogo(user.visitorCompanyName);
+        const companyLogo = await resolveCompanyLogo(user.visitorType, user.visitorCompanyName);
         user.qrCodeImage = qrCodeImageUrl;
 
         return sendSuccessResponse(res, 200, 'Visitor profile updated successfully', {
