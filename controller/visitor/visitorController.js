@@ -4,6 +4,7 @@ const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const DeliveryCompany = require('../../model/deliveryCompanySchema');
 const { TAXI_DRIVER_COMPANIES } = require('../../utils/taxiDriverCompanies');
+const { WORK_CATEGORIES } = require('../../utils/workCategories');
 
 const ALLOWED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const assetsDirPath = path.join(__dirname, '..', '..', 'assets');
@@ -75,21 +76,6 @@ const getDeliveryCompanies = async (req, res, next) => {
     next(setErrorDefaults(error, 'Failed to fetch delivery companies'));
   }
 };
-
-const WORK_CATEGORIES = [
-  'Appliance Repair',
-  'Beautician',
-  'Car Cleaner',
-  'Construction Work',
-  'Cook',
-  'Furniture Work',
-  'Internet Repair',
-  'Laundry',
-  'Maid',
-  'Milkman',
-  'Newspaper',
-  'Others',
-];
 
 const getWorkCategories = async (req, res, next) => {
   try {
