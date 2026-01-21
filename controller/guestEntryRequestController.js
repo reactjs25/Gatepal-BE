@@ -27,6 +27,7 @@ const STATUS_FILTERS = {
   entered: ['entered'],
   left_society: ['rejected', 'cancelled', 'expired', 'left'],
   rejected: ['rejected'],
+  denied: ['rejected'],
   cancelled: ['cancelled'],
   expired: ['expired'],
   all: REQUEST_STATUSES,
@@ -76,7 +77,7 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser }) => {
     reqDoc.status === 'approved'
       ? 'Approved'
       : reqDoc.status === 'rejected'
-        ? 'Rejected'
+        ? 'Denied'
       : reqDoc.status === 'entered'
           ? 'Inside Society'
           : reqDoc.status === 'left'
@@ -638,7 +639,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       key === 'approved'
         ? 'Approved'
         : key === 'rejected'
-          ? 'Rejected'
+          ? 'Denied'
           : key === 'entered'
             ? 'Inside Society'
             : key === 'left'
@@ -742,7 +743,7 @@ const decideGuestEntryRequest = async (req, res, next) => {
     return sendSuccessResponse(res, 200, 'Guest entry request updated successfully', {
       data: {
         requestId: doc.requestId,
-        status: doc.status === 'approved' ? 'Approved' : 'Rejected',
+        status: doc.status === 'approved' ? 'Approved' : 'Denied',
         decidedAt: doc.status === 'approved' ? doc.approvedAt : doc.rejectedAt,
       },
     });
