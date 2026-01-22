@@ -43,6 +43,47 @@ const normalizeOption = (value) =>
     .toLowerCase()
     .replace(/\s+/g, '_');
 
+const resolveExistingVisitorPhoto = async ({ phoneDigits, visitorType }) => {
+  if (!phoneDigits) return null;
+
+  if (visitorType && visitorType !== 'guest') {
+    const visitor = await User.findOne(
+      { phoneNumber: phoneDigits, role: 'visitor', visitorType },
+      { profilePhoto: 1 }
+    ).lean();
+    if (visitor?.profilePhoto) return visitor.profilePhoto;
+  }
+
+  const previousEntry = await GuestEntryRequest.findOne(
+    { guestPhoneDigits: phoneDigits, guestImageUrl: { $ne: null } },
+    { guestImageUrl: 1 }
+  )
+    .sort({ createdAt: -1 })
+    .lean();
+  if (previousEntry?.guestImageUrl) return previousEntry.guestImageUrl;
+
+  const recentInvite = await GuestInvite.findOne(
+    {
+      $or: [{ 'entryLogs.guestPhoneDigits': phoneDigits }, { 'entryLogs.guestPhoneNumber': phoneDigits }],
+      'entryLogs.imageUrl': { $ne: null },
+    },
+    { entryLogs: 1 }
+  )
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (recentInvite?.entryLogs?.length) {
+    const matchedLog = recentInvite.entryLogs.find((log) => {
+      if (!log || !log.imageUrl) return false;
+      const digits = normalizeDigits(log.guestPhoneDigits || log.guestPhoneNumber || '');
+      return digits === phoneDigits;
+    });
+    if (matchedLog?.imageUrl) return matchedLog.imageUrl;
+  }
+
+  return null;
+};
+
 const requireGuardOnDuty = (authUser) => {
   const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
   const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
@@ -137,11 +178,17 @@ const getRecentGuestsForGuard = async (req, res, next) => {
     const activeDuty = requireGuardOnDuty(authUser);
 
     const wingName = normalizeString(req.body?.wingName ?? req.body?.wing);
-    const unitNumber = normalizeString(req.body?.unitNumber ?? req.body?.unit);
+    const unitNumberRaw = req.body?.unitNumber ?? req.body?.unit;
+    const unitNumbers = Array.isArray(unitNumberRaw)
+      ? unitNumberRaw.map((value) => normalizeString(value)).filter(Boolean)
+      : [];
+    const unitNumber = Array.isArray(unitNumberRaw) ? null : normalizeString(unitNumberRaw);
     const daysNumber = Number(req.body?.days);
 
     if (!wingName) return next(createHttpError('wingName is required', 400));
-    if (!unitNumber) return next(createHttpError('unitNumber is required', 400));
+    if (unitNumbers.length === 0 && !unitNumber) {
+      return next(createHttpError('unitNumber is required', 400));
+    }
 
     const limit = 20;
     const days = Number.isFinite(daysNumber) && daysNumber > 0 ? Math.min(daysNumber, 365) : 30;
@@ -356,7 +403,11 @@ const createGuestEntryRequest = async (req, res, next) => {
     const activeDuty = requireGuardOnDuty(authUser);
 
     const wingName = normalizeString(req.body?.wingName ?? req.body?.wing);
-    const unitNumber = normalizeString(req.body?.unitNumber ?? req.body?.unit);
+    const unitNumberRaw = req.body?.unitNumber ?? req.body?.unit;
+    const unitNumbers = Array.isArray(unitNumberRaw)
+      ? unitNumberRaw.map((value) => normalizeString(value)).filter(Boolean)
+      : [];
+    const unitNumber = Array.isArray(unitNumberRaw) ? null : normalizeString(unitNumberRaw);
     const guestName = normalizeString(req.body?.guestName ?? req.body?.fullName ?? req.body?.name);
     const phoneRaw = normalizeString(req.body?.phoneNumber ?? req.body?.mobileNumber ?? req.body?.mobile);
     const countryCode = normalizeCountryCode(req.body?.countryCode || '+91');
@@ -377,7 +428,9 @@ const createGuestEntryRequest = async (req, res, next) => {
     const vehicleNumber = normalizeString(req.body?.vehicleNumber).toUpperCase() || null;
 
     if (!wingName) return next(createHttpError('wingName is required', 400));
-    if (!unitNumber) return next(createHttpError('unitNumber is required', 400));
+    if (unitNumbers.length === 0 && !unitNumber) {
+      return next(createHttpError('unitNumber is required', 400));
+    }
     if (!guestName) return next(createHttpError('guestName is required', 400));
     if (!phoneRaw) return next(createHttpError('phoneNumber is required', 400));
     if (!isTenDigitPhone(phoneRaw)) return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
@@ -386,6 +439,11 @@ const createGuestEntryRequest = async (req, res, next) => {
     if (!visitorTypeRaw && companyNameRaw) visitorType = 'delivery_executive';
     if (!VISITOR_TYPES.includes(visitorType)) {
       return next(createHttpError('visitorType is invalid', 400));
+    }
+    if (unitNumbers.length > 0 && visitorType !== 'delivery_executive') {
+      return next(
+        createHttpError('Multiple units are only supported for delivery executive', 400)
+      );
     }
     if (visitorType === 'delivery_executive' && !companyNameRaw) {
       return next(createHttpError('deliveryCompanyName is required for delivery executive', 400));
@@ -412,64 +470,104 @@ const createGuestEntryRequest = async (req, res, next) => {
     }
 
     const phoneDigits = normalizeDigits(phoneRaw);
+    const existingPhoto = await resolveExistingVisitorPhoto({ phoneDigits, visitorType });
+    const photoRequired = !existingPhoto;
+    const finalImageUrl = existingPhoto || imageUrl || null;
 
-    const recipientUserIds = await resolveUnitResidents({
-      societyId: activeDuty.societyId,
-      wingNameLower: wingName.toLowerCase(),
-      unitNumberLower: unitNumber.toLowerCase(),
-    });
+    const unitsToProcess = unitNumbers.length > 0 ? unitNumbers : [unitNumber];
+    const recipientsByUnit = new Map();
+    const missingUnits = [];
 
-    if (!recipientUserIds || recipientUserIds.length === 0) {
-      return next(createHttpError('No residents found for this unit. Cannot send approval request.', 404));
+    for (const targetUnit of unitsToProcess) {
+      const recipientUserIds = await resolveUnitResidents({
+        societyId: activeDuty.societyId,
+        wingNameLower: wingName.toLowerCase(),
+        unitNumberLower: targetUnit.toLowerCase(),
+      });
+
+      if (!recipientUserIds || recipientUserIds.length === 0) {
+        missingUnits.push(targetUnit);
+      } else {
+        recipientsByUnit.set(targetUnit, recipientUserIds);
+      }
+    }
+
+    if (missingUnits.length > 0) {
+      return next(
+        createHttpError(
+          `No residents found for units: ${missingUnits.join(', ')}. Cannot send approval request.`,
+          404
+        )
+      );
     }
 
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    const doc = await GuestEntryRequest.create({
-      societyId: activeDuty.societyId,
-      wingName,
-      wingNameLower: wingName.toLowerCase(),
-      unitNumber,
-      unitNumberLower: unitNumber.toLowerCase(),
-      createdByGuardId: authUser._id,
-      gateId: activeDuty.dutyGateId || null,
-      gateName: activeDuty.dutyGateName || null,
-      guestName,
-      guestCountryCode: countryCode || '+91',
-      guestPhoneNumber: phoneDigits,
-      guestPhoneDigits: phoneDigits,
-      guestImageUrl: imageUrl,
-      visitorType,
-      visitorCompanyName: companyName || null,
-      visitorWorkCategory: workCategoryRaw || null,
-      accompanyingCount,
-      vehicleNumber,
-      status: 'pending',
-      expiresAt,
-      recipientUserIds,
-    });
+    const createdDocs = await Promise.all(
+      unitsToProcess.map((targetUnit) =>
+        GuestEntryRequest.create({
+          societyId: activeDuty.societyId,
+          wingName,
+          wingNameLower: wingName.toLowerCase(),
+          unitNumber: targetUnit,
+          unitNumberLower: targetUnit.toLowerCase(),
+          createdByGuardId: authUser._id,
+          gateId: activeDuty.dutyGateId || null,
+          gateName: activeDuty.dutyGateName || null,
+          guestName,
+          guestCountryCode: countryCode || '+91',
+          guestPhoneNumber: phoneDigits,
+          guestPhoneDigits: phoneDigits,
+        guestImageUrl: finalImageUrl,
+          visitorType,
+          visitorCompanyName: companyName || null,
+          visitorWorkCategory: workCategoryRaw || null,
+          accompanyingCount,
+          vehicleNumber,
+          status: 'pending',
+          expiresAt,
+          recipientUserIds: recipientsByUnit.get(targetUnit),
+        })
+      )
+    );
 
     const labels = toVisitorLabels(visitorType);
 
-    return sendSuccessResponse(res, 201, 'Guest approval request created successfully', {
-      data: {
-        requestId: doc.requestId,
-        status: 'Awaiting Approval',
-        category: labels.category,
-        visitorType: labels.visitorType,
-        requestsendat: doc.createdAt ? toISTDateTimeLabel(doc.createdAt) : null,
-        expiresAt: doc.expiresAt ? toISTDateTimeLabel(doc.expiresAt) : null,
-        unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
-        guest: {
-          name: doc.guestName,
-          countryCode: doc.guestCountryCode || '+91',
-          phoneNumber: doc.guestPhoneNumber,
-          imageUrl: doc.guestImageUrl || '',
-          companyName: doc.visitorCompanyName || null,
-          workCategory: doc.visitorWorkCategory || null,
+    const primaryDoc = createdDocs[0];
+    const basePayload = {
+      status: 'Awaiting Approval',
+      category: labels.category,
+      visitorType: labels.visitorType,
+      photoRequired,
+      requestsendat: primaryDoc.createdAt ? toISTDateTimeLabel(primaryDoc.createdAt) : null,
+      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabel(primaryDoc.expiresAt) : null,
+      guest: {
+        name: primaryDoc.guestName,
+        countryCode: primaryDoc.guestCountryCode || '+91',
+        phoneNumber: primaryDoc.guestPhoneNumber,
+        imageUrl: primaryDoc.guestImageUrl || null,
+        companyName: primaryDoc.visitorCompanyName || null,
+        workCategory: primaryDoc.visitorWorkCategory || null,
+      },
+      accompanyingCount: String(primaryDoc.accompanyingCount || 0),
+      vehicleNumber: primaryDoc.vehicleNumber || null,
+    };
+
+    if (createdDocs.length === 1) {
+      return sendSuccessResponse(res, 201, 'Guest approval request created successfully', {
+        data: {
+          ...basePayload,
+          requestId: primaryDoc.requestId,
+          unit: { wingName: primaryDoc.wingName, unitNumber: primaryDoc.unitNumber },
         },
-        accompanyingCount: String(doc.accompanyingCount || 0),
-        vehicleNumber: doc.vehicleNumber || null,
+      });
+    }
+
+    return sendSuccessResponse(res, 201, 'Guest approval requests created successfully', {
+      data: {
+        ...basePayload,
+        requestIds: createdDocs.map((d) => d.requestId),
+        units: createdDocs.map((d) => ({ wingName: d.wingName, unitNumber: d.unitNumber })),
       },
     });
   } catch (error) {
@@ -935,6 +1033,59 @@ const allowGuestExit = async (req, res, next) => {
   }
 };
 
+const updateGuestEntryRequestPhoto = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+
+    const activeDuty = requireGuardOnDuty(authUser);
+
+    const requestId = normalizeString(req.body?.requestId || req.params?.requestId || req.query?.requestId);
+    const imageUrl = normalizeString(req.body?.imageUrl);
+
+    if (!requestId) return next(createHttpError('requestId is required', 400));
+    if (!imageUrl) return next(createHttpError('imageUrl is required', 400));
+
+    const doc = await GuestEntryRequest.findOne({ requestId });
+    if (!doc) return next(createHttpError('Request not found', 404));
+
+    if (String(doc.societyId) !== String(activeDuty.societyId)) {
+      return next(createHttpError('Request does not belong to this society', 403));
+    }
+
+    doc.guestImageUrl = imageUrl;
+    await doc.save();
+
+    const labels = toVisitorLabels(doc.visitorType || 'guest');
+
+    return sendSuccessResponse(res, 200, 'Guest photo updated successfully', {
+      data: {
+        requestId: doc.requestId,
+        status: 'Awaiting Approval',
+        category: labels.category,
+        visitorType: labels.visitorType,
+        photoRequired: false,
+        requestsendat: doc.createdAt ? toISTDateTimeLabel(doc.createdAt) : null,
+        expiresAt: doc.expiresAt ? toISTDateTimeLabel(doc.expiresAt) : null,
+        unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
+        guest: {
+          name: doc.guestName,
+          countryCode: doc.guestCountryCode || '+91',
+          phoneNumber: doc.guestPhoneNumber,
+          imageUrl: doc.guestImageUrl || null,
+          companyName: doc.visitorCompanyName || null,
+          workCategory: doc.visitorWorkCategory || null,
+        },
+        accompanyingCount: String(doc.accompanyingCount || 0),
+        vehicleNumber: doc.vehicleNumber || null,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update guest photo'));
+  }
+};
+
 module.exports = {
   getRecentGuestsForGuard,
   listGuestEntryRequestsForGuard,
@@ -944,6 +1095,7 @@ module.exports = {
   decideGuestEntryRequest,
   allowGuestEntry,
   allowGuestExit,
+  updateGuestEntryRequestPhoto,
 };
 
 
