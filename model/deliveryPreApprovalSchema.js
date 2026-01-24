@@ -34,7 +34,7 @@ const deliveryPreApprovalSchema = new mongoose.Schema(
       index: true,
     },
     companyId: { type: String, trim: true, default: null },
-    companyName: { type: String, trim: true, required: true },
+    companyName: { type: String, trim: true, default: null },
     companyImageUrl: { type: String, trim: true, default: null },
     isSilentDelivery: { type: Boolean, default: false },
     validFrom: {

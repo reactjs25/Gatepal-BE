@@ -219,9 +219,17 @@ const createDeliveryPreApproval = async (req, res, next) => {
       companyName: companyName || deliveryCompanyName,
     });
 
-    if (!resolvedCompany) {
-      return next(createHttpError('companyId or companyName is required', 400));
-    }
+    const companyPayload = resolvedCompany
+      ? {
+          id: resolvedCompany.id || null,
+          name: resolvedCompany.name,
+          imageUrl: resolvedCompany.imageUrl || null,
+        }
+      : {
+          id: null,
+          name: null,
+          imageUrl: null,
+        };
 
     let window;
     try {
@@ -251,9 +259,9 @@ const createDeliveryPreApproval = async (req, res, next) => {
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
       invitedByUserId: authUser._id,
-      companyId: resolvedCompany.id || null,
-      companyName: resolvedCompany.name,
-      companyImageUrl: resolvedCompany.imageUrl || null,
+      companyId: companyPayload.id,
+      companyName: companyPayload.name,
+      companyImageUrl: companyPayload.imageUrl,
       isSilentDelivery: silentFlag,
       validFrom: window.validFrom,
       validTill: window.validTill,
@@ -272,9 +280,9 @@ const createDeliveryPreApproval = async (req, res, next) => {
         category: 'Delivery',
         visitorType: 'Delivery Executive',
         company: {
-          id: resolvedCompany.id || null,
-          name: resolvedCompany.name,
-          imageUrl: resolvedCompany.imageUrl || null,
+          id: companyPayload.id,
+          name: companyPayload.name,
+          imageUrl: companyPayload.imageUrl,
         },
         unit: {
           id: String(unitDoc._id),
