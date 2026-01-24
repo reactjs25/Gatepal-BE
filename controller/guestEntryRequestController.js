@@ -1,11 +1,17 @@
 const GuestEntryRequest = require('../model/guestEntryRequestSchema');
+const GuestEntryRequestDraft = require('../model/guestEntryRequestDraftSchema');
 const GuestInvite = require('../model/guestInviteSchema');
 const MemberUnit = require('../model/memberUnitSchema');
 const User = require('../model/userSchema');
+const TaxiDriverCompany = require('../model/taxiDriverCompanySchema');
+const DeliveryPreApproval = require('../model/deliveryPreApprovalSchema');
+const TaxiDriverPreApproval = require('../model/taxiDriverPreApprovalSchema');
+const OtherVisitorPreApproval = require('../model/otherVisitorPreApprovalSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { normalizeString } = require('../utils/strings');
-const { getTaxiCompanyDisplayName } = require('../utils/taxiDriverCompanies');
+const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
+const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const { normalizeCountryCode, normalizeDigits, isTenDigitPhone } = require('../utils/phoneNumber');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { toISTDateTimeLabel } = require('../utils/dateTime');
@@ -42,6 +48,164 @@ const normalizeOption = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_');
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeCompanyId = (name) =>
+  (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const getStatusLabel = (status) =>
+  status === 'approved'
+    ? 'Approved'
+    : status === 'rejected'
+      ? 'Denied'
+      : status === 'entered'
+          ? 'Inside Society'
+          : status === 'left'
+            ? 'Left Society'
+            : status === 'expired'
+              ? 'Expired'
+              : status === 'cancelled'
+                ? 'Cancelled'
+                : 'Awaiting Approval';
+
+const resolveTaxiCompanyName = async (companyName) => {
+  const trimmed = normalizeString(companyName);
+  if (!trimmed) return null;
+
+  const base = normalizeCompanyId(trimmed);
+  let record = null;
+
+  if (base) {
+    record = await TaxiDriverCompany.findOne({ id: base }).lean();
+  }
+  if (!record) {
+    const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+    record = await TaxiDriverCompany.findOne({ name: nameRegex }).lean();
+  }
+
+  if (record?.name) return record.name;
+
+  const fallback = getTaxiCompanyInfo(trimmed);
+  return fallback?.name || null;
+};
+
+const findDeliveryPreApproval = async ({ societyId, unitId, companyName, now }) => {
+  if (!societyId || !unitId) return null;
+  const trimmedCompany = normalizeString(companyName);
+  const query = {
+    societyId,
+    unitId,
+    status: 'active',
+    validFrom: { $lte: now },
+    validTill: { $gte: now },
+  };
+  if (trimmedCompany) {
+    const nameRegex = new RegExp(`^${escapeRegex(trimmedCompany)}$`, 'i');
+    query.$or = [{ companyName: null }, { companyName: '' }, { companyName: nameRegex }];
+  }
+  return DeliveryPreApproval.findOne(query).sort({ validFrom: -1 }).lean();
+};
+
+const findTaxiPreApproval = async ({ societyId, unitId, companyName, vehicleNumber, now }) => {
+  if (!societyId || !unitId) return null;
+  const trimmedCompany = normalizeString(companyName);
+  if (!trimmedCompany) return null;
+  const nameRegex = new RegExp(`^${escapeRegex(trimmedCompany)}$`, 'i');
+  const query = {
+    societyId,
+    unitId,
+    status: 'active',
+    validFrom: { $lte: now },
+    validTill: { $gte: now },
+    companyName: nameRegex,
+  };
+  if (vehicleNumber) {
+    query.$or = [{ vehicleNumber: null }, { vehicleNumber: '' }, { vehicleNumber }];
+  } else {
+    query.$or = [{ vehicleNumber: null }, { vehicleNumber: '' }];
+  }
+  return TaxiDriverPreApproval.findOne(query).sort({ validFrom: -1 }).lean();
+};
+
+const findOtherVisitorPreApproval = async ({ societyId, unitId, workCategory, companyName, now }) => {
+  if (!societyId || !unitId) return null;
+  const resolvedWorkCategory = getWorkCategoryDisplayName(workCategory);
+  if (!resolvedWorkCategory) return null;
+  const workCategoryRegex = new RegExp(`^${escapeRegex(resolvedWorkCategory)}$`, 'i');
+  const trimmedCompany = normalizeString(companyName);
+  const query = {
+    societyId,
+    unitId,
+    status: 'active',
+    validFrom: { $lte: now },
+    validTill: { $gte: now },
+    workCategory: workCategoryRegex,
+  };
+  if (trimmedCompany) {
+    const nameRegex = new RegExp(`^${escapeRegex(trimmedCompany)}$`, 'i');
+    query.$or = [{ companyName: null }, { companyName: '' }, { companyName: nameRegex }];
+  }
+  return OtherVisitorPreApproval.findOne(query).sort({ validFrom: -1 }).lean();
+};
+
+const findGuestInviteApproval = async ({ societyId, unitId, guestName, phoneDigits, now }) => {
+  if (!societyId || !unitId) return null;
+  const normalizedName = normalizeString(guestName).toLowerCase();
+  const invites = await GuestInvite.find(
+    {
+      societyId,
+      unitId,
+      status: 'active',
+      validFrom: { $lte: now },
+      validTill: { $gte: now },
+      guests: { $exists: true },
+    },
+    { invitedByUserId: 1, type: 1, guests: 1 }
+  )
+    .sort({ validFrom: -1 })
+    .limit(20)
+    .lean();
+
+  for (const invite of invites) {
+    if (!Array.isArray(invite.guests) || invite.guests.length === 0) continue;
+    const matched = invite.guests.find((g) => {
+      if (!g) return false;
+      const guestPhone = g.phoneDigits || (g.phoneNumber ? normalizeDigits(g.phoneNumber) : null);
+      if (phoneDigits && guestPhone && phoneDigits === guestPhone) return true;
+      const guestNameMatch = normalizeString(g.name).toLowerCase();
+      return normalizedName && guestNameMatch === normalizedName;
+    });
+    if (matched) return invite;
+  }
+  return null;
+};
+
+const resolvePreApprovalForUnit = async ({
+  visitorType,
+  societyId,
+  unitId,
+  companyName,
+  workCategory,
+  vehicleNumber,
+  guestName,
+  phoneDigits,
+  now,
+}) => {
+  if (!visitorType) return null;
+  switch (visitorType) {
+    case 'delivery_executive':
+      return findDeliveryPreApproval({ societyId, unitId, companyName, now });
+    case 'taxi_vehicle_driver':
+      return findTaxiPreApproval({ societyId, unitId, companyName, vehicleNumber, now });
+    case 'other_visitor':
+      return findOtherVisitorPreApproval({ societyId, unitId, workCategory, companyName, now });
+    case 'guest':
+      return findGuestInviteApproval({ societyId, unitId, guestName, phoneDigits, now });
+    default:
+      return null;
+  }
+};
 
 const resolveExistingVisitorPhoto = async ({ phoneDigits, visitorType }) => {
   if (!phoneDigits) return null;
@@ -114,20 +278,7 @@ const resolveUnitResidents = async ({ societyId, wingNameLower, unitNumberLower 
 };
 
 const toGuardCardPayload = ({ reqDoc, approvedByUser }) => {
-  const statusLabel =
-    reqDoc.status === 'approved'
-      ? 'Approved'
-      : reqDoc.status === 'rejected'
-        ? 'Denied'
-      : reqDoc.status === 'entered'
-          ? 'Inside Society'
-          : reqDoc.status === 'left'
-            ? 'Left Society'
-          : reqDoc.status === 'expired'
-            ? 'Expired'
-            : reqDoc.status === 'cancelled'
-              ? 'Cancelled'
-              : 'Awaiting Approval';
+  const statusLabel = getStatusLabel(reqDoc.status);
 
 
   const labels = toVisitorLabels(reqDoc.visitorType || 'guest');
@@ -460,21 +611,65 @@ const createGuestEntryRequest = async (req, res, next) => {
 
     let companyName = companyNameRaw;
     if (visitorType === 'taxi_vehicle_driver' && companyName) {
-      const matchedTaxiCompany = getTaxiCompanyDisplayName(companyName);
+      const matchedTaxiCompany = await resolveTaxiCompanyName(companyName);
       if (!matchedTaxiCompany) {
         return next(
-          createHttpError('Taxi company must be one of: Ola, Uber, Meru, Rapido', 400)
+          createHttpError('Taxi company must match a registered taxi company', 400)
         );
       }
       companyName = matchedTaxiCompany;
     }
 
+    const unitsToProcess = unitNumbers.length > 0 ? unitNumbers : [unitNumber];
     const phoneDigits = normalizeDigits(phoneRaw);
     const existingPhoto = await resolveExistingVisitorPhoto({ phoneDigits, visitorType });
-    const photoRequired = !existingPhoto;
     const finalImageUrl = existingPhoto || imageUrl || null;
+    const photoRequired = !finalImageUrl;
 
-    const unitsToProcess = unitNumbers.length > 0 ? unitNumbers : [unitNumber];
+    if (photoRequired) {
+      const draft = await GuestEntryRequestDraft.create({
+        societyId: activeDuty.societyId,
+        createdByGuardId: authUser._id,
+        gateId: activeDuty.dutyGateId || null,
+        gateName: activeDuty.dutyGateName || null,
+        wingName,
+        unitNumbers: unitsToProcess,
+        guestName,
+        guestCountryCode: countryCode || '+91',
+        guestPhoneNumber: phoneDigits,
+        guestPhoneDigits: phoneDigits,
+        visitorType,
+        visitorCompanyName: companyName || null,
+        visitorWorkCategory: workCategoryRaw || null,
+        accompanyingCount,
+        vehicleNumber,
+      });
+
+      const labels = toVisitorLabels(visitorType);
+      return sendSuccessResponse(res, 200, 'Photo required before creating request', {
+        data: {
+          requestCreated: false,
+          requestId: draft.requestId,
+          status: 'Awaiting Approval',
+          category: labels.category,
+          visitorType: labels.visitorType,
+          photoRequired: true,
+          guest: {
+            name: guestName,
+            countryCode: countryCode || '+91',
+            phoneNumber: phoneDigits,
+            imageUrl: null,
+            companyName: companyName || null,
+            workCategory: workCategoryRaw || null,
+          },
+          accompanyingCount: String(accompanyingCount || 0),
+          vehicleNumber: vehicleNumber || null,
+          ...(unitsToProcess.length === 1
+            ? { unit: { wingName, unitNumber: unitsToProcess[0] } }
+            : { units: unitsToProcess.map((u) => ({ wingName, unitNumber: u })) }),
+        },
+      });
+    }
     const recipientsByUnit = new Map();
     const missingUnits = [];
 
@@ -502,15 +697,53 @@ const createGuestEntryRequest = async (req, res, next) => {
     }
 
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const now = new Date();
+    const unitNumberLowers = unitsToProcess.map((u) => u.toLowerCase());
+    const unitDocs = await MemberUnit.find(
+      {
+        societyId: activeDuty.societyId,
+        wingNameLower: wingName.toLowerCase(),
+        unitNumberLower: { $in: unitNumberLowers },
+        $or: [
+          { occupancyStatus: 'currently_residing' },
+          { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
+        ],
+      },
+      { _id: 1, unitNumberLower: 1 }
+    ).lean();
+    const unitByNumber = new Map();
+    for (const unit of unitDocs || []) {
+      const key = unit.unitNumberLower;
+      if (key && !unitByNumber.has(key)) {
+        unitByNumber.set(key, unit);
+      }
+    }
 
     const createdDocs = await Promise.all(
-      unitsToProcess.map((targetUnit) =>
-        GuestEntryRequest.create({
+      unitsToProcess.map(async (targetUnit) => {
+        const unitKey = targetUnit.toLowerCase();
+        const unitDoc = unitByNumber.get(unitKey);
+        const preApproval = unitDoc
+          ? await resolvePreApprovalForUnit({
+              visitorType,
+              societyId: activeDuty.societyId,
+              unitId: unitDoc._id,
+              companyName,
+              workCategory: workCategoryRaw,
+              vehicleNumber,
+              guestName,
+              phoneDigits,
+              now,
+            })
+          : null;
+        const autoApproved = Boolean(preApproval);
+
+        return GuestEntryRequest.create({
           societyId: activeDuty.societyId,
           wingName,
           wingNameLower: wingName.toLowerCase(),
           unitNumber: targetUnit,
-          unitNumberLower: targetUnit.toLowerCase(),
+          unitNumberLower: unitKey,
           createdByGuardId: authUser._id,
           gateId: activeDuty.dutyGateId || null,
           gateName: activeDuty.dutyGateName || null,
@@ -518,24 +751,26 @@ const createGuestEntryRequest = async (req, res, next) => {
           guestCountryCode: countryCode || '+91',
           guestPhoneNumber: phoneDigits,
           guestPhoneDigits: phoneDigits,
-        guestImageUrl: finalImageUrl,
+          guestImageUrl: finalImageUrl,
           visitorType,
           visitorCompanyName: companyName || null,
           visitorWorkCategory: workCategoryRaw || null,
           accompanyingCount,
           vehicleNumber,
-          status: 'pending',
-          expiresAt,
+          status: autoApproved ? 'approved' : 'pending',
+          approvedByUserId: autoApproved ? preApproval.invitedByUserId : null,
+          approvedAt: autoApproved ? now : null,
+          expiresAt: autoApproved ? null : expiresAt,
           recipientUserIds: recipientsByUnit.get(targetUnit),
-        })
-      )
+        });
+      })
     );
 
     const labels = toVisitorLabels(visitorType);
 
     const primaryDoc = createdDocs[0];
     const basePayload = {
-      status: 'Awaiting Approval',
+      status: getStatusLabel(primaryDoc.status),
       category: labels.category,
       visitorType: labels.visitorType,
       photoRequired,
@@ -1044,8 +1279,36 @@ const updateGuestEntryRequestPhoto = async (req, res, next) => {
     const requestId = normalizeString(req.body?.requestId || req.params?.requestId || req.query?.requestId);
     const imageUrl = normalizeString(req.body?.imageUrl);
 
-    if (!requestId) return next(createHttpError('requestId is required', 400));
     if (!imageUrl) return next(createHttpError('imageUrl is required', 400));
+
+    if (!requestId) {
+      return createGuestEntryRequest(req, res, next);
+    }
+
+    const draft = await GuestEntryRequestDraft.findOne({ requestId }).lean();
+    if (draft) {
+      const draftUnits = Array.isArray(draft.unitNumbers) ? draft.unitNumbers.filter(Boolean) : [];
+      req.body = {
+        visitorType: draft.visitorType,
+        companyName: draft.visitorCompanyName || null,
+        deliveryCompanyName: draft.visitorCompanyName || null,
+        workCategory: draft.visitorWorkCategory || null,
+        guestName: draft.guestName,
+        phoneNumber: draft.guestPhoneNumber,
+        countryCode: draft.guestCountryCode || '+91',
+        vehicleNumber: draft.vehicleNumber || null,
+        accompanyingCount: draft.accompanyingCount || 0,
+        wingName: draft.wingName,
+        ...(draftUnits.length <= 1
+          ? { unitNumber: draftUnits[0] || null }
+          : { unitNumber: draftUnits }),
+        imageUrl,
+      };
+
+      await createGuestEntryRequest(req, res, next);
+      await GuestEntryRequestDraft.deleteOne({ _id: draft._id });
+      return;
+    }
 
     const doc = await GuestEntryRequest.findOne({ requestId });
     if (!doc) return next(createHttpError('Request not found', 404));
