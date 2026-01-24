@@ -6,6 +6,7 @@ const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
 const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
+const OtherVisitorCompany = require('../model/otherVisitorCompanySchema');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 
 const normalizeOption = (value) =>
@@ -14,6 +15,34 @@ const normalizeOption = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_');
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeCompanyId = (name) =>
+  (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const resolveOtherVisitorCompany = async (companyName) => {
+  const trimmed = normalizeString(companyName);
+  if (!trimmed) return null;
+
+  const base = normalizeCompanyId(trimmed);
+  let record = null;
+
+  if (base) {
+    record = await OtherVisitorCompany.findOne({ id: base }).lean();
+  }
+  if (!record) {
+    const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+    record = await OtherVisitorCompany.findOne({ name: nameRegex }).lean();
+  }
+
+  if (record) {
+    return { name: record.name, imageUrl: record.imageUrl };
+  }
+
+  const fallback = getOtherVisitorCompanyInfo(trimmed);
+  return fallback ? { name: fallback.name, imageUrl: fallback.imageUrl } : null;
+};
 
 const parseDateTime = (value, fieldLabel) => {
   if (!value) {
@@ -198,11 +227,11 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
     let resolvedCompanyName = null;
     const trimmedCompany = normalizeString(companyName);
     if (trimmedCompany) {
-      const matchedCompany = getOtherVisitorCompanyInfo(trimmedCompany);
+      const matchedCompany = await resolveOtherVisitorCompany(trimmedCompany);
       if (!matchedCompany) {
         return next(
           createHttpError(
-            'companyName must be one of: Urban Company, Jio, Tata Sky, Airtel',
+            'companyName must match a registered other visitor company',
             400
           )
         );

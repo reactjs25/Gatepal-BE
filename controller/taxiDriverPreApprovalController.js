@@ -1,4 +1,5 @@
 const TaxiDriverPreApproval = require('../model/taxiDriverPreApprovalSchema');
+const TaxiDriverCompany = require('../model/taxiDriverCompanySchema');
 const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
@@ -13,6 +14,11 @@ const normalizeOption = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_');
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeCompanyId = (name) =>
+  (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
 const parseDateTime = (value, fieldLabel) => {
   if (!value) {
@@ -140,15 +146,35 @@ const computeUiBasedValidityWindow = ({
   });
 };
 
-const resolveCompanyData = ({ companyName }) => {
+const resolveCompanyData = async ({ companyName }) => {
   const trimmedName = normalizeString(companyName);
   if (!trimmedName) return null;
-  const company = getTaxiCompanyInfo(trimmedName);
-  if (!company) return null;
+
+  const base = normalizeCompanyId(trimmedName);
+  let record = null;
+
+  if (base) {
+    record = await TaxiDriverCompany.findOne({ id: base }).lean();
+  }
+  if (!record) {
+    const nameRegex = new RegExp(`^${escapeRegex(trimmedName)}$`, 'i');
+    record = await TaxiDriverCompany.findOne({ name: nameRegex }).lean();
+  }
+
+  if (record) {
+    return {
+      id: record.id,
+      name: record.name,
+      imageUrl: record.imageUrl || null,
+    };
+  }
+
+  const fallback = getTaxiCompanyInfo(trimmedName);
+  if (!fallback) return null;
   return {
-    id: company.id,
-    name: company.name,
-    imageUrl: company.imageUrl || null,
+    id: fallback.id,
+    name: fallback.name,
+    imageUrl: fallback.imageUrl || null,
   };
 };
 
@@ -184,9 +210,11 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       return next(e);
     }
 
-    const resolvedCompany = resolveCompanyData({ companyName });
+    const resolvedCompany = await resolveCompanyData({ companyName });
     if (!resolvedCompany) {
-      return next(createHttpError('companyName must be one of: Ola, Uber, Meru, Rapido', 400));
+      return next(
+        createHttpError('companyName must match a registered taxi company', 400)
+      );
     }
 
     let window;
