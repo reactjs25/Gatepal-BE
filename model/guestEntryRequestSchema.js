@@ -50,6 +50,9 @@ const guestEntryRequestSchema = new mongoose.Schema(
     visitorCompanyName: { type: String, trim: true, default: null },
     visitorWorkCategory: { type: String, trim: true, default: null },
 
+    // Link to GuestInvite if created from QR scan
+    guestInviteId: { type: mongoose.Schema.Types.ObjectId, ref: 'GuestInvite', default: null, index: true },
+
     accompanyingCount: { type: Number, default: 0 },
     vehicleNumber: { type: String, trim: true, default: null },
 

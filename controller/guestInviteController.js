@@ -2,6 +2,7 @@ const QRCode = require('qrcode');
 const { Jimp } = require('jimp');
 const jsQR = require('jsqr');
 const GuestInvite = require('../model/guestInviteSchema');
+const GuestEntryRequest = require('../model/guestEntryRequestSchema');
 const MemberUnit = require('../model/memberUnitSchema');
 const User = require('../model/userSchema');
 const DeliveryCompany = require('../model/deliveryCompanySchema');
@@ -1207,6 +1208,35 @@ const scanGuestInvite = async (req, res, next) => {
     const member = await User.findById(invite.invitedByUserId).lean();
     const unit = await MemberUnit.findById(invite.unitId).lean();
 
+    // Create GuestEntryRequest so guard can see visitor in today's list
+    const guestEntryRequest = await GuestEntryRequest.create({
+      societyId: invite.societyId,
+      wingName: unit?.wingName || '',
+      wingNameLower: (unit?.wingName || '').toLowerCase(),
+      unitNumber: unit?.unitNumber || '',
+      unitNumberLower: (unit?.unitNumber || '').toLowerCase(),
+      createdByGuardId: authUser._id,
+      gateId: activeDuty.dutyGateId || null,
+      gateName: activeDuty.dutyGateName || null,
+      guestName: arrivingGuest?.name || 'Group Guest',
+      guestCountryCode: arrivingGuest?.countryCode || '+91',
+      guestPhoneNumber: arrivingGuest?.phoneNumber || '',
+      guestPhoneDigits: normalizeDigits(arrivingGuest?.phoneNumber || ''),
+      guestImageUrl: null,
+      visitorType: 'guest',
+      visitorCompanyName: null,
+      visitorWorkCategory: null,
+      accompanyingCount: safeCount,
+      vehicleNumber: normalizedVehicleNumber,
+      status: 'entered',
+      approvedByUserId: invite.invitedByUserId,
+      approvedAt: now,
+      entryAllowedByGuardId: authUser._id,
+      entryAllowedAt: now,
+      recipientUserIds: [invite.invitedByUserId],
+      guestInviteId: invite._id,
+    });
+
     const dateLabel = toISTDateLabel(invite.validFrom);
     const fromTimeLabel = toISTTimeLabel(invite.validFrom);
     const tillTimeLabel = toISTTimeLabel(invite.validTill);
@@ -1225,6 +1255,7 @@ const scanGuestInvite = async (req, res, next) => {
 
     const responseData = {
       qrType: 'guest_invite',
+      requestId: guestEntryRequest.requestId,
       inviteId: invite.inviteId,
       inviteType: invite.type,
       societyId: String(invite.societyId),
