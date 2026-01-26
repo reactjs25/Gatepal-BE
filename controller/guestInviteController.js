@@ -15,6 +15,7 @@ const { normalizeString } = require('../utils/strings');
 const {
   normalizeCountryCode,
   normalizeDigits,
+  normalizePhoneDigits,
   isTenDigitPhone,
 } = require('../utils/phoneNumber');
 const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
@@ -1181,6 +1182,35 @@ const scanGuestInvite = async (req, res, next) => {
       return next(createHttpError('Entry limit reached for this invite', 400));
     }
 
+    // For frequent invites, check if guest is already inside (has 'entered' status but not 'left')
+    // This prevents duplicate GuestEntryRequest records when same guest scans multiple times
+    if (invite.type === 'frequent' && arrivingGuest) {
+      const guestPhoneDigits = normalizePhoneDigits(arrivingGuest.phoneNumber || arrivingGuest.phoneDigits);
+      if (guestPhoneDigits) {
+        const existingActiveEntry = await GuestEntryRequest.findOne({
+          societyId: invite.societyId,
+          guestInviteId: invite._id,
+          guestPhoneDigits,
+          status: 'entered',
+        }).lean();
+        if (existingActiveEntry) {
+          return next(
+            createHttpError(
+              `${arrivingGuest.name} is already inside the society. Please mark exit first.`,
+              409
+            )
+          );
+        }
+      }
+    }
+
+    // For group invites, check if the phone number (if provided) is already inside
+    if (invite.type === 'group') {
+      // Group invites don't have per-guest phone numbers in the invite,
+      // but we should still check by society-level for any entered status
+      // This is handled by the guard manually
+    }
+
     const normalizedVehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
     const countNumber = Number(accompanyingCount);
     const safeCount = Number.isFinite(countNumber) && countNumber > 0 ? countNumber : 0;
@@ -1221,7 +1251,7 @@ const scanGuestInvite = async (req, res, next) => {
       guestName: arrivingGuest?.name || 'Group Guest',
       guestCountryCode: arrivingGuest?.countryCode || '+91',
       guestPhoneNumber: arrivingGuest?.phoneNumber || '',
-      guestPhoneDigits: normalizeDigits(arrivingGuest?.phoneNumber || ''),
+      guestPhoneDigits: normalizePhoneDigits(arrivingGuest?.phoneNumber || ''),
       guestImageUrl: null,
       visitorType: 'guest',
       visitorCompanyName: null,

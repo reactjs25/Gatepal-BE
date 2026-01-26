@@ -19,8 +19,7 @@ const guestEntryRequestSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    // We deliberately store the unit by society+wing+unitNumber, because there can be multiple
-    // MemberUnit docs (one per resident user) for the same physical unit.
+   
     wingName: { type: String, required: true, trim: true },
     wingNameLower: { type: String, required: true, lowercase: true, trim: true, index: true },
     unitNumber: { type: String, required: true, trim: true },

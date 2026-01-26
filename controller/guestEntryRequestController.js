@@ -12,7 +12,7 @@ const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { normalizeString } = require('../utils/strings');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
-const { normalizeCountryCode, normalizeDigits, isTenDigitPhone } = require('../utils/phoneNumber');
+const { normalizeCountryCode, normalizeDigits, normalizePhoneDigits, isTenDigitPhone } = require('../utils/phoneNumber');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { toISTDateLabel, toISTDateTimeLabel, toISTDateTimeLabelNoComma, toISTTimeLabel } = require('../utils/dateTime');
 
@@ -258,6 +258,25 @@ const requireGuardOnDuty = (authUser) => {
     throw createHttpError('You must be on duty to perform this action', 400);
   }
   return activeDuty;
+};
+
+/**
+ * Check if a visitor with the given phone number is already inside the society.
+ * Returns the existing entry request if found, null otherwise.
+ */
+const checkVisitorAlreadyInside = async ({ societyId, phoneDigits }) => {
+  if (!societyId || !phoneDigits) return null;
+  
+  const normalizedPhone = normalizePhoneDigits(phoneDigits);
+  if (!normalizedPhone) return null;
+  
+  const existingEntry = await GuestEntryRequest.findOne({
+    societyId,
+    guestPhoneDigits: normalizedPhone,
+    status: 'entered',
+  }).lean();
+  
+  return existingEntry || null;
 };
 
 const resolveUnitResidents = async ({ societyId, wingNameLower, unitNumberLower }) => {
@@ -624,7 +643,22 @@ const createGuestEntryRequest = async (req, res, next) => {
     }
 
     const unitsToProcess = unitNumbers.length > 0 ? unitNumbers : [unitNumber];
-    const phoneDigits = normalizeDigits(phoneRaw);
+    const phoneDigits = normalizePhoneDigits(phoneRaw);
+
+    // Check if visitor is already inside the society
+    const alreadyInsideEntry = await checkVisitorAlreadyInside({
+      societyId: activeDuty.societyId,
+      phoneDigits,
+    });
+    if (alreadyInsideEntry) {
+      return next(
+        createHttpError(
+          `This visitor is already inside the society (Entry: ${alreadyInsideEntry.requestId}). Please mark exit first.`,
+          409
+        )
+      );
+    }
+
     const existingPhoto = await resolveExistingVisitorPhoto({ phoneDigits, visitorType });
     const finalImageUrl = existingPhoto || imageUrl || null;
     const photoRequired = !finalImageUrl;

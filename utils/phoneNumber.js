@@ -11,8 +11,24 @@ const normalizeCountryCode = (value) => {
 
 const normalizeDigits = (value = '') => value.replace(/\D/g, '');
 
-const isTenDigitPhone = (value = '') => {
+const normalizePhoneDigits = (value = '') => {
   const digits = normalizeDigits(value);
+  
+
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits.slice(2);
+  }
+  
+ 
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return digits.slice(1);
+  }
+  
+  return digits;
+};
+
+const isTenDigitPhone = (value = '') => {
+  const digits = normalizePhoneDigits(value);
   return digits.length === 10;
 };
 
@@ -26,6 +42,7 @@ module.exports = {
   normalizePhoneNumber,
   normalizeCountryCode,
   normalizeDigits,
+  normalizePhoneDigits,
   getComparablePhoneNumber,
   isTenDigitPhone,
 };
