@@ -21,14 +21,29 @@ const {
   createGroupInvite,
   createFrequentInvite,
   getRecentGuests,
+  updateGuestInviteForMember,
+  cancelGuestInviteForMember,
 } = require('../controller/guestInviteController');
 const {
   listGuestEntryRequestsForMember,
+  getGuestEntryRequestDetailForMember,
   decideGuestEntryRequest,
 } = require('../controller/guestEntryRequestController');
-const { createDeliveryPreApproval } = require('../controller/deliveryPreApprovalController');
-const { createTaxiDriverPreApproval } = require('../controller/taxiDriverPreApprovalController');
-const { createOtherVisitorPreApproval } = require('../controller/otherVisitorPreApprovalController');
+const {
+  createDeliveryPreApproval,
+  updateDeliveryPreApproval,
+  cancelDeliveryPreApproval,
+} = require('../controller/deliveryPreApprovalController');
+const {
+  createTaxiDriverPreApproval,
+  updateTaxiDriverPreApproval,
+  cancelTaxiDriverPreApproval,
+} = require('../controller/taxiDriverPreApprovalController');
+const {
+  createOtherVisitorPreApproval,
+  updateOtherVisitorPreApproval,
+  cancelOtherVisitorPreApproval,
+} = require('../controller/otherVisitorPreApprovalController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const router = express.Router();
 
@@ -47,11 +62,20 @@ router.post('/guestInvites/quick', userAuthMiddleware, createQuickInvite);
 router.post('/guestInvites/group', userAuthMiddleware, createGroupInvite);
 router.post('/guestInvites/frequent', userAuthMiddleware, createFrequentInvite);
 router.post('/guestInvites/recentGuests', userAuthMiddleware, getRecentGuests);
+router.patch('/guestInvites', userAuthMiddleware, updateGuestInviteForMember);
+router.delete('/guestInvites', userAuthMiddleware, cancelGuestInviteForMember);
 router.post('/guestEntryRequests/list', userAuthMiddleware, listGuestEntryRequestsForMember);
+router.post('/guestEntryRequests/detail', userAuthMiddleware, getGuestEntryRequestDetailForMember);
 router.patch('/guestEntryRequests/decision', userAuthMiddleware, decideGuestEntryRequest);
 router.post('/deliveryPreApprovals/quick', userAuthMiddleware, createDeliveryPreApproval);
+router.patch('/deliveryPreApprovals', userAuthMiddleware, updateDeliveryPreApproval);
+router.delete('/deliveryPreApprovals', userAuthMiddleware, cancelDeliveryPreApproval);
 router.post('/taxiDriverPreApprovals/quick', userAuthMiddleware, createTaxiDriverPreApproval);
+router.patch('/taxiDriverPreApprovals', userAuthMiddleware, updateTaxiDriverPreApproval);
+router.delete('/taxiDriverPreApprovals', userAuthMiddleware, cancelTaxiDriverPreApproval);
 router.post('/otherVisitorPreApprovals/quick', userAuthMiddleware, createOtherVisitorPreApproval);
+router.patch('/otherVisitorPreApprovals', userAuthMiddleware, updateOtherVisitorPreApproval);
+router.delete('/otherVisitorPreApprovals', userAuthMiddleware, cancelOtherVisitorPreApproval);
 
 
 module.exports = router;

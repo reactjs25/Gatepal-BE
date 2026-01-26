@@ -717,6 +717,234 @@ const createQuickInvite = async (req, res, next) => {
   }
 };
 
+const updateGuestInviteForMember = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can update guest invites', 403));
+    }
+
+    const inviteId = normalizeString(req.body?.inviteId);
+    const {
+      unitId,
+      validFrom,
+      validTill,
+      validityHours,
+      dateOption,
+      selectedDate,
+      validityType,
+      untilTimeOption,
+      startingFrom,
+      guestCount,
+      allowEntryFor,
+      startDate,
+      endDate,
+      guests,
+      isPrivateInvite,
+    } = req.body || {};
+
+    if (!inviteId) return next(createHttpError('inviteId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const invite = await GuestInvite.findOne({
+      inviteId,
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+    });
+    if (!invite) return next(createHttpError('Guest invite not found', 404));
+    if (invite.status !== 'active') {
+      return next(createHttpError('Only active guest invites can be updated', 409));
+    }
+
+    let window;
+    try {
+      if (invite.type === 'group') {
+        window = computeGroupInviteValidityWindow({
+          selectedDate,
+          startingFrom,
+          validityHours,
+        });
+      } else if (invite.type === 'frequent') {
+        window = computeFrequentInviteValidityWindow({
+          allowEntryFor,
+          startDate,
+          endDate,
+        });
+      } else {
+        if (validFrom || validTill) {
+          window = computeValidityWindow({ validFrom, validTill, validityHours });
+        } else {
+          window = computeUiBasedValidityWindow({
+            dateOption,
+            selectedDate,
+            validityType,
+            validityHours,
+            untilTimeOption,
+          });
+        }
+      }
+    } catch (e) {
+      return next(e);
+    }
+
+    let updatedGuests = null;
+    if (Array.isArray(guests) && guests.length > 0 && invite.type !== 'group') {
+      try {
+        updatedGuests = sanitizeGuests(guests);
+      } catch (e) {
+        return next(e);
+      }
+    }
+
+    if (invite.type === 'group' && guestCount !== undefined) {
+      const countNumber = Number(guestCount);
+      if (!Number.isFinite(countNumber) || countNumber <= 0) {
+        return next(createHttpError('guestCount must be a positive number', 400));
+      }
+      invite.maxEntries = countNumber;
+    }
+
+    if (updatedGuests) {
+      invite.guests = updatedGuests;
+      invite.maxEntries = invite.type === 'quick' ? updatedGuests.length : invite.maxEntries;
+    }
+
+    if (isPrivateInvite !== undefined && invite.type !== 'group') {
+      invite.isPrivateInvite = Boolean(isPrivateInvite);
+    }
+
+    invite.validFrom = window.validFrom;
+    invite.validTill = window.validTill;
+
+    const member = await User.findById(authUser._id).lean();
+
+    if (invite.type === 'group') {
+      let qrCodeImage = null;
+      try {
+        const payload = buildGuestInviteQrPayload({ invite, unit: unitDoc, member, guest: invite.guests[0] });
+        qrCodeImage = await QRCode.toDataURL(payload, {
+          errorCorrectionLevel: 'M',
+          margin: 1,
+          width: 256,
+        });
+      } catch (e) {
+        qrCodeImage = null;
+      }
+      invite.qrCodeImage = qrCodeImage;
+      invite.qrCodeGeneratedAt = qrCodeImage ? new Date() : null;
+    } else {
+      const regeneratedGuests = await generateGuestQrCodes({ invite, unit: unitDoc, member });
+      invite.guests = regeneratedGuests;
+    }
+
+    await invite.save();
+
+    const dateLabel = toISTDateLabel(invite.validFrom);
+    const fromTimeLabel = toISTTimeLabel(invite.validFrom);
+    const tillTimeLabel = toISTTimeLabel(invite.validTill);
+    const validityLabel = `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`;
+
+    return sendSuccessResponse(res, 200, 'Guest invite updated successfully', {
+      data: {
+        inviteId: invite.inviteId,
+        type: invite.type,
+        societyId: String(invite.societyId),
+        unitId: String(invite.unitId),
+        unit: {
+          id: String(unitDoc._id),
+          wingName: unitDoc.wingName,
+          unitNumber: unitDoc.unitNumber,
+        },
+        invitedBy: {
+          id: String(authUser._id),
+          name: authUser.fullName || null,
+        },
+        isPrivateInvite: invite.isPrivateInvite,
+        guests: invite.guests.map((g) => ({
+          guestId: g.guestId,
+          name: g.name,
+          countryCode: g.countryCode,
+          phoneNumber: g.phoneNumber,
+          qrCodeImage: g.qrCodeImage || null,
+          hasArrived: g.hasArrived || false,
+          arrivedAt: g.arrivedAt || null,
+        })),
+        validFrom: invite.validFrom,
+        validTill: invite.validTill,
+        validityLabel,
+        qrCodeImage: invite.qrCodeImage || null,
+        maxEntries: invite.maxEntries,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update guest invite'));
+  }
+};
+
+const cancelGuestInviteForMember = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can cancel guest invites', 403));
+    }
+
+    const inviteId = normalizeString(req.body?.inviteId);
+    const unitId = normalizeString(req.body?.unitId);
+    const reason = normalizeString(req.body?.reason);
+    const description = normalizeString(req.body?.description);
+
+    if (!inviteId) return next(createHttpError('inviteId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!reason) return next(createHttpError('reason is required', 400));
+    if (reason.toLowerCase() === 'other' && !description) {
+      return next(createHttpError('description is required when reason is other', 400));
+    }
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const invite = await GuestInvite.findOne({
+      inviteId,
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+    });
+    if (!invite) return next(createHttpError('Guest invite not found', 404));
+    if (invite.status === 'cancelled') {
+      return next(createHttpError('Guest invite is already cancelled', 409));
+    }
+
+    const hasArrived = (invite.guests || []).some((g) => g?.hasArrived);
+    const hasEntryLogs = Array.isArray(invite.entryLogs) && invite.entryLogs.length > 0;
+    if (hasArrived || hasEntryLogs) {
+      return next(createHttpError('Cannot delete guest invite while visitor is inside society', 409));
+    }
+
+    await GuestInvite.deleteOne({ _id: invite._id });
+
+    return sendSuccessResponse(res, 200, 'Guest invite deleted successfully', {
+      data: {
+        inviteId: invite.inviteId,
+        status: 'Deleted',
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to delete guest invite'));
+  }
+};
+
 const scanGuestInvite = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -1061,6 +1289,8 @@ module.exports = {
   createGroupInvite,
   createFrequentInvite,
   createQuickInvite,
+  updateGuestInviteForMember,
+  cancelGuestInviteForMember,
   scanGuestInvite,
   updateGuestInviteEntryDetails,
   getRecentGuests,

@@ -1,11 +1,12 @@
 const TaxiDriverPreApproval = require('../model/taxiDriverPreApprovalSchema');
+const GuestEntryRequest = require('../model/guestEntryRequestSchema');
 const TaxiDriverCompany = require('../model/taxiDriverCompanySchema');
 const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
-const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
+const { toISTDateTimeLabelNoComma } = require('../utils/dateTime');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 
 const normalizeOption = (value) =>
@@ -200,6 +201,9 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       untilTimeOption,
       companyName,
       vehicleNumber,
+      visitorName,
+      guestName,
+      personName,
       isPrivateInvite,
     } = req.body || {};
 
@@ -236,6 +240,8 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
 
     const privateFlag = Boolean(isPrivateInvite);
 
+    const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+
     const approval = await TaxiDriverPreApproval.create({
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
@@ -243,6 +249,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       companyId: resolvedCompany.id || null,
       companyName: resolvedCompany.name,
       companyImageUrl: resolvedCompany.imageUrl || null,
+      visitorName: resolvedVisitorName || null,
       vehicleNumber: normalizeString(vehicleNumber).toUpperCase() || null,
       isPrivateInvite: privateFlag,
       validFrom: window.validFrom,
@@ -251,10 +258,9 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    const dateLabel = toISTDateLabel(window.validFrom);
-    const fromTimeLabel = toISTTimeLabel(window.validFrom);
-    const tillTimeLabel = toISTTimeLabel(window.validTill);
-    const validityLabel = `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`;
+    const fromLabel = toISTDateTimeLabelNoComma(window.validFrom);
+    const tillLabel = toISTDateTimeLabelNoComma(window.validTill);
+    const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 201, 'Taxi/Cab pre-approval created successfully', {
       data: {
@@ -266,6 +272,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
           name: resolvedCompany.name,
           imageUrl: resolvedCompany.imageUrl || null,
         },
+        visitorName: approval.visitorName || null,
         unit: {
           id: String(unitDoc._id),
           wingName: unitDoc.wingName,
@@ -287,6 +294,186 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
   }
 };
 
+const updateTaxiDriverPreApproval = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can update taxi pre-approvals', 403));
+    }
+
+    const preApprovalId = normalizeString(req.body?.preApprovalId);
+    const {
+      unitId,
+      validFrom,
+      validTill,
+      validityHours,
+      dateOption,
+      selectedDate,
+      validityType,
+      untilTimeOption,
+      companyName,
+      vehicleNumber,
+      visitorName,
+      guestName,
+      personName,
+      isPrivateInvite,
+    } = req.body || {};
+
+    if (!preApprovalId) return next(createHttpError('preApprovalId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const approval = await TaxiDriverPreApproval.findOne({
+      preApprovalId,
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+    });
+    if (!approval) return next(createHttpError('Pre-approval not found', 404));
+    if (approval.status !== 'active') {
+      return next(createHttpError('Only active pre-approvals can be updated', 409));
+    }
+
+    const resolvedCompany = await resolveCompanyData({ companyName });
+    if (!resolvedCompany) {
+      return next(createHttpError('companyName must match a registered taxi company', 400));
+    }
+
+    let window;
+    try {
+      if (validFrom || validTill) {
+        window = computeValidityWindow({ validFrom, validTill, validityHours });
+      } else {
+        window = computeUiBasedValidityWindow({
+          dateOption,
+          selectedDate,
+          validityType,
+          validityHours,
+          untilTimeOption,
+        });
+      }
+    } catch (e) {
+      return next(e);
+    }
+
+    const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+
+    approval.companyId = resolvedCompany.id || null;
+    approval.companyName = resolvedCompany.name;
+    approval.companyImageUrl = resolvedCompany.imageUrl || null;
+    approval.visitorName = resolvedVisitorName || null;
+    approval.vehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
+    approval.isPrivateInvite = Boolean(isPrivateInvite);
+    approval.validFrom = window.validFrom;
+    approval.validTill = window.validTill;
+
+    await approval.save();
+
+    const member = await User.findById(authUser._id).lean();
+    const fromLabel = toISTDateTimeLabelNoComma(approval.validFrom);
+    const tillLabel = toISTDateTimeLabelNoComma(approval.validTill);
+    const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
+
+    return sendSuccessResponse(res, 200, 'Taxi/Cab pre-approval updated successfully', {
+      data: {
+        preApprovalId: approval.preApprovalId,
+        category: 'Taxi',
+        visitorType: 'Taxi',
+        company: {
+          id: approval.companyId || null,
+          name: approval.companyName,
+          imageUrl: approval.companyImageUrl || null,
+        },
+        visitorName: approval.visitorName || null,
+        unit: {
+          id: String(unitDoc._id),
+          wingName: unitDoc.wingName,
+          unitNumber: unitDoc.unitNumber,
+        },
+        invitedBy: {
+          id: String(authUser._id),
+          name: member?.fullName || authUser.fullName || null,
+        },
+        vehicleNumber: approval.vehicleNumber || null,
+        validFrom: approval.validFrom,
+        validTill: approval.validTill,
+        validityLabel,
+        isPrivateInvite: approval.isPrivateInvite,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update taxi pre-approval'));
+  }
+};
+
+const cancelTaxiDriverPreApproval = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can cancel taxi pre-approvals', 403));
+    }
+
+    const preApprovalId = normalizeString(req.body?.preApprovalId);
+    const unitId = normalizeString(req.body?.unitId);
+    const reason = normalizeString(req.body?.reason);
+    const description = normalizeString(req.body?.description);
+
+    if (!preApprovalId) return next(createHttpError('preApprovalId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!reason) return next(createHttpError('reason is required', 400));
+    if (reason.toLowerCase() === 'other' && !description) {
+      return next(createHttpError('description is required when reason is other', 400));
+    }
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const approval = await TaxiDriverPreApproval.findOne({
+      preApprovalId,
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+    });
+    if (!approval) return next(createHttpError('Pre-approval not found', 404));
+
+    const activeEntry = await GuestEntryRequest.findOne({
+      societyId: unitDoc.societyId,
+      wingNameLower: unitDoc.wingNameLower,
+      unitNumberLower: unitDoc.unitNumberLower,
+      visitorType: 'taxi_vehicle_driver',
+      status: 'entered',
+      ...(approval.companyName ? { visitorCompanyName: approval.companyName } : {}),
+      ...(approval.vehicleNumber ? { vehicleNumber: approval.vehicleNumber } : {}),
+    }).lean();
+    if (activeEntry) {
+      return next(createHttpError('Cannot delete pre-approval while visitor is inside society', 409));
+    }
+
+    await TaxiDriverPreApproval.deleteOne({ _id: approval._id });
+
+    return sendSuccessResponse(res, 200, 'Taxi/Cab pre-approval deleted successfully', {
+      data: {
+        preApprovalId: approval.preApprovalId,
+        status: 'Deleted',
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to delete taxi pre-approval'));
+  }
+};
+
 module.exports = {
   createTaxiDriverPreApproval,
+  updateTaxiDriverPreApproval,
+  cancelTaxiDriverPreApproval,
 };

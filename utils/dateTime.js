@@ -36,6 +36,11 @@ const toISTDateTimeLabel = (value) => {
   return `${dateFmt}, ${formattedTime}`;
 };
 
+const toISTDateTimeLabelNoComma = (value) => {
+  const label = toISTDateTimeLabel(value);
+  return label ? label.replace(', ', ' ') : null;
+};
+
 const toISTDateLabel = (value) => {
   if (!value) return null;
   const d = value instanceof Date ? value : new Date(value);
@@ -51,5 +56,6 @@ module.exports = {
   toDateOnly,
   toISTTimeLabel,
   toISTDateTimeLabel,
+  toISTDateTimeLabelNoComma,
   toISTDateLabel,
 };

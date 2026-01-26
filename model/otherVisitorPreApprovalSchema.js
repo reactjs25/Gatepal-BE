@@ -33,6 +33,7 @@ const otherVisitorPreApprovalSchema = new mongoose.Schema(
       default: 'other_visitor',
       index: true,
     },
+    visitorName: { type: String, trim: true, default: null },
     workCategory: { type: String, trim: true, required: true },
     companyName: { type: String, trim: true, default: null },
     isPrivateInvite: { type: Boolean, default: false },
@@ -52,6 +53,10 @@ const otherVisitorPreApprovalSchema = new mongoose.Schema(
       default: 'active',
       index: true,
     },
+    cancelledReason: { type: String, trim: true, default: null },
+    cancelledDescription: { type: String, trim: true, default: null },
+    cancelledAt: { type: Date, default: null },
+    cancelledByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 );

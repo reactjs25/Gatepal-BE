@@ -1,10 +1,11 @@
 const OtherVisitorPreApproval = require('../model/otherVisitorPreApprovalSchema');
+const GuestEntryRequest = require('../model/guestEntryRequestSchema');
 const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
-const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
+const { toISTDateTimeLabelNoComma } = require('../utils/dateTime');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const OtherVisitorCompany = require('../model/otherVisitorCompanySchema');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
@@ -192,6 +193,9 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
       untilTimeOption,
       workCategory,
       companyName,
+      visitorName,
+      guestName,
+      personName,
       isPrivateInvite,
     } = req.body || {};
 
@@ -239,10 +243,13 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
       resolvedCompanyName = matchedCompany.name;
     }
 
+    const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+
     const approval = await OtherVisitorPreApproval.create({
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
       invitedByUserId: authUser._id,
+      visitorName: resolvedVisitorName || null,
       workCategory: resolvedWorkCategory,
       companyName: resolvedCompanyName,
       isPrivateInvite: Boolean(isPrivateInvite),
@@ -252,10 +259,9 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    const dateLabel = toISTDateLabel(window.validFrom);
-    const fromTimeLabel = toISTTimeLabel(window.validFrom);
-    const tillTimeLabel = toISTTimeLabel(window.validTill);
-    const validityLabel = `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`;
+    const fromLabel = toISTDateTimeLabelNoComma(window.validFrom);
+    const tillLabel = toISTDateTimeLabelNoComma(window.validTill);
+    const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 201, 'Visitor pre-approval created successfully', {
       data: {
@@ -264,6 +270,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
         visitorType: 'Other Visitor',
         workCategory: approval.workCategory,
         companyName: approval.companyName || null,
+        visitorName: approval.visitorName || null,
         unit: {
           id: String(unitDoc._id),
           wingName: unitDoc.wingName,
@@ -284,6 +291,190 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
   }
 };
 
+const updateOtherVisitorPreApproval = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can update visitor pre-approvals', 403));
+    }
+
+    const preApprovalId = normalizeString(req.body?.preApprovalId);
+    const {
+      unitId,
+      validFrom,
+      validTill,
+      validityHours,
+      dateOption,
+      selectedDate,
+      validityType,
+      untilTimeOption,
+      workCategory,
+      companyName,
+      visitorName,
+      guestName,
+      personName,
+      isPrivateInvite,
+    } = req.body || {};
+
+    if (!preApprovalId) return next(createHttpError('preApprovalId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const approval = await OtherVisitorPreApproval.findOne({
+      preApprovalId,
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+    });
+    if (!approval) return next(createHttpError('Pre-approval not found', 404));
+    if (approval.status !== 'active') {
+      return next(createHttpError('Only active pre-approvals can be updated', 409));
+    }
+
+    const resolvedWorkCategory = getWorkCategoryDisplayName(workCategory);
+    if (!resolvedWorkCategory) {
+      return next(createHttpError('workCategory must be one of the common work categories', 400));
+    }
+
+    let window;
+    try {
+      if (validFrom || validTill) {
+        window = computeValidityWindow({ validFrom, validTill, validityHours });
+      } else {
+        window = computeUiBasedValidityWindow({
+          dateOption,
+          selectedDate,
+          validityType,
+          validityHours,
+          untilTimeOption,
+        });
+      }
+    } catch (e) {
+      return next(e);
+    }
+
+    let resolvedCompanyName = null;
+    const trimmedCompany = normalizeString(companyName);
+    if (trimmedCompany) {
+      const matchedCompany = await resolveOtherVisitorCompany(trimmedCompany);
+      if (!matchedCompany) {
+        return next(createHttpError('companyName must match a registered other visitor company', 400));
+      }
+      resolvedCompanyName = matchedCompany.name;
+    }
+
+    const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+
+    approval.visitorName = resolvedVisitorName || null;
+    approval.workCategory = resolvedWorkCategory;
+    approval.companyName = resolvedCompanyName;
+    approval.isPrivateInvite = Boolean(isPrivateInvite);
+    approval.validFrom = window.validFrom;
+    approval.validTill = window.validTill;
+
+    await approval.save();
+
+    const member = await User.findById(authUser._id).lean();
+    const fromLabel = toISTDateTimeLabelNoComma(approval.validFrom);
+    const tillLabel = toISTDateTimeLabelNoComma(approval.validTill);
+    const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
+
+    return sendSuccessResponse(res, 200, 'Visitor pre-approval updated successfully', {
+      data: {
+        preApprovalId: approval.preApprovalId,
+        category: 'Visitor',
+        visitorType: 'Other Visitor',
+        workCategory: approval.workCategory,
+        companyName: approval.companyName || null,
+        visitorName: approval.visitorName || null,
+        unit: {
+          id: String(unitDoc._id),
+          wingName: unitDoc.wingName,
+          unitNumber: unitDoc.unitNumber,
+        },
+        invitedBy: {
+          id: String(authUser._id),
+          name: member?.fullName || authUser.fullName || null,
+        },
+        validFrom: approval.validFrom,
+        validTill: approval.validTill,
+        validityLabel,
+        isPrivateInvite: approval.isPrivateInvite,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update visitor pre-approval'));
+  }
+};
+
+const cancelOtherVisitorPreApproval = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can cancel visitor pre-approvals', 403));
+    }
+
+    const preApprovalId = normalizeString(req.body?.preApprovalId);
+    const unitId = normalizeString(req.body?.unitId);
+    const reason = normalizeString(req.body?.reason);
+    const description = normalizeString(req.body?.description);
+
+    if (!preApprovalId) return next(createHttpError('preApprovalId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!reason) return next(createHttpError('reason is required', 400));
+    if (reason.toLowerCase() === 'other' && !description) {
+      return next(createHttpError('description is required when reason is other', 400));
+    }
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const approval = await OtherVisitorPreApproval.findOne({
+      preApprovalId,
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+    });
+    if (!approval) return next(createHttpError('Pre-approval not found', 404));
+
+    const activeEntry = await GuestEntryRequest.findOne({
+      societyId: unitDoc.societyId,
+      wingNameLower: unitDoc.wingNameLower,
+      unitNumberLower: unitDoc.unitNumberLower,
+      visitorType: 'other_visitor',
+      status: 'entered',
+      ...(approval.companyName ? { visitorCompanyName: approval.companyName } : {}),
+      ...(approval.workCategory ? { visitorWorkCategory: approval.workCategory } : {}),
+    }).lean();
+    if (activeEntry) {
+      return next(createHttpError('Cannot delete pre-approval while visitor is inside society', 409));
+    }
+
+    await OtherVisitorPreApproval.deleteOne({ _id: approval._id });
+
+    return sendSuccessResponse(res, 200, 'Visitor pre-approval deleted successfully', {
+      data: {
+        preApprovalId: approval.preApprovalId,
+        status: 'Deleted',
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to delete visitor pre-approval'));
+  }
+};
+
 module.exports = {
   createOtherVisitorPreApproval,
+  updateOtherVisitorPreApproval,
+  cancelOtherVisitorPreApproval,
 };

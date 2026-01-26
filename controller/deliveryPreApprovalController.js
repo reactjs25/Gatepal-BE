@@ -1,11 +1,12 @@
 const DeliveryPreApproval = require('../model/deliveryPreApprovalSchema');
+const GuestEntryRequest = require('../model/guestEntryRequestSchema');
 const DeliveryCompany = require('../model/deliveryCompanySchema');
 const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
-const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
+const { toISTDateTimeLabelNoComma } = require('../utils/dateTime');
 
 const normalizeOption = (value) =>
   (value || '')
@@ -202,8 +203,9 @@ const createDeliveryPreApproval = async (req, res, next) => {
       companyName,
       deliveryCompanyId,
       deliveryCompanyName,
-      isSilentDelivery,
-      silentDelivery,
+      visitorName,
+      guestName,
+      personName,
       isPrivateInvite,
     } = req.body || {};
 
@@ -248,12 +250,9 @@ const createDeliveryPreApproval = async (req, res, next) => {
       return next(e);
     }
 
-    const silentFlag =
-      isSilentDelivery !== undefined
-        ? Boolean(isSilentDelivery)
-        : silentDelivery !== undefined
-          ? Boolean(silentDelivery)
-          : Boolean(isPrivateInvite);
+    const silentFlag = Boolean(isPrivateInvite);
+
+    const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
 
     const approval = await DeliveryPreApproval.create({
       societyId: unitDoc.societyId,
@@ -262,6 +261,7 @@ const createDeliveryPreApproval = async (req, res, next) => {
       companyId: companyPayload.id,
       companyName: companyPayload.name,
       companyImageUrl: companyPayload.imageUrl,
+      visitorName: resolvedVisitorName || null,
       isSilentDelivery: silentFlag,
       validFrom: window.validFrom,
       validTill: window.validTill,
@@ -269,10 +269,9 @@ const createDeliveryPreApproval = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    const dateLabel = toISTDateLabel(window.validFrom);
-    const fromTimeLabel = toISTTimeLabel(window.validFrom);
-    const tillTimeLabel = toISTTimeLabel(window.validTill);
-    const validityLabel = `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`;
+    const fromLabel = toISTDateTimeLabelNoComma(window.validFrom);
+    const tillLabel = toISTDateTimeLabelNoComma(window.validTill);
+    const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 201, 'Delivery pre-approval created successfully', {
       data: {
@@ -284,6 +283,7 @@ const createDeliveryPreApproval = async (req, res, next) => {
           name: companyPayload.name,
           imageUrl: companyPayload.imageUrl,
         },
+        visitorName: approval.visitorName || null,
         unit: {
           id: String(unitDoc._id),
           wingName: unitDoc.wingName,
@@ -296,7 +296,7 @@ const createDeliveryPreApproval = async (req, res, next) => {
         validFrom: approval.validFrom,
         validTill: approval.validTill,
         validityLabel,
-        isSilentDelivery: approval.isSilentDelivery,
+        isPrivateInvite: approval.isSilentDelivery,
       },
     });
   } catch (error) {
@@ -304,6 +304,186 @@ const createDeliveryPreApproval = async (req, res, next) => {
   }
 };
 
+const updateDeliveryPreApproval = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can update delivery pre-approvals', 403));
+    }
+
+    const preApprovalId = normalizeString(req.body?.preApprovalId);
+    const {
+      unitId,
+      validFrom,
+      validTill,
+      validityHours,
+      dateOption,
+      selectedDate,
+      validityType,
+      untilTimeOption,
+      companyId,
+      companyName,
+      deliveryCompanyId,
+      deliveryCompanyName,
+      visitorName,
+      guestName,
+      personName,
+      isPrivateInvite,
+    } = req.body || {};
+
+    if (!preApprovalId) return next(createHttpError('preApprovalId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const approval = await DeliveryPreApproval.findOne({
+      preApprovalId,
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+    });
+    if (!approval) return next(createHttpError('Pre-approval not found', 404));
+    if (approval.status !== 'active') {
+      return next(createHttpError('Only active pre-approvals can be updated', 409));
+    }
+
+    const resolvedCompany = await resolveCompanyData({
+      companyId: companyId || deliveryCompanyId,
+      companyName: companyName || deliveryCompanyName,
+    });
+
+    let window;
+    try {
+      if (validFrom || validTill) {
+        window = computeValidityWindow({ validFrom, validTill, validityHours });
+      } else {
+        window = computeUiBasedValidityWindow({
+          dateOption,
+          selectedDate,
+          validityType,
+          validityHours,
+          untilTimeOption,
+        });
+      }
+    } catch (e) {
+      return next(e);
+    }
+
+    const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+    const silentFlag = Boolean(isPrivateInvite);
+
+    approval.companyId = resolvedCompany?.id || null;
+    approval.companyName = resolvedCompany?.name || null;
+    approval.companyImageUrl = resolvedCompany?.imageUrl || null;
+    approval.visitorName = resolvedVisitorName || null;
+    approval.isSilentDelivery = silentFlag;
+    approval.validFrom = window.validFrom;
+    approval.validTill = window.validTill;
+
+    await approval.save();
+
+    const member = await User.findById(authUser._id).lean();
+    const fromLabel = toISTDateTimeLabelNoComma(approval.validFrom);
+    const tillLabel = toISTDateTimeLabelNoComma(approval.validTill);
+    const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
+
+    return sendSuccessResponse(res, 200, 'Delivery pre-approval updated successfully', {
+      data: {
+        preApprovalId: approval.preApprovalId,
+        category: 'Delivery',
+        visitorType: 'Delivery Executive',
+        company: {
+          id: approval.companyId || null,
+          name: approval.companyName || null,
+          imageUrl: approval.companyImageUrl || null,
+        },
+        visitorName: approval.visitorName || null,
+        unit: {
+          id: String(unitDoc._id),
+          wingName: unitDoc.wingName,
+          unitNumber: unitDoc.unitNumber,
+        },
+        invitedBy: {
+          id: String(authUser._id),
+          name: member?.fullName || authUser.fullName || null,
+        },
+        validFrom: approval.validFrom,
+        validTill: approval.validTill,
+        validityLabel,
+        isPrivateInvite: approval.isSilentDelivery,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update delivery pre-approval'));
+  }
+};
+
+const cancelDeliveryPreApproval = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can cancel delivery pre-approvals', 403));
+    }
+
+    const preApprovalId = normalizeString(req.body?.preApprovalId);
+    const unitId = normalizeString(req.body?.unitId);
+    const reason = normalizeString(req.body?.reason);
+    const description = normalizeString(req.body?.description);
+
+    if (!preApprovalId) return next(createHttpError('preApprovalId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!reason) return next(createHttpError('reason is required', 400));
+    if (reason.toLowerCase() === 'other' && !description) {
+      return next(createHttpError('description is required when reason is other', 400));
+    }
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const approval = await DeliveryPreApproval.findOne({
+      preApprovalId,
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+    });
+    if (!approval) return next(createHttpError('Pre-approval not found', 404));
+
+    const activeEntry = await GuestEntryRequest.findOne({
+      societyId: unitDoc.societyId,
+      wingNameLower: unitDoc.wingNameLower,
+      unitNumberLower: unitDoc.unitNumberLower,
+      visitorType: 'delivery_executive',
+      status: 'entered',
+      ...(approval.companyName ? { visitorCompanyName: approval.companyName } : {}),
+    }).lean();
+    if (activeEntry) {
+      return next(createHttpError('Cannot delete pre-approval while visitor is inside society', 409));
+    }
+
+    await DeliveryPreApproval.deleteOne({ _id: approval._id });
+
+    return sendSuccessResponse(res, 200, 'Delivery pre-approval deleted successfully', {
+      data: {
+        preApprovalId: approval.preApprovalId,
+        status: 'Deleted',
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to delete delivery pre-approval'));
+  }
+};
+
 module.exports = {
   createDeliveryPreApproval,
+  updateDeliveryPreApproval,
+  cancelDeliveryPreApproval,
 };

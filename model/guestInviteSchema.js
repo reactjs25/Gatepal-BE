@@ -117,6 +117,10 @@ const guestInviteSchema = new mongoose.Schema(
       default: 'active',
       index: true,
     },
+    cancelledReason: { type: String, trim: true, default: null },
+    cancelledDescription: { type: String, trim: true, default: null },
+    cancelledAt: { type: Date, default: null },
+    cancelledByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     entryLogs: {
       type: [entryLogSchema],
       default: [],

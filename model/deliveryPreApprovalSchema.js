@@ -33,6 +33,7 @@ const deliveryPreApprovalSchema = new mongoose.Schema(
       default: 'delivery_executive',
       index: true,
     },
+    visitorName: { type: String, trim: true, default: null },
     companyId: { type: String, trim: true, default: null },
     companyName: { type: String, trim: true, default: null },
     companyImageUrl: { type: String, trim: true, default: null },
@@ -53,6 +54,10 @@ const deliveryPreApprovalSchema = new mongoose.Schema(
       default: 'active',
       index: true,
     },
+    cancelledReason: { type: String, trim: true, default: null },
+    cancelledDescription: { type: String, trim: true, default: null },
+    cancelledAt: { type: Date, default: null },
+    cancelledByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 );

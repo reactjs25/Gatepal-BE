@@ -14,7 +14,7 @@ const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const { normalizeCountryCode, normalizeDigits, isTenDigitPhone } = require('../utils/phoneNumber');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
-const { toISTDateTimeLabel } = require('../utils/dateTime');
+const { toISTDateLabel, toISTDateTimeLabel, toISTDateTimeLabelNoComma, toISTTimeLabel } = require('../utils/dateTime');
 
 const VISITOR_TYPE_LABELS = {
   guest: { category: 'Guest', visitorType: 'Guest' },
@@ -939,20 +939,26 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
     }
 
     const statusRaw = normalizeString(req.body?.status || 'pending').toLowerCase();
-    const status = ['pending', 'approved', 'rejected', 'expired', 'cancelled', 'entered'].includes(statusRaw)
+    const status = ['pending', 'approved', 'rejected', 'expired', 'cancelled', 'entered', 'left', 'all'].includes(
+      statusRaw
+    )
       ? statusRaw
       : 'pending';
 
+    const listQuery = {
+      societyId: unitDoc.societyId,
+      wingNameLower: unitDoc.wingNameLower,
+      unitNumberLower: unitDoc.unitNumberLower,
+      ...(status === 'all' ? {} : { status }),
+    };
+
     const items = await GuestEntryRequest.find(
-      {
-        societyId: unitDoc.societyId,
-        wingNameLower: unitDoc.wingNameLower,
-        unitNumberLower: unitDoc.unitNumberLower,
-        status,
-      },
+      listQuery,
       {
         requestId: 1,
         visitorType: 1,
+        visitorCompanyName: 1,
+        visitorWorkCategory: 1,
         guestName: 1,
         guestCountryCode: 1,
         guestPhoneNumber: 1,
@@ -962,6 +968,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         status: 1,
         createdAt: 1,
         expiresAt: 1,
+        approvedByUserId: 1,
       }
     )
       .sort({ createdAt: -1 })
@@ -970,9 +977,9 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
     const toStatusLabel = (key) =>
       key === 'approved'
-        ? 'Approved'
+        ? 'Pre-Approved'
         : key === 'rejected'
-          ? 'Denied'
+          ? 'Entry Denied'
           : key === 'entered'
             ? 'Inside Society'
             : key === 'left'
@@ -1008,9 +1015,365 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       };
     });
 
-    return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully', { data: mapped });
+    const preApprovalStatusFilter =
+      status === 'approved'
+        ? ['active']
+        : status === 'expired'
+          ? ['expired']
+          : status === 'cancelled'
+            ? ['cancelled']
+            : status === 'all'
+              ? ['active', 'expired', 'cancelled']
+              : [];
+
+    const normalizedText = (value) => normalizeString(value).toLowerCase();
+    const normalizedVehicle = (value) => normalizeString(value).toUpperCase();
+
+    const entryIndex = (items || []).map((d) => ({
+      visitorType: d.visitorType || 'guest',
+      status: d.status,
+      companyName: normalizedText(d.visitorCompanyName),
+      workCategory: normalizedText(d.visitorWorkCategory),
+      vehicleNumber: normalizedVehicle(d.vehicleNumber),
+      approvedByUserId: d.approvedByUserId ? String(d.approvedByUserId) : null,
+      createdAtMs: d.createdAt ? new Date(d.createdAt).getTime() : null,
+    }));
+
+    const hasMatchingEntry = (preDoc, visitorType) => {
+      const fromMs = preDoc.validFrom ? new Date(preDoc.validFrom).getTime() : null;
+      const tillMs = preDoc.validTill ? new Date(preDoc.validTill).getTime() : null;
+      const preCompany = normalizedText(preDoc.companyName);
+      const preWork = normalizedText(preDoc.workCategory);
+      const preVehicle = normalizedVehicle(preDoc.vehicleNumber);
+      const invitedBy = preDoc.invitedByUserId ? String(preDoc.invitedByUserId) : null;
+
+      return entryIndex.some((entry) => {
+        if (entry.visitorType !== visitorType) return false;
+        if (!['approved', 'entered', 'left'].includes(entry.status)) return false;
+        if (invitedBy && entry.approvedByUserId && invitedBy !== entry.approvedByUserId) return false;
+        if (fromMs && tillMs && entry.createdAtMs) {
+          if (entry.createdAtMs < fromMs || entry.createdAtMs > tillMs) return false;
+        }
+
+        if (visitorType === 'delivery_executive') {
+          if (preCompany && preCompany !== entry.companyName) return false;
+        } else if (visitorType === 'taxi_vehicle_driver') {
+          if (preCompany && preCompany !== entry.companyName) return false;
+          if (preVehicle && preVehicle !== entry.vehicleNumber) return false;
+        } else if (visitorType === 'other_visitor') {
+          if (preCompany && preCompany !== entry.companyName) return false;
+          if (preWork && preWork !== entry.workCategory) return false;
+        }
+
+        return true;
+      });
+    };
+
+    let preApprovalCards = [];
+    if (preApprovalStatusFilter.length > 0) {
+      const [deliveryApprovals, taxiApprovals, otherApprovals] = await Promise.all([
+        DeliveryPreApproval.find(
+          { societyId: unitDoc.societyId, unitId: unitDoc._id, status: { $in: preApprovalStatusFilter } },
+          {
+            preApprovalId: 1,
+            visitorType: 1,
+            visitorName: 1,
+            companyName: 1,
+            companyImageUrl: 1,
+            validFrom: 1,
+            validTill: 1,
+            status: 1,
+            createdAt: 1,
+            invitedByUserId: 1,
+          }
+        ).lean(),
+        TaxiDriverPreApproval.find(
+          { societyId: unitDoc.societyId, unitId: unitDoc._id, status: { $in: preApprovalStatusFilter } },
+          {
+            preApprovalId: 1,
+            visitorType: 1,
+            visitorName: 1,
+            companyName: 1,
+            companyImageUrl: 1,
+            vehicleNumber: 1,
+            validFrom: 1,
+            validTill: 1,
+            status: 1,
+            createdAt: 1,
+            invitedByUserId: 1,
+          }
+        ).lean(),
+        OtherVisitorPreApproval.find(
+          { societyId: unitDoc.societyId, unitId: unitDoc._id, status: { $in: preApprovalStatusFilter } },
+          {
+            preApprovalId: 1,
+            visitorType: 1,
+            visitorName: 1,
+            workCategory: 1,
+            companyName: 1,
+            validFrom: 1,
+            validTill: 1,
+            status: 1,
+            createdAt: 1,
+            invitedByUserId: 1,
+          }
+        ).lean(),
+      ]);
+
+      const mapPreApproval = (doc) => {
+        const labels = toVisitorLabels(doc.visitorType || 'guest');
+        const statusKey = doc.status === 'active' ? 'approved' : doc.status;
+        const statusLabel =
+          doc.status === 'active'
+            ? 'Pre-Approved'
+            : doc.status === 'expired'
+              ? 'Expired'
+              : 'Cancelled';
+        const fromLabel = toISTDateTimeLabelNoComma(doc.validFrom);
+        const tillLabel = toISTDateTimeLabelNoComma(doc.validTill);
+        const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
+        const displayName = doc.visitorName || null;
+
+        return {
+          requestId: doc.preApprovalId,
+          status: statusLabel,
+          statusKey,
+          category: labels.category,
+          visitorType: labels.visitorType,
+          requestedOn: doc.validFrom ? toISTDateTimeLabel(doc.validFrom) : null,
+          unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
+          guest: {
+            name: displayName,
+            countryCode: null,
+            phoneNumber: null,
+            imageUrl: normalizeString(doc.companyImageUrl) || null,
+            companyName: doc.companyName || null,
+            workCategory: doc.workCategory || null,
+          },
+          accompanyingCount: '0',
+          vehicleNumber: doc.vehicleNumber || null,
+          validityLabel,
+          isPreApproval: true,
+          _sortAt: doc.createdAt || doc.validFrom || doc.validTill || null,
+        };
+      };
+
+      preApprovalCards = [
+        ...deliveryApprovals.filter((doc) => !hasMatchingEntry(doc, 'delivery_executive')),
+        ...taxiApprovals.filter((doc) => !hasMatchingEntry(doc, 'taxi_vehicle_driver')),
+        ...otherApprovals.filter((doc) => !hasMatchingEntry(doc, 'other_visitor')),
+      ].map(mapPreApproval);
+    }
+
+    const combined = [...mapped, ...preApprovalCards].sort((a, b) => {
+      const aTime = a._sortAt ? new Date(a._sortAt).getTime() : 0;
+      const bTime = b._sortAt ? new Date(b._sortAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    const finalPayload = combined.map((item) => {
+      const { _sortAt, ...rest } = item;
+      return rest;
+    });
+    return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully', { data: finalPayload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch guest entry requests'));
+  }
+};
+
+const getGuestEntryRequestDetailForMember = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can perform this action', 403));
+    }
+
+    const unitId = normalizeString(req.body?.unitId);
+    const requestId = normalizeString(req.body?.requestId || req.params?.requestId);
+    const isPreApproval = Boolean(req.body?.isPreApproval);
+
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!requestId) return next(createHttpError('requestId is required', 400));
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const toMemberStatusLabel = (key) =>
+      key === 'approved'
+        ? 'Pre-Approved'
+        : key === 'rejected'
+          ? 'Entry Denied'
+          : key === 'entered'
+            ? 'Inside Society'
+            : key === 'left'
+              ? 'Left Society'
+              : key === 'expired'
+                ? 'Expired'
+                : key === 'cancelled'
+                  ? 'Cancelled'
+                  : 'Awaiting Approval';
+
+    const preApprovalLabel = (status) =>
+      status === 'active' ? 'Pre-Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
+
+    if (!isPreApproval) {
+      const doc = await GuestEntryRequest.findOne({ requestId }).lean();
+      if (doc) {
+        if (
+          String(doc.societyId) !== String(unitDoc.societyId) ||
+          doc.wingNameLower !== unitDoc.wingNameLower ||
+          doc.unitNumberLower !== unitDoc.unitNumberLower
+        ) {
+          return next(createHttpError('Forbidden: request does not belong to this unit', 403));
+        }
+
+        if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
+          await GuestEntryRequest.updateOne({ _id: doc._id }, { $set: { status: 'expired' } });
+          doc.status = 'expired';
+        }
+
+        const labels = toVisitorLabels(doc.visitorType || 'guest');
+        const approvedByUser = doc.approvedByUserId
+          ? await User.findById(doc.approvedByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
+          : null;
+        const isPreApproved = Boolean(doc.approvedByUserId && !doc.expiresAt);
+        return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
+          data: {
+            requestId: doc.requestId,
+            status: toMemberStatusLabel(doc.status),
+            statusKey: doc.status,
+            category: labels.category,
+            visitorType: labels.visitorType,
+            requestedOn: doc.createdAt ? toISTDateTimeLabel(doc.createdAt) : null,
+            approvedOn: doc.approvedAt ? toISTDateTimeLabel(doc.approvedAt) : null,
+            expiresAt: doc.expiresAt ? toISTDateTimeLabel(doc.expiresAt) : null,
+            entryAt: doc.entryAllowedAt ? toISTDateTimeLabel(doc.entryAllowedAt) : null,
+            leftAt: doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null,
+            unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
+            member: {
+              name: authUser.fullName || null,
+              countryCode: authUser.countryCode || '+91',
+              phoneNumber: authUser.phoneNumber || null,
+            },
+            approvedBy: approvedByUser
+              ? {
+                  name: approvedByUser.fullName
+                    ? isPreApproved
+                      ? `${approvedByUser.fullName} (Pre-Approved)`
+                      : approvedByUser.fullName
+                    : null,
+                  countryCode: approvedByUser.countryCode || '+91',
+                  phoneNumber: approvedByUser.phoneNumber || null,
+                  isPreApproved,
+                }
+              : null,
+            guest: {
+              name: doc.guestName,
+              countryCode: doc.guestCountryCode || '+91',
+              phoneNumber: doc.guestPhoneNumber,
+              imageUrl: doc.guestImageUrl || null,
+              companyName: doc.visitorCompanyName || null,
+              workCategory: doc.visitorWorkCategory || null,
+            },
+            accompanyingCount: String(doc.accompanyingCount || 0),
+            vehicleNumber: doc.vehicleNumber || null,
+          },
+        });
+      }
+    }
+
+    const [deliveryDoc, taxiDoc, otherDoc] = await Promise.all([
+      DeliveryPreApproval.findOne(
+        { preApprovalId: requestId, societyId: unitDoc.societyId, unitId: unitDoc._id },
+        {
+          preApprovalId: 1,
+          visitorType: 1,
+          visitorName: 1,
+          companyName: 1,
+          companyImageUrl: 1,
+          validFrom: 1,
+          validTill: 1,
+          status: 1,
+          createdAt: 1,
+          invitedByUserId: 1,
+        }
+      ).lean(),
+      TaxiDriverPreApproval.findOne(
+        { preApprovalId: requestId, societyId: unitDoc.societyId, unitId: unitDoc._id },
+        {
+          preApprovalId: 1,
+          visitorType: 1,
+          visitorName: 1,
+          companyName: 1,
+          companyImageUrl: 1,
+          vehicleNumber: 1,
+          validFrom: 1,
+          validTill: 1,
+          status: 1,
+          createdAt: 1,
+          invitedByUserId: 1,
+        }
+      ).lean(),
+      OtherVisitorPreApproval.findOne(
+        { preApprovalId: requestId, societyId: unitDoc.societyId, unitId: unitDoc._id },
+        {
+          preApprovalId: 1,
+          visitorType: 1,
+          visitorName: 1,
+          workCategory: 1,
+          companyName: 1,
+          validFrom: 1,
+          validTill: 1,
+          status: 1,
+          createdAt: 1,
+          invitedByUserId: 1,
+        }
+      ).lean(),
+    ]);
+
+    const preDoc = deliveryDoc || taxiDoc || otherDoc;
+    if (!preDoc) return next(createHttpError('Request not found', 404));
+
+    const labels = toVisitorLabels(preDoc.visitorType || 'guest');
+    const fromLabel = toISTDateTimeLabelNoComma(preDoc.validFrom);
+    const tillLabel = toISTDateTimeLabelNoComma(preDoc.validTill);
+    const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
+
+    return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
+      data: {
+        requestId: preDoc.preApprovalId,
+        status: preApprovalLabel(preDoc.status),
+        statusKey: preDoc.status === 'active' ? 'approved' : preDoc.status,
+        category: labels.category,
+        visitorType: labels.visitorType,
+        requestedOn: preDoc.validFrom ? toISTDateTimeLabel(preDoc.validFrom) : null,
+        unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
+        member: {
+          name: authUser.fullName || null,
+          countryCode: authUser.countryCode || '+91',
+          phoneNumber: authUser.phoneNumber || null,
+        },
+        guest: {
+          name: preDoc.visitorName || null,
+          countryCode: null,
+          phoneNumber: null,
+          imageUrl: normalizeString(preDoc.companyImageUrl) || null,
+          companyName: preDoc.companyName || null,
+          workCategory: preDoc.workCategory || null,
+        },
+        accompanyingCount: '0',
+        vehicleNumber: preDoc.vehicleNumber || null,
+        validityLabel,
+        isPreApproval: true,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch guest entry request'));
   }
 };
 
@@ -1355,6 +1718,7 @@ module.exports = {
   createGuestEntryRequest,
   getGuestEntryRequestForGuard,
   listGuestEntryRequestsForMember,
+  getGuestEntryRequestDetailForMember,
   decideGuestEntryRequest,
   allowGuestEntry,
   allowGuestExit,
