@@ -376,7 +376,7 @@ const createGroupInvite = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'member') {
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
       return next(createHttpError('Only members can create guest invites', 403));
     }
 
@@ -494,7 +494,7 @@ const createFrequentInvite = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'member') {
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
       return next(createHttpError('Only members can create guest invites', 403));
     }
 
@@ -604,7 +604,7 @@ const createQuickInvite = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'member') {
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
       return next(createHttpError('Only members can create guest invites', 403));
     }
 

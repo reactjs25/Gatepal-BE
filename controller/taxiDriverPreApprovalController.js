@@ -340,38 +340,61 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
       return next(createHttpError('Only active pre-approvals can be updated', 409));
     }
 
-    const resolvedCompany = await resolveCompanyData({ companyName });
-    if (!resolvedCompany) {
-      return next(createHttpError('companyName must match a registered taxi company', 400));
+    let resolvedCompany = null;
+    if (companyName) {
+      resolvedCompany = await resolveCompanyData({ companyName });
+      if (!resolvedCompany) {
+        return next(createHttpError('companyName must match a registered taxi company', 400));
+      }
     }
 
-    let window;
-    try {
-      if (validFrom || validTill) {
-        window = computeValidityWindow({ validFrom, validTill, validityHours });
-      } else {
-        window = computeUiBasedValidityWindow({
-          dateOption,
-          selectedDate,
-          validityType,
-          validityHours,
-          untilTimeOption,
-        });
+    let window = null;
+    const shouldUpdateWindow =
+      validFrom ||
+      validTill ||
+      validityHours !== undefined ||
+      dateOption !== undefined ||
+      selectedDate !== undefined ||
+      validityType !== undefined ||
+      untilTimeOption !== undefined;
+    if (shouldUpdateWindow) {
+      try {
+        if (validFrom || validTill) {
+          window = computeValidityWindow({ validFrom, validTill, validityHours });
+        } else {
+          window = computeUiBasedValidityWindow({
+            dateOption,
+            selectedDate,
+            validityType,
+            validityHours,
+            untilTimeOption,
+          });
+        }
+      } catch (e) {
+        return next(e);
       }
-    } catch (e) {
-      return next(e);
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
 
-    approval.companyId = resolvedCompany.id || null;
-    approval.companyName = resolvedCompany.name;
-    approval.companyImageUrl = resolvedCompany.imageUrl || null;
-    approval.visitorName = resolvedVisitorName || null;
-    approval.vehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
-    approval.isPrivateInvite = Boolean(isPrivateInvite);
-    approval.validFrom = window.validFrom;
-    approval.validTill = window.validTill;
+    if (resolvedCompany) {
+      approval.companyId = resolvedCompany.id || null;
+      approval.companyName = resolvedCompany.name;
+      approval.companyImageUrl = resolvedCompany.imageUrl || null;
+    }
+    if (resolvedVisitorName !== undefined) {
+      approval.visitorName = resolvedVisitorName || null;
+    }
+    if (vehicleNumber !== undefined) {
+      approval.vehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
+    }
+    if (isPrivateInvite !== undefined) {
+      approval.isPrivateInvite = Boolean(isPrivateInvite);
+    }
+    if (window) {
+      approval.validFrom = window.validFrom;
+      approval.validTill = window.validTill;
+    }
 
     await approval.save();
 

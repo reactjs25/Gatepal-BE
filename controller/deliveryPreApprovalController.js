@@ -352,38 +352,59 @@ const updateDeliveryPreApproval = async (req, res, next) => {
       return next(createHttpError('Only active pre-approvals can be updated', 409));
     }
 
-    const resolvedCompany = await resolveCompanyData({
-      companyId: companyId || deliveryCompanyId,
-      companyName: companyName || deliveryCompanyName,
-    });
+    let resolvedCompany = null;
+    if (companyId || companyName || deliveryCompanyId || deliveryCompanyName) {
+      resolvedCompany = await resolveCompanyData({
+        companyId: companyId || deliveryCompanyId,
+        companyName: companyName || deliveryCompanyName,
+      });
+    }
 
-    let window;
-    try {
-      if (validFrom || validTill) {
-        window = computeValidityWindow({ validFrom, validTill, validityHours });
-      } else {
-        window = computeUiBasedValidityWindow({
-          dateOption,
-          selectedDate,
-          validityType,
-          validityHours,
-          untilTimeOption,
-        });
+    let window = null;
+    const shouldUpdateWindow =
+      validFrom ||
+      validTill ||
+      validityHours !== undefined ||
+      dateOption !== undefined ||
+      selectedDate !== undefined ||
+      validityType !== undefined ||
+      untilTimeOption !== undefined;
+    if (shouldUpdateWindow) {
+      try {
+        if (validFrom || validTill) {
+          window = computeValidityWindow({ validFrom, validTill, validityHours });
+        } else {
+          window = computeUiBasedValidityWindow({
+            dateOption,
+            selectedDate,
+            validityType,
+            validityHours,
+            untilTimeOption,
+          });
+        }
+      } catch (e) {
+        return next(e);
       }
-    } catch (e) {
-      return next(e);
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
     const silentFlag = Boolean(isPrivateInvite);
 
-    approval.companyId = resolvedCompany?.id || null;
-    approval.companyName = resolvedCompany?.name || null;
-    approval.companyImageUrl = resolvedCompany?.imageUrl || null;
-    approval.visitorName = resolvedVisitorName || null;
-    approval.isSilentDelivery = silentFlag;
-    approval.validFrom = window.validFrom;
-    approval.validTill = window.validTill;
+    if (resolvedCompany) {
+      approval.companyId = resolvedCompany.id || null;
+      approval.companyName = resolvedCompany.name || null;
+      approval.companyImageUrl = resolvedCompany.imageUrl || null;
+    }
+    if (resolvedVisitorName !== undefined) {
+      approval.visitorName = resolvedVisitorName || null;
+    }
+    if (isPrivateInvite !== undefined) {
+      approval.isSilentDelivery = silentFlag;
+    }
+    if (window) {
+      approval.validFrom = window.validFrom;
+      approval.validTill = window.validTill;
+    }
 
     await approval.save();
 

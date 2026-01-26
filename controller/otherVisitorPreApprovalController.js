@@ -337,46 +337,73 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
       return next(createHttpError('Only active pre-approvals can be updated', 409));
     }
 
-    const resolvedWorkCategory = getWorkCategoryDisplayName(workCategory);
-    if (!resolvedWorkCategory) {
-      return next(createHttpError('workCategory must be one of the common work categories', 400));
+    let resolvedWorkCategory = null;
+    if (workCategory !== undefined) {
+      resolvedWorkCategory = getWorkCategoryDisplayName(workCategory);
+      if (!resolvedWorkCategory) {
+        return next(createHttpError('workCategory must be one of the common work categories', 400));
+      }
     }
 
-    let window;
-    try {
-      if (validFrom || validTill) {
-        window = computeValidityWindow({ validFrom, validTill, validityHours });
-      } else {
-        window = computeUiBasedValidityWindow({
-          dateOption,
-          selectedDate,
-          validityType,
-          validityHours,
-          untilTimeOption,
-        });
+    let window = null;
+    const shouldUpdateWindow =
+      validFrom ||
+      validTill ||
+      validityHours !== undefined ||
+      dateOption !== undefined ||
+      selectedDate !== undefined ||
+      validityType !== undefined ||
+      untilTimeOption !== undefined;
+    if (shouldUpdateWindow) {
+      try {
+        if (validFrom || validTill) {
+          window = computeValidityWindow({ validFrom, validTill, validityHours });
+        } else {
+          window = computeUiBasedValidityWindow({
+            dateOption,
+            selectedDate,
+            validityType,
+            validityHours,
+            untilTimeOption,
+          });
+        }
+      } catch (e) {
+        return next(e);
       }
-    } catch (e) {
-      return next(e);
     }
 
     let resolvedCompanyName = null;
-    const trimmedCompany = normalizeString(companyName);
-    if (trimmedCompany) {
-      const matchedCompany = await resolveOtherVisitorCompany(trimmedCompany);
-      if (!matchedCompany) {
-        return next(createHttpError('companyName must match a registered other visitor company', 400));
+    if (companyName !== undefined) {
+      const trimmedCompany = normalizeString(companyName);
+      if (trimmedCompany) {
+        const matchedCompany = await resolveOtherVisitorCompany(trimmedCompany);
+        if (!matchedCompany) {
+          return next(createHttpError('companyName must match a registered other visitor company', 400));
+        }
+        resolvedCompanyName = matchedCompany.name;
+      } else {
+        resolvedCompanyName = null;
       }
-      resolvedCompanyName = matchedCompany.name;
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
 
-    approval.visitorName = resolvedVisitorName || null;
-    approval.workCategory = resolvedWorkCategory;
-    approval.companyName = resolvedCompanyName;
-    approval.isPrivateInvite = Boolean(isPrivateInvite);
-    approval.validFrom = window.validFrom;
-    approval.validTill = window.validTill;
+    if (resolvedVisitorName !== undefined) {
+      approval.visitorName = resolvedVisitorName || null;
+    }
+    if (resolvedWorkCategory) {
+      approval.workCategory = resolvedWorkCategory;
+    }
+    if (companyName !== undefined) {
+      approval.companyName = resolvedCompanyName;
+    }
+    if (isPrivateInvite !== undefined) {
+      approval.isPrivateInvite = Boolean(isPrivateInvite);
+    }
+    if (window) {
+      approval.validFrom = window.validFrom;
+      approval.validTill = window.validTill;
+    }
 
     await approval.save();
 
