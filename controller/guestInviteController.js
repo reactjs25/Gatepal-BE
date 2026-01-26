@@ -383,31 +383,34 @@ const computeFrequentInviteValidityWindow = ({
   return { validFrom: start, validTill: end };
 };
 
-const buildGuestInviteQrPayload = ({ invite, unit, member, guest }) => {
+const buildGuestInviteQrPayload = ({ invite, guest }) => {
+  // Minimal payload - only essential identifiers; rest fetched from DB on scan
   const payload = {
-    type: 'gatepal_guest_invite',
-    version: 2,
-    inviteId: invite.inviteId,
-    guestId: guest.guestId,
-    guestName: guest.name,
-    societyId: String(invite.societyId),
-    unitId: String(invite.unitId),
-    unitWing: unit.wingName,
-    unitNumber: unit.unitNumber,
-    invitedByUserId: String(invite.invitedByUserId),
-    invitedByName: member.fullName || '',
-    inviteType: invite.type,
-    validFrom: invite.validFrom.toISOString(),
-    validTill: invite.validTill.toISOString(),
+    t: 'gi', // type: gatepal_guest_invite (shortened)
+    v: 2,    // version
+    i: invite.inviteId,
+    g: guest.guestId,
   };
   return JSON.stringify(payload);
 };
 
-const generateGuestQrCodes = async ({ invite, unit, member }) => {
+// For group invites - single shared QR for all guests
+const buildGroupInviteQrPayload = ({ invite }) => {
+  // Minimal payload - only essential identifiers
+  const payload = {
+    t: 'gi', // type: gatepal_guest_invite (shortened)
+    v: 2,    // version
+    i: invite.inviteId,
+    g: 'group',
+  };
+  return JSON.stringify(payload);
+};
+
+const generateGuestQrCodes = async ({ invite }) => {
   const updatedGuests = [];
   for (const guest of invite.guests) {
     try {
-      const payload = buildGuestInviteQrPayload({ invite, unit, member, guest });
+      const payload = buildGuestInviteQrPayload({ invite, guest });
       const qrCodeImage = await QRCode.toDataURL(payload, {
         errorCorrectionLevel: 'M',
         margin: 1,
@@ -488,7 +491,7 @@ const createGroupInvite = async (req, res, next) => {
 
     let qrCodeImage = null;
     try {
-      const payload = buildGuestInviteQrPayload({ invite, unit: unitDoc, member });
+      const payload = buildGroupInviteQrPayload({ invite });
       qrCodeImage = await QRCode.toDataURL(payload, {
         errorCorrectionLevel: 'M',
         margin: 1,
@@ -606,7 +609,7 @@ const createFrequentInvite = async (req, res, next) => {
     const member = await User.findById(authUser._id).lean();
 
     // Generate individual QR codes for each guest
-    const updatedGuests = await generateGuestQrCodes({ invite, unit: unitDoc, member });
+    const updatedGuests = await generateGuestQrCodes({ invite });
     invite.guests = updatedGuests;
     await invite.save();
 
@@ -727,7 +730,7 @@ const createQuickInvite = async (req, res, next) => {
     const member = await User.findById(authUser._id).lean();
 
     // Generate individual QR codes for each guest
-    const updatedGuests = await generateGuestQrCodes({ invite, unit: unitDoc, member });
+    const updatedGuests = await generateGuestQrCodes({ invite });
     invite.guests = updatedGuests;
     await invite.save();
 
@@ -901,7 +904,7 @@ const updateGuestInviteForMember = async (req, res, next) => {
       invite.qrCodeImage = qrCodeImage;
       invite.qrCodeGeneratedAt = qrCodeImage ? new Date() : null;
     } else {
-      const regeneratedGuests = await generateGuestQrCodes({ invite, unit: unitDoc, member });
+      const regeneratedGuests = await generateGuestQrCodes({ invite });
       invite.guests = regeneratedGuests;
     }
 
@@ -1056,7 +1059,18 @@ const scanGuestInvite = async (req, res, next) => {
     }
 
     // Handle different QR types
-    const qrType = payload.type;
+    // Support both old format (type: 'gatepal_*') and new compact format (t: 'gi')
+    let qrType = payload.type || null;
+    if (!qrType && payload.t) {
+      // Map compact type codes to full type names
+      const typeMap = { gi: 'gatepal_guest_invite', v: 'gatepal_visitor', m: 'gatepal_member' };
+      qrType = typeMap[payload.t] || null;
+    }
+    // Also normalize payload fields from compact to full names for guest invites
+    if (qrType === 'gatepal_guest_invite' && payload.t === 'gi') {
+      payload.inviteId = payload.i;
+      payload.guestId = payload.g;
+    }
     
     // If it's a visitor QR (delivery_executive, taxi_driver, other_visitor, guest already onboarded)
     if (qrType === 'gatepal_visitor') {
@@ -1140,7 +1154,8 @@ const scanGuestInvite = async (req, res, next) => {
     let arrivingGuest = null;
     let arrivingGuestIndex = -1;
 
-    if (guestId) {
+    // For group invites, guestId is 'group' - skip individual guest lookup
+    if (guestId && guestId !== 'group') {
       arrivingGuestIndex = invite.guests.findIndex((g) => g.guestId === guestId);
       if (arrivingGuestIndex === -1) {
         return next(createHttpError('Guest not found in this invite', 404));
