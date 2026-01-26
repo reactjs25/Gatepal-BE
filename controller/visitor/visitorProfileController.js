@@ -74,17 +74,24 @@ const resolveCompanyLogo = async (visitorType, companyName) => {
 const buildVisitorQrPayload = (user) =>
     JSON.stringify({
         type: 'gatepal_visitor',
-        version: 1,
+        version: 2,
         userId: String(user._id),
         role: user.role,
         visitorType: user.visitorType || null,
         fullName: user.fullName || null,
+        countryCode: user.countryCode || '+91',
         phoneNumber: user.phoneNumber || null,
+        companyName: user.visitorCompanyName || null,
+        workCategory: user.visitorWorkCategory || null,
     });
+
+const VISITOR_QR_VERSION = 2;
 
 const ensureVisitorQrCode = async (user) => {
     let qrCodeImageUrl = user.qrCodeImage || null;
-    if (!qrCodeImageUrl) {
+    // Regenerate if no QR exists or if version is outdated
+    const needsRegeneration = !qrCodeImageUrl || (user.qrCodeVersion || 0) < VISITOR_QR_VERSION;
+    if (needsRegeneration) {
         try {
             const payload = buildVisitorQrPayload(user);
             qrCodeImageUrl = await QRCode.toDataURL(payload, {
@@ -93,6 +100,7 @@ const ensureVisitorQrCode = async (user) => {
                 width: 256,
             });
             user.qrCodeImage = qrCodeImageUrl;
+            user.qrCodeVersion = VISITOR_QR_VERSION;
             user.qrCodeGeneratedAt = new Date();
             await user.save();
         } catch (e) {

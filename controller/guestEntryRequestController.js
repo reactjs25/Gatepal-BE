@@ -962,6 +962,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         guestName: 1,
         guestCountryCode: 1,
         guestPhoneNumber: 1,
+        guestPhoneDigits: 1,
         guestImageUrl: 1,
         accompanyingCount: 1,
         vehicleNumber: 1,
@@ -1028,6 +1029,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
     const normalizedText = (value) => normalizeString(value).toLowerCase();
     const normalizedVehicle = (value) => normalizeString(value).toUpperCase();
+    const normalizedDigits = (value) => normalizeString(value);
 
     const entryIndex = (items || []).map((d) => ({
       visitorType: d.visitorType || 'guest',
@@ -1035,6 +1037,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       companyName: normalizedText(d.visitorCompanyName),
       workCategory: normalizedText(d.visitorWorkCategory),
       vehicleNumber: normalizedVehicle(d.vehicleNumber),
+      guestName: normalizedText(d.guestName),
+      guestPhoneDigits: normalizedDigits(d.guestPhoneDigits || d.guestPhoneNumber),
       approvedByUserId: d.approvedByUserId ? String(d.approvedByUserId) : null,
       createdAtMs: d.createdAt ? new Date(d.createdAt).getTime() : null,
     }));
@@ -1165,7 +1169,101 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       ].map(mapPreApproval);
     }
 
-    const combined = [...mapped, ...preApprovalCards].sort((a, b) => {
+    let guestInviteCards = [];
+    if (preApprovalStatusFilter.length > 0) {
+      const guestInvites = await GuestInvite.find(
+        { societyId: unitDoc.societyId, unitId: unitDoc._id, status: { $in: preApprovalStatusFilter } },
+        {
+          inviteId: 1,
+          type: 1,
+          guests: 1,
+          validFrom: 1,
+          validTill: 1,
+          status: 1,
+          createdAt: 1,
+          invitedByUserId: 1,
+        }
+      ).lean();
+
+      const hasMatchingGuestInvite = (invite, guest) => {
+        const fromMs = invite.validFrom ? new Date(invite.validFrom).getTime() : null;
+        const tillMs = invite.validTill ? new Date(invite.validTill).getTime() : null;
+        const guestName = normalizedText(guest?.name);
+        const guestPhone = normalizedDigits(guest?.phoneDigits || guest?.phoneNumber);
+        const invitedBy = invite.invitedByUserId ? String(invite.invitedByUserId) : null;
+
+        return entryIndex.some((entry) => {
+          if (entry.visitorType !== 'guest') return false;
+          if (!['approved', 'entered', 'left'].includes(entry.status)) return false;
+          if (invitedBy && entry.approvedByUserId && invitedBy !== entry.approvedByUserId) return false;
+          if (fromMs && tillMs && entry.createdAtMs) {
+            if (entry.createdAtMs < fromMs || entry.createdAtMs > tillMs) return false;
+          }
+          if (guestPhone && entry.guestPhoneDigits) {
+            return guestPhone === entry.guestPhoneDigits;
+          }
+          if (guestName && entry.guestName) {
+            return guestName === entry.guestName;
+          }
+          return false;
+        });
+      };
+
+      const mapGuestInvite = (invite, guest) => {
+        const statusKey = invite.status === 'active' ? 'approved' : invite.status;
+        const statusLabel =
+          invite.status === 'active'
+            ? 'Pre-Approved'
+            : invite.status === 'expired'
+              ? 'Expired'
+              : 'Cancelled';
+        const fromLabel = toISTDateTimeLabelNoComma(invite.validFrom);
+        const tillLabel = toISTDateTimeLabelNoComma(invite.validTill);
+        const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
+
+        return {
+          requestId: invite.inviteId,
+          status: statusLabel,
+          statusKey,
+          category: VISITOR_TYPE_LABELS.guest.category,
+          visitorType: VISITOR_TYPE_LABELS.guest.visitorType,
+          requestedOn: invite.validFrom ? toISTDateTimeLabel(invite.validFrom) : null,
+          unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
+          guest: {
+            name: guest?.name || null,
+            countryCode: guest?.countryCode || '+91',
+            phoneNumber: guest?.phoneNumber || null,
+            imageUrl: null,
+            companyName: null,
+            workCategory: null,
+          },
+          accompanyingCount: '0',
+          vehicleNumber: null,
+          validityLabel,
+          isPreApproval: true,
+          _sortAt: invite.createdAt || invite.validFrom || invite.validTill || null,
+        };
+      };
+
+      const mappedInvites = [];
+      for (const invite of guestInvites || []) {
+        if (invite.type === 'group') {
+          const guest = Array.isArray(invite.guests) && invite.guests.length > 0 ? invite.guests[0] : null;
+          if (!hasMatchingGuestInvite(invite, guest)) {
+            mappedInvites.push(mapGuestInvite(invite, guest));
+          }
+          continue;
+        }
+        for (const guest of invite.guests || []) {
+          if (hasMatchingGuestInvite(invite, guest)) continue;
+          mappedInvites.push(mapGuestInvite(invite, guest));
+        }
+      }
+
+      guestInviteCards = mappedInvites;
+    }
+
+    const combined = [...mapped, ...preApprovalCards, ...guestInviteCards].sort((a, b) => {
       const aTime = a._sortAt ? new Date(a._sortAt).getTime() : 0;
       const bTime = b._sortAt ? new Date(b._sortAt).getTime() : 0;
       return bTime - aTime;

@@ -1,7 +1,12 @@
 const QRCode = require('qrcode');
+const { Jimp } = require('jimp');
+const jsQR = require('jsqr');
 const GuestInvite = require('../model/guestInviteSchema');
 const MemberUnit = require('../model/memberUnitSchema');
 const User = require('../model/userSchema');
+const DeliveryCompany = require('../model/deliveryCompanySchema');
+const TaxiDriverCompany = require('../model/taxiDriverCompanySchema');
+const OtherVisitorCompany = require('../model/otherVisitorCompanySchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
@@ -12,6 +17,61 @@ const {
   isTenDigitPhone,
 } = require('../utils/phoneNumber');
 const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
+const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
+const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
+
+const escapeRegex = (value) => (value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeCompanyId = (name) =>
+  (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const resolveVisitorCompanyLogo = async (visitorType, companyName) => {
+  const trimmed = (companyName || '').toString().trim();
+  if (!trimmed) {
+    return '/assets/Default.png';
+  }
+
+  const base = normalizeCompanyId(trimmed);
+  let record = null;
+  let fallback = null;
+
+  switch ((visitorType || '').toString().trim().toLowerCase()) {
+    case 'taxi_vehicle_driver': {
+      if (base) {
+        record = await TaxiDriverCompany.findOne({ id: base }).lean();
+      }
+      if (!record) {
+        const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+        record = await TaxiDriverCompany.findOne({ name: nameRegex }).lean();
+      }
+      fallback = getTaxiCompanyInfo(trimmed)?.imageUrl || null;
+      break;
+    }
+    case 'other_visitor': {
+      if (base) {
+        record = await OtherVisitorCompany.findOne({ id: base }).lean();
+      }
+      if (!record) {
+        const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+        record = await OtherVisitorCompany.findOne({ name: nameRegex }).lean();
+      }
+      fallback = getOtherVisitorCompanyInfo(trimmed)?.imageUrl || null;
+      break;
+    }
+    case 'delivery_executive':
+    default: {
+      if (base) {
+        record = await DeliveryCompany.findOne({ id: base }).lean();
+      }
+      if (!record) {
+        const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+        record = await DeliveryCompany.findOne({ name: nameRegex }).lean();
+      }
+      break;
+    }
+  }
+  return record?.imageUrl || fallback || '/assets/Default.png';
+};
 
 const normalizeOption = (value) =>
   (value || '')
@@ -956,7 +1016,7 @@ const scanGuestInvite = async (req, res, next) => {
       return next(createHttpError('Only guards can scan guest invites', 403));
     }
 
-    const { qrData, vehicleNumber, accompanyingCount } = req.body || {};
+    const { qrData: qrDataRaw, qrCodeImage, vehicleNumber, accompanyingCount } = req.body || {};
 
     const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
     const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
@@ -967,17 +1027,86 @@ const scanGuestInvite = async (req, res, next) => {
 
     let payload;
     try {
-      const text = normalizeString(qrData);
+      let text = normalizeString(qrDataRaw);
+      if (!text && qrCodeImage) {
+        const base64Match = qrCodeImage.toString().trim();
+        const base64Data = base64Match.includes('base64,')
+          ? base64Match.split('base64,').pop()
+          : base64Match;
+        const buffer = Buffer.from(base64Data, 'base64');
+        const image = await Jimp.read(buffer);
+        const width = image.width;
+        const height = image.height;
+        // Convert Jimp bitmap data to Uint8ClampedArray for jsQR
+        const imageData = new Uint8ClampedArray(image.bitmap.data);
+        const decoded = jsQR(imageData, width, height);
+        if (!decoded) {
+          console.log('jsQR failed to decode QR code from image');
+          return next(createHttpError('Could not decode QR code from image', 400));
+        }
+        text = normalizeString(decoded.data);
+      }
       if (!text) {
         return next(createHttpError('qrData is required', 400));
       }
       payload = JSON.parse(text);
     } catch (e) {
+      console.log('QR decode error:', e.message);
       return next(createHttpError('Invalid QR data', 400));
     }
 
-    if (payload.type !== 'gatepal_guest_invite' || !payload.inviteId) {
-      return next(createHttpError('QR code is not a valid guest invite', 400));
+    // Handle different QR types
+    const qrType = payload.type;
+    
+    // If it's a visitor QR (delivery_executive, taxi_driver, other_visitor, guest already onboarded)
+    if (qrType === 'gatepal_visitor') {
+      const visitorType = (payload.visitorType || '').toString().trim().toLowerCase();
+      const isGuest = visitorType === 'guest';
+      const companyLogo = isGuest ? null : await resolveVisitorCompanyLogo(payload.visitorType, payload.companyName);
+      // Fetch visitor's profile photo from database
+      let imageUrl = null;
+      if (payload.userId) {
+        const visitor = await User.findById(payload.userId).select('profilePhoto').lean();
+        imageUrl = visitor?.profilePhoto || null;
+      }
+      return sendSuccessResponse(res, 200, 'Visitor QR code scanned successfully', {
+        qrType: 'visitor',
+        visitorInfo: {
+          userId: payload.userId || null,
+          role: payload.role || 'visitor',
+          visitorType: payload.visitorType || null,
+          fullName: payload.fullName || null,
+          countryCode: payload.countryCode || '+91',
+          phoneNumber: payload.phoneNumber || null,
+          companyName: isGuest ? null : (payload.companyName || null),
+          companyLogo: isGuest ? null : companyLogo,
+          workCategory: isGuest ? null : (payload.workCategory || null),
+          imageUrl,
+        },
+        message: 'QR validated successfully. Click a picture to continue.',
+      });
+    }
+
+    // If it's a member QR
+    if (qrType === 'gatepal_member') {
+      return sendSuccessResponse(res, 200, 'Member QR code scanned successfully', {
+        qrType: 'member',
+        memberInfo: {
+          memberId: payload.memberId || null,
+          userId: payload.userId || null,
+          role: payload.role || 'member',
+          societyId: payload.societyId || null,
+          societyName: payload.societyName || null,
+          wingName: payload.wingName || null,
+          unitNumber: payload.unitNumber || null,
+        },
+        message: 'QR validated successfully. Click a picture to continue.',
+      });
+    }
+
+    // Guest invite QR
+    if (qrType !== 'gatepal_guest_invite' || !payload.inviteId) {
+      return next(createHttpError('QR code is not a valid GatePal QR', 400));
     }
 
     const invite = await GuestInvite.findOne({ inviteId: payload.inviteId });
@@ -1075,6 +1204,7 @@ const scanGuestInvite = async (req, res, next) => {
     // For frequent invites, remainingEntries stays null (unlimited)
 
     const responseData = {
+      qrType: 'guest_invite',
       inviteId: invite.inviteId,
       inviteType: invite.type,
       societyId: String(invite.societyId),

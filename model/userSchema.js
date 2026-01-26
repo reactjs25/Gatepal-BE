@@ -182,6 +182,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    qrCodeVersion: {
+      type: Number,
+      default: 0,
+    },
     qrCodeGeneratedAt: {
       type: Date,
       default: null,
