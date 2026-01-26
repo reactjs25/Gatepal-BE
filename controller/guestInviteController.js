@@ -986,25 +986,30 @@ const cancelGuestInviteForMember = async (req, res, next) => {
     });
     if (!invite) return next(createHttpError('Guest invite not found', 404));
     if (invite.status === 'cancelled') {
-      return next(createHttpError('Guest invite is already cancelled', 409));
+      return next(createHttpError('Guest invite is already cancelled', 400));
     }
 
     const hasArrived = (invite.guests || []).some((g) => g?.hasArrived);
     const hasEntryLogs = Array.isArray(invite.entryLogs) && invite.entryLogs.length > 0;
     if (hasArrived || hasEntryLogs) {
-      return next(createHttpError('Cannot delete guest invite while visitor is inside society', 409));
+      return next(createHttpError('Cannot cancel guest invite while visitor is inside society', 409));
     }
 
-    await GuestInvite.deleteOne({ _id: invite._id });
+    invite.status = 'cancelled';
+    invite.cancelledReason = reason;
+    invite.cancelledDescription = description || null;
+    invite.cancelledAt = new Date();
+    invite.cancelledByUserId = authUser._id;
+    await invite.save();
 
-    return sendSuccessResponse(res, 200, 'Guest invite deleted successfully', {
+    return sendSuccessResponse(res, 200, 'Guest invite cancelled successfully', {
       data: {
         inviteId: invite.inviteId,
-        status: 'Deleted',
+        status: 'cancelled',
       },
     });
   } catch (error) {
-    return next(setErrorDefaults(error, 'Failed to delete guest invite'));
+    return next(setErrorDefaults(error, 'Failed to cancel guest invite'));
   }
 };
 

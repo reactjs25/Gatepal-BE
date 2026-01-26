@@ -1435,41 +1435,102 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
     ]);
 
     const preDoc = deliveryDoc || taxiDoc || otherDoc;
-    if (!preDoc) return next(createHttpError('Request not found', 404));
+    if (preDoc) {
+      const labels = toVisitorLabels(preDoc.visitorType || 'guest');
+      const fromLabel = toISTDateTimeLabelNoComma(preDoc.validFrom);
+      const tillLabel = toISTDateTimeLabelNoComma(preDoc.validTill);
+      const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
-    const labels = toVisitorLabels(preDoc.visitorType || 'guest');
-    const fromLabel = toISTDateTimeLabelNoComma(preDoc.validFrom);
-    const tillLabel = toISTDateTimeLabelNoComma(preDoc.validTill);
-    const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
+      return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
+        data: {
+          requestId: preDoc.preApprovalId,
+          status: preApprovalLabel(preDoc.status),
+          statusKey: preDoc.status === 'active' ? 'approved' : preDoc.status,
+          category: labels.category,
+          visitorType: labels.visitorType,
+          requestedOn: preDoc.validFrom ? toISTDateTimeLabel(preDoc.validFrom) : null,
+          unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
+          member: {
+            name: authUser.fullName || null,
+            countryCode: authUser.countryCode || '+91',
+            phoneNumber: authUser.phoneNumber || null,
+          },
+          guest: {
+            name: preDoc.visitorName || null,
+            countryCode: null,
+            phoneNumber: null,
+            imageUrl: normalizeString(preDoc.companyImageUrl) || null,
+            companyName: preDoc.companyName || null,
+            workCategory: preDoc.workCategory || null,
+          },
+          accompanyingCount: '0',
+          vehicleNumber: preDoc.vehicleNumber || null,
+          validityLabel,
+          isPreApproval: true,
+        },
+      });
+    }
 
-    return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
-      data: {
-        requestId: preDoc.preApprovalId,
-        status: preApprovalLabel(preDoc.status),
-        statusKey: preDoc.status === 'active' ? 'approved' : preDoc.status,
-        category: labels.category,
-        visitorType: labels.visitorType,
-        requestedOn: preDoc.validFrom ? toISTDateTimeLabel(preDoc.validFrom) : null,
-        unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
-        member: {
-          name: authUser.fullName || null,
-          countryCode: authUser.countryCode || '+91',
-          phoneNumber: authUser.phoneNumber || null,
+    // Check for GuestInvite (quick, frequent, group, private invites)
+    const guestInvite = await GuestInvite.findOne({
+      inviteId: requestId,
+      societyId: unitDoc.societyId,
+      unitId: unitDoc._id,
+    }).lean();
+
+    if (guestInvite) {
+      const inviteStatusLabel = (status) =>
+        status === 'active' ? 'Pre-Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
+      const fromLabel = toISTDateTimeLabelNoComma(guestInvite.validFrom);
+      const tillLabel = toISTDateTimeLabelNoComma(guestInvite.validTill);
+      const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
+
+      const invitedByUser = guestInvite.invitedByUserId
+        ? await User.findById(guestInvite.invitedByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
+        : null;
+
+      const guests = (guestInvite.guests || []).map((g) => ({
+        guestId: g.guestId,
+        name: g.name,
+        countryCode: g.countryCode || '+91',
+        phoneNumber: g.phoneNumber || null,
+        hasArrived: g.hasArrived || false,
+        arrivedAt: g.arrivedAt ? toISTDateTimeLabel(g.arrivedAt) : null,
+      }));
+
+      return sendSuccessResponse(res, 200, 'Guest invite fetched successfully', {
+        data: {
+          requestId: guestInvite.inviteId,
+          inviteType: guestInvite.type,
+          status: inviteStatusLabel(guestInvite.status),
+          statusKey: guestInvite.status === 'active' ? 'approved' : guestInvite.status,
+          category: 'Guest',
+          visitorType: 'Guest',
+          isPrivateInvite: guestInvite.isPrivateInvite || false,
+          requestedOn: guestInvite.createdAt ? toISTDateTimeLabel(guestInvite.createdAt) : null,
+          unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
+          member: {
+            name: authUser.fullName || null,
+            countryCode: authUser.countryCode || '+91',
+            phoneNumber: authUser.phoneNumber || null,
+          },
+          invitedBy: invitedByUser
+            ? {
+                name: invitedByUser.fullName || null,
+                countryCode: invitedByUser.countryCode || '+91',
+                phoneNumber: invitedByUser.phoneNumber || null,
+              }
+            : null,
+          guests,
+          validityLabel,
+          maxEntries: guestInvite.type === 'frequent' ? null : guestInvite.maxEntries,
+          usedEntries: Array.isArray(guestInvite.entryLogs) ? guestInvite.entryLogs.length : 0,
+          isGuestInvite: true,
         },
-        guest: {
-          name: preDoc.visitorName || null,
-          countryCode: null,
-          phoneNumber: null,
-          imageUrl: normalizeString(preDoc.companyImageUrl) || null,
-          companyName: preDoc.companyName || null,
-          workCategory: preDoc.workCategory || null,
-        },
-        accompanyingCount: '0',
-        vehicleNumber: preDoc.vehicleNumber || null,
-        validityLabel,
-        isPreApproval: true,
-      },
-    });
+      });
+    }
+
+    return next(createHttpError('Request not found', 404));
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch guest entry request'));
   }
@@ -1810,6 +1871,122 @@ const updateGuestEntryRequestPhoto = async (req, res, next) => {
   }
 };
 
+const allowGuestExitForMember = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can perform this action', 403));
+    }
+
+    const unitId = normalizeString(req.body?.unitId);
+    const requestId = normalizeString(req.body?.requestId);
+
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!requestId) return next(createHttpError('requestId is required', 400));
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const doc = await GuestEntryRequest.findOne({ requestId });
+    if (!doc) return next(createHttpError('Request not found', 404));
+
+    if (
+      String(doc.societyId) !== String(unitDoc.societyId) ||
+      doc.wingNameLower !== unitDoc.wingNameLower ||
+      doc.unitNumberLower !== unitDoc.unitNumberLower
+    ) {
+      return next(createHttpError('Request does not belong to this unit', 403));
+    }
+
+    if (doc.status !== 'entered' && doc.status !== 'left') {
+      return next(createHttpError('Exit can only be marked for visitors inside society', 409));
+    }
+
+    // Find a guard on duty at this society to be the exit notifier
+    const findGuardOnDuty = async (societyId) => {
+      const guard = await User.findOne({
+        role: 'guard',
+        'guardSocieties.societyId': societyId,
+        'guardSocieties.isOnDuty': true,
+      }, { fullName: 1 }).lean();
+      return guard;
+    };
+
+    const buildExitResponse = async (document, isAlreadyLeft = false) => {
+      const labels = toVisitorLabels(document.visitorType || 'guest');
+      
+      const approvedByUser = document.approvedByUserId
+        ? await User.findById(document.approvedByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
+        : null;
+
+      let exitNotifier = null;
+      if (document.entryLeftByGuardId) {
+        const guard = await User.findById(document.entryLeftByGuardId, { fullName: 1 }).lean();
+        exitNotifier = guard ? { name: `${guard.fullName || 'Guard'} (Security)`, role: 'guard' } : null;
+      } else if (document.entryLeftByMemberId) {
+        // When member marks exit, find the guard on duty at the society
+        const guardOnDuty = await findGuardOnDuty(document.societyId);
+        if (guardOnDuty) {
+          exitNotifier = { name: `${guardOnDuty.fullName || 'Guard'} (Security)`, role: 'guard' };
+        } else {
+          // Fallback to member if no guard on duty
+          const member = await User.findById(document.entryLeftByMemberId, { fullName: 1 }).lean();
+          exitNotifier = member ? { name: member.fullName || 'Member', role: 'member' } : null;
+        }
+      }
+
+      return {
+        requestId: document.requestId,
+        status: 'Left Society',
+        statusKey: 'left',
+        category: labels.category,
+        visitorType: labels.visitorType,
+        unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
+        guest: {
+          name: document.guestName,
+          countryCode: document.guestCountryCode || '+91',
+          phoneNumber: document.guestPhoneNumber,
+          imageUrl: document.guestImageUrl || null,
+          companyName: document.visitorCompanyName || null,
+          workCategory: document.visitorWorkCategory || null,
+        },
+        entryAt: document.entryAllowedAt ? toISTDateTimeLabel(document.entryAllowedAt) : null,
+        approver: approvedByUser
+          ? {
+              name: approvedByUser.fullName || null,
+              countryCode: approvedByUser.countryCode || '+91',
+              phoneNumber: approvedByUser.phoneNumber || null,
+            }
+          : null,
+        exitAt: document.entryLeftAt ? toISTDateTimeLabel(document.entryLeftAt) : null,
+        exitNotifier,
+        accompanyingCount: String(document.accompanyingCount || 0),
+        vehicleNumber: document.vehicleNumber || null,
+      };
+    };
+
+    if (doc.status === 'left') {
+      const payload = await buildExitResponse(doc, true);
+      return sendSuccessResponse(res, 200, 'Visitor has already left', { data: payload });
+    }
+
+    doc.status = 'left';
+    doc.entryLeftByMemberId = authUser._id;
+    doc.entryLeftAt = new Date();
+    await doc.save();
+
+    const payload = await buildExitResponse(doc);
+    return sendSuccessResponse(res, 200, 'Visitor marked as left successfully', { data: payload });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to mark visitor as left'));
+  }
+};
+
 module.exports = {
   getRecentGuestsForGuard,
   listGuestEntryRequestsForGuard,
@@ -1820,6 +1997,7 @@ module.exports = {
   decideGuestEntryRequest,
   allowGuestEntry,
   allowGuestExit,
+  allowGuestExitForMember,
   updateGuestEntryRequestPhoto,
 };
 

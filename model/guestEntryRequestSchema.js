@@ -72,6 +72,7 @@ const guestEntryRequestSchema = new mongoose.Schema(
     entryAllowedByGuardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     entryAllowedAt: { type: Date, default: null },
     entryLeftByGuardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    entryLeftByMemberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     entryLeftAt: { type: Date, default: null },
   },
   { timestamps: true }

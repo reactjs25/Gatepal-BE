@@ -474,6 +474,10 @@ const cancelOtherVisitorPreApproval = async (req, res, next) => {
     });
     if (!approval) return next(createHttpError('Pre-approval not found', 404));
 
+    if (approval.status === 'cancelled') {
+      return next(createHttpError('Pre-approval is already cancelled', 400));
+    }
+
     const activeEntry = await GuestEntryRequest.findOne({
       societyId: unitDoc.societyId,
       wingNameLower: unitDoc.wingNameLower,
@@ -484,19 +488,24 @@ const cancelOtherVisitorPreApproval = async (req, res, next) => {
       ...(approval.workCategory ? { visitorWorkCategory: approval.workCategory } : {}),
     }).lean();
     if (activeEntry) {
-      return next(createHttpError('Cannot delete pre-approval while visitor is inside society', 409));
+      return next(createHttpError('Cannot cancel pre-approval while visitor is inside society', 409));
     }
 
-    await OtherVisitorPreApproval.deleteOne({ _id: approval._id });
+    approval.status = 'cancelled';
+    approval.cancelledReason = reason;
+    approval.cancelledDescription = description || null;
+    approval.cancelledAt = new Date();
+    approval.cancelledByUserId = authUser._id;
+    await approval.save();
 
-    return sendSuccessResponse(res, 200, 'Visitor pre-approval deleted successfully', {
+    return sendSuccessResponse(res, 200, 'Visitor pre-approval cancelled successfully', {
       data: {
         preApprovalId: approval.preApprovalId,
-        status: 'Deleted',
+        status: 'cancelled',
       },
     });
   } catch (error) {
-    return next(setErrorDefaults(error, 'Failed to delete visitor pre-approval'));
+    return next(setErrorDefaults(error, 'Failed to cancel visitor pre-approval'));
   }
 };
 
