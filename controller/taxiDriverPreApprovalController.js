@@ -282,8 +282,6 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
           id: String(authUser._id),
           name: member?.fullName || authUser.fullName || null,
         },
-        validFrom: approval.validFrom,
-        validTill: approval.validTill,
         validityLabel,
         vehicleNumber: approval.vehicleNumber || null,
         isPrivateInvite: approval.isPrivateInvite,
@@ -467,7 +465,43 @@ const cancelTaxiDriverPreApproval = async (req, res, next) => {
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
     });
-    if (!approval) return next(createHttpError('Pre-approval not found', 404));
+
+    // If pre-approval not found, check if it's a GuestEntryRequest with status 'approved'
+    if (!approval) {
+      const entryRequest = await GuestEntryRequest.findOne({
+        requestId: preApprovalId,
+        societyId: unitDoc.societyId,
+        wingNameLower: unitDoc.wingNameLower,
+        unitNumberLower: unitDoc.unitNumberLower,
+        visitorType: 'taxi_vehicle_driver',
+      });
+
+      if (!entryRequest) {
+        return next(createHttpError('Pre-approval not found', 404));
+      }
+
+      if (entryRequest.status === 'cancelled') {
+        return next(createHttpError('Entry request is already cancelled', 400));
+      }
+
+      if (entryRequest.status === 'entered') {
+        return next(createHttpError('Cannot cancel while visitor is inside society', 409));
+      }
+
+      if (!['approved', 'pending'].includes(entryRequest.status)) {
+        return next(createHttpError('Entry request cannot be cancelled in current status', 400));
+      }
+
+      entryRequest.status = 'cancelled';
+      await entryRequest.save();
+
+      return sendSuccessResponse(res, 200, 'Entry request cancelled successfully', {
+        data: {
+          preApprovalId: entryRequest.requestId,
+          status: 'cancelled',
+        },
+      });
+    }
 
     if (approval.status === 'cancelled') {
       return next(createHttpError('Pre-approval is already cancelled', 400));

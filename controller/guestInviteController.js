@@ -1367,7 +1367,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       return next(createHttpError('You must be on duty to update entry details', 400));
     }
 
-    const { inviteId, guestId, vehicleNumber, accompanyingCount } = req.body || {};
+    const { inviteId, guestId, vehicleNumber, accompanyingCount, imageUrl } = req.body || {};
 
     const normalizedInviteId = normalizeString(inviteId);
     if (!normalizedInviteId) {
@@ -1422,13 +1422,84 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       invite.entryLogs[targetLogIndex].accompanyingCount = safeCount;
     }
 
+    const normalizedImageUrl = imageUrl === undefined ? undefined : normalizeString(imageUrl) || null;
+    if (normalizedImageUrl !== undefined) {
+      invite.entryLogs[targetLogIndex].imageUrl = normalizedImageUrl;
+    }
+
     await invite.save();
 
+    // Build full response matching scan response
+    const member = await User.findById(invite.invitedByUserId).lean();
+    const unit = await MemberUnit.findById(invite.unitId).lean();
+
+    const dateLabel = toISTDateLabel(invite.validFrom);
+    const fromTimeLabel = toISTTimeLabel(invite.validFrom);
+    const tillTimeLabel = toISTTimeLabel(invite.validTill);
+
+    // Find arriving guest from the entry log
+    const targetLog = invite.entryLogs[targetLogIndex];
+    const arrivingGuest = invite.guests.find((g) => g.guestId === targetLog.guestId) || null;
+
+    // Calculate used entries
+    const usedEntries = invite.entryLogs.length;
+
+    // Calculate remaining entries based on invite type
+    let remainingEntries = null;
+    if (invite.type === 'quick') {
+      remainingEntries = invite.guests.filter((g) => !g.hasArrived).length;
+    } else if (invite.type === 'group') {
+      remainingEntries = Math.max(invite.maxEntries - usedEntries, 0);
+    }
+
+    const responseData = {
+      qrType: 'guest_invite',
+      inviteId: invite.inviteId,
+      inviteType: invite.type,
+      societyId: String(invite.societyId),
+      unitId: String(invite.unitId),
+      unit: unit
+        ? {
+            wingName: unit.wingName,
+            unitNumber: unit.unitNumber,
+          }
+        : null,
+      invitedBy: member
+        ? {
+            id: String(member._id),
+            name: member.fullName || null,
+            countryCode: member.countryCode || '+91',
+            phoneNumber: member.phoneNumber || null,
+          }
+        : null,
+      arrivingGuest: arrivingGuest
+        ? {
+            guestId: arrivingGuest.guestId,
+            name: arrivingGuest.name,
+            countryCode: arrivingGuest.countryCode,
+            phoneNumber: arrivingGuest.phoneNumber,
+            arrivedAt: arrivingGuest.arrivedAt || null,
+            imageUrl: targetLog.imageUrl || null,
+          }
+        : null,
+      guests: invite.guests.map((g) => ({
+        guestId: g.guestId,
+        name: g.name,
+        countryCode: g.countryCode,
+        phoneNumber: g.phoneNumber,
+        hasArrived: g.hasArrived || false,
+        arrivedAt: g.arrivedAt || null,
+      })),
+      validityLabel: `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`,
+      vehicleNumber: targetLog.vehicleNumber || null,
+      accompanyingCount: targetLog.accompanyingCount || 0,
+      maxEntries: invite.type === 'frequent' ? null : invite.maxEntries,
+      usedEntries,
+      remainingEntries,
+    };
+
     return sendSuccessResponse(res, 200, 'Entry details updated successfully', {
-      data: {
-        inviteId: invite.inviteId,
-        entryLog: invite.entryLogs[targetLogIndex],
-      },
+      data: responseData,
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to update entry details'));

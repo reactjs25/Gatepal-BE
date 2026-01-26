@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 
-const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered', 'left'];
+const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered', 'left', 'wrong_entry'];
 const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
 
 const guestEntryRequestSchema = new mongoose.Schema(
@@ -74,6 +74,13 @@ const guestEntryRequestSchema = new mongoose.Schema(
     entryLeftByGuardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     entryLeftByMemberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     entryLeftAt: { type: Date, default: null },
+
+    // Wrong entry tracking
+    isWrongEntry: { type: Boolean, default: false },
+    wrongEntryReason: { type: String, trim: true, default: null },
+    wrongEntryDescription: { type: String, trim: true, default: null },
+    wrongEntryMarkedByMemberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    wrongEntryMarkedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

@@ -45,6 +45,7 @@ const entryLogSchema = new mongoose.Schema(
     gateName: { type: String, trim: true, default: null },
     vehicleNumber: { type: String, trim: true, default: null },
     accompanyingCount: { type: Number, default: 0 },
+    imageUrl: { type: String, trim: true, default: null },
   },
   { _id: false }
 );

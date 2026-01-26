@@ -29,6 +29,7 @@ const {
   getGuestEntryRequestDetailForMember,
   decideGuestEntryRequest,
   allowGuestExitForMember,
+  markWrongEntryForMember,
 } = require('../controller/guestEntryRequestController');
 const {
   createDeliveryPreApproval,
@@ -69,6 +70,7 @@ router.post('/guestEntryRequests/list', userAuthMiddleware, listGuestEntryReques
 router.post('/guestEntryRequests/detail', userAuthMiddleware, getGuestEntryRequestDetailForMember);
 router.patch('/guestEntryRequests/decision', userAuthMiddleware, decideGuestEntryRequest);
 router.post('/guestEntryRequests/allowExit', userAuthMiddleware, allowGuestExitForMember);
+router.post('/guestEntryRequests/markWrongEntry', userAuthMiddleware, markWrongEntryForMember);
 router.post('/deliveryPreApprovals/quick', userAuthMiddleware, createDeliveryPreApproval);
 router.patch('/deliveryPreApprovals', userAuthMiddleware, updateDeliveryPreApproval);
 router.delete('/deliveryPreApprovals', userAuthMiddleware, cancelDeliveryPreApproval);

@@ -24,18 +24,19 @@ const VISITOR_TYPE_LABELS = {
 };
 
 const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
-const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered', 'left'];
+const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered', 'left', 'wrong_entry'];
 const STATUS_FILTERS = {
   awaiting_approval: ['pending'],
   pending: ['pending'],
   approved: ['approved'],
   inside_society: ['entered'],
   entered: ['entered'],
-  left_society: ['rejected', 'cancelled', 'expired', 'left'],
+  left_society: ['rejected', 'cancelled', 'expired', 'left', 'wrong_entry'],
   rejected: ['rejected'],
   denied: ['rejected'],
   cancelled: ['cancelled'],
   expired: ['expired'],
+  wrong_entry: ['wrong_entry'],
   all: REQUEST_STATUSES,
 };
 
@@ -67,7 +68,9 @@ const getStatusLabel = (status) =>
               ? 'Expired'
               : status === 'cancelled'
                 ? 'Cancelled'
-                : 'Awaiting Approval';
+                : status === 'wrong_entry'
+                  ? 'Wrong Entry'
+                  : 'Awaiting Approval';
 
 const resolveTaxiCompanyName = async (companyName) => {
   const trimmed = normalizeString(companyName);
@@ -985,11 +988,13 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             ? 'Inside Society'
             : key === 'left'
               ? 'Left Society'
-            : key === 'expired'
-              ? 'Expired'
-              : key === 'cancelled'
-                ? 'Cancelled'
-                : 'Awaiting Approval';
+              : key === 'expired'
+                ? 'Expired'
+                : key === 'cancelled'
+                  ? 'Cancelled'
+                  : key === 'wrong_entry'
+                    ? 'Wrong Entry'
+                    : 'Awaiting Approval';
 
     const mapped = (items || []).map((d) => {
       const statusLabel = toStatusLabel(d.status);
@@ -1053,7 +1058,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
       return entryIndex.some((entry) => {
         if (entry.visitorType !== visitorType) return false;
-        if (!['approved', 'entered', 'left'].includes(entry.status)) return false;
+        if (!['approved', 'entered', 'left', 'wrong_entry', 'cancelled'].includes(entry.status)) return false;
         if (invitedBy && entry.approvedByUserId && invitedBy !== entry.approvedByUserId) return false;
         if (fromMs && tillMs && entry.createdAtMs) {
           if (entry.createdAtMs < fromMs || entry.createdAtMs > tillMs) return false;
@@ -1177,6 +1182,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           inviteId: 1,
           type: 1,
           guests: 1,
+          entryLogs: 1,
           validFrom: 1,
           validTill: 1,
           status: 1,
@@ -1194,7 +1200,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
         return entryIndex.some((entry) => {
           if (entry.visitorType !== 'guest') return false;
-          if (!['approved', 'entered', 'left'].includes(entry.status)) return false;
+          if (!['approved', 'entered', 'left', 'wrong_entry', 'cancelled'].includes(entry.status)) return false;
           if (invitedBy && entry.approvedByUserId && invitedBy !== entry.approvedByUserId) return false;
           if (fromMs && tillMs && entry.createdAtMs) {
             if (entry.createdAtMs < fromMs || entry.createdAtMs > tillMs) return false;
@@ -1221,6 +1227,15 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         const tillLabel = toISTDateTimeLabelNoComma(invite.validTill);
         const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
+        // Find imageUrl from entry logs for this guest
+        let guestImageUrl = null;
+        if (guest?.guestId && Array.isArray(invite.entryLogs)) {
+          const entryLog = invite.entryLogs.find((log) => log.guestId === guest.guestId);
+          if (entryLog?.imageUrl) {
+            guestImageUrl = entryLog.imageUrl;
+          }
+        }
+
         return {
           requestId: invite.inviteId,
           status: statusLabel,
@@ -1233,7 +1248,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             name: guest?.name || null,
             countryCode: guest?.countryCode || '+91',
             phoneNumber: guest?.phoneNumber || null,
-            imageUrl: null,
+            imageUrl: guestImageUrl,
             companyName: null,
             workCategory: null,
           },
@@ -1314,7 +1329,9 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
                 ? 'Expired'
                 : key === 'cancelled'
                   ? 'Cancelled'
-                  : 'Awaiting Approval';
+                  : key === 'wrong_entry'
+                    ? 'Wrong Entry'
+                    : 'Awaiting Approval';
 
     const preApprovalLabel = (status) =>
       status === 'active' ? 'Pre-Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
@@ -1340,6 +1357,33 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           ? await User.findById(doc.approvedByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
           : null;
         const isPreApproved = Boolean(doc.approvedByUserId && !doc.expiresAt);
+
+        // Build exit notifier
+        let exitNotifier = null;
+        if (doc.entryLeftByGuardId) {
+          const guard = await User.findById(doc.entryLeftByGuardId, { fullName: 1 }).lean();
+          exitNotifier = guard ? { name: `${guard.fullName || 'Guard'} (Security)`, role: 'guard' } : null;
+        } else if (doc.entryLeftByMemberId) {
+          const guardOnDuty = await User.findOne({
+            role: 'guard',
+            'guardSocieties.societyId': doc.societyId,
+            'guardSocieties.isOnDuty': true,
+          }, { fullName: 1 }).lean();
+          if (guardOnDuty) {
+            exitNotifier = { name: `${guardOnDuty.fullName || 'Guard'} (Security)`, role: 'guard' };
+          } else {
+            const member = await User.findById(doc.entryLeftByMemberId, { fullName: 1 }).lean();
+            exitNotifier = member ? { name: member.fullName || 'Member', role: 'member' } : null;
+          }
+        }
+
+        // Build wrong entry notifier
+        let wrongEntryNotifier = null;
+        if (doc.wrongEntryMarkedByMemberId) {
+          const markedByMember = await User.findById(doc.wrongEntryMarkedByMemberId, { fullName: 1 }).lean();
+          wrongEntryNotifier = markedByMember ? { name: markedByMember.fullName || 'Member' } : null;
+        }
+
         return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
           data: {
             requestId: doc.requestId,
@@ -1352,6 +1396,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             expiresAt: doc.expiresAt ? toISTDateTimeLabel(doc.expiresAt) : null,
             entryAt: doc.entryAllowedAt ? toISTDateTimeLabel(doc.entryAllowedAt) : null,
             leftAt: doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null,
+            exitNotifier,
             unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
             member: {
               name: authUser.fullName || null,
@@ -1380,6 +1425,12 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             },
             accompanyingCount: String(doc.accompanyingCount || 0),
             vehicleNumber: doc.vehicleNumber || null,
+            // Wrong entry fields
+            isWrongEntry: doc.isWrongEntry || false,
+            wrongEntryReason: doc.wrongEntryReason || null,
+            wrongEntryDescription: doc.wrongEntryDescription || null,
+            wrongEntryMarkedAt: doc.wrongEntryMarkedAt ? toISTDateTimeLabel(doc.wrongEntryMarkedAt) : null,
+            wrongEntryNotifier,
           },
         });
       }
@@ -1987,6 +2038,137 @@ const allowGuestExitForMember = async (req, res, next) => {
   }
 };
 
+/**
+ * Mark a visitor as wrong entry (by member)
+ * POST /api/member/guestEntryRequests/markWrongEntry
+ * Body: { unitId, requestId, reason, description }
+ */
+const WRONG_ENTRY_REASONS = [
+  'unknown_visitor',
+  'did_not_invite',
+  'fraudulent',
+  'wrong_flat',
+  'other',
+];
+
+const markWrongEntryForMember = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+      return next(createHttpError('Only members can perform this action', 403));
+    }
+
+    const unitId = normalizeString(req.body?.unitId);
+    const requestId = normalizeString(req.body?.requestId);
+    const reason = normalizeOption(req.body?.reason);
+    const description = normalizeString(req.body?.description);
+
+    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!requestId) return next(createHttpError('requestId is required', 400));
+    if (!reason) return next(createHttpError('reason is required', 400));
+
+    if (!WRONG_ENTRY_REASONS.includes(reason)) {
+      return next(createHttpError(`Invalid reason. Allowed: ${WRONG_ENTRY_REASONS.join(', ')}`, 400));
+    }
+
+    if (reason === 'other' && !description) {
+      return next(createHttpError('Description is required when reason is "other"', 400));
+    }
+
+    let unitDoc;
+    try {
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+    } catch (e) {
+      return next(e);
+    }
+
+    const doc = await GuestEntryRequest.findOne({ requestId });
+    if (!doc) return next(createHttpError('Request not found', 404));
+
+    if (
+      String(doc.societyId) !== String(unitDoc.societyId) ||
+      doc.wingNameLower !== unitDoc.wingNameLower ||
+      doc.unitNumberLower !== unitDoc.unitNumberLower
+    ) {
+      return next(createHttpError('Request does not belong to this unit', 403));
+    }
+
+    if (doc.status !== 'entered' && doc.status !== 'left') {
+      return next(createHttpError('Wrong entry can only be marked for visitors who have entered the society', 409));
+    }
+
+    if (doc.isWrongEntry) {
+      return sendSuccessResponse(res, 200, 'This visitor is already marked as wrong entry', {
+        data: { requestId: doc.requestId, isWrongEntry: true, status: 'wrong_entry' },
+      });
+    }
+
+    // Mark as wrong entry
+    doc.isWrongEntry = true;
+    doc.wrongEntryReason = reason;
+    doc.wrongEntryDescription = reason === 'other' ? description : null;
+    doc.wrongEntryMarkedByMemberId = authUser._id;
+    doc.wrongEntryMarkedAt = new Date();
+    doc.status = 'wrong_entry';
+    await doc.save();
+
+    const labels = toVisitorLabels(doc.visitorType || 'guest');
+
+    // Get approver info
+    const approvedByUser = doc.approvedByUserId
+      ? await User.findById(doc.approvedByUserId, { fullName: 1 }).lean()
+      : null;
+
+    // Build exit notifier
+    let exitNotifier = null;
+    if (doc.entryLeftByGuardId) {
+      const guard = await User.findById(doc.entryLeftByGuardId, { fullName: 1 }).lean();
+      exitNotifier = guard ? { name: `${guard.fullName || 'Guard'} (Security)`, role: 'guard' } : null;
+    } else if (doc.entryLeftByMemberId) {
+      const guardOnDuty = await User.findOne({
+        role: 'guard',
+        'guardSocieties.societyId': doc.societyId,
+        'guardSocieties.isOnDuty': true,
+      }, { fullName: 1 }).lean();
+      if (guardOnDuty) {
+        exitNotifier = { name: `${guardOnDuty.fullName || 'Guard'} (Security)`, role: 'guard' };
+      } else {
+        const member = await User.findById(doc.entryLeftByMemberId, { fullName: 1 }).lean();
+        exitNotifier = member ? { name: member.fullName || 'Member', role: 'member' } : null;
+      }
+    }
+
+    const payload = {
+      requestId: doc.requestId,
+      status: 'Wrong Entry',
+      statusKey: 'wrong_entry',
+      isWrongEntry: true,
+      category: labels.category,
+      visitorType: labels.visitorType,
+      unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
+      guest: {
+        name: doc.guestName,
+        countryCode: doc.guestCountryCode || '+91',
+        phoneNumber: doc.guestPhoneNumber,
+        imageUrl: doc.guestImageUrl || null,
+      },
+      entryAt: doc.entryAllowedAt ? toISTDateTimeLabel(doc.entryAllowedAt) : null,
+      approver: approvedByUser ? { name: approvedByUser.fullName || null } : null,
+      exitAt: doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null,
+      exitNotifier,
+      wrongEntryMarkedAt: toISTDateTimeLabel(doc.wrongEntryMarkedAt),
+      wrongEntryNotifier: { name: authUser.fullName || 'Member' },
+      wrongEntryReason: reason,
+      wrongEntryDescription: doc.wrongEntryDescription || null,
+    };
+
+    return sendSuccessResponse(res, 200, 'Visitor marked as wrong entry successfully', { data: payload });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to mark visitor as wrong entry'));
+  }
+};
+
 module.exports = {
   getRecentGuestsForGuard,
   listGuestEntryRequestsForGuard,
@@ -1998,6 +2180,7 @@ module.exports = {
   allowGuestEntry,
   allowGuestExit,
   allowGuestExitForMember,
+  markWrongEntryForMember,
   updateGuestEntryRequestPhoto,
 };
 
