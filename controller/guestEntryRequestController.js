@@ -1140,6 +1140,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             companyName: 1,
             companyImageUrl: 1,
             vehicleNumber: 1,
+            isPrivateInvite: 1,
             validFrom: 1,
             validTill: 1,
             status: 1,
@@ -1155,6 +1156,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             visitorName: 1,
             workCategory: 1,
             companyName: 1,
+            isPrivateInvite: 1,
             validFrom: 1,
             validTill: 1,
             status: 1,
@@ -1185,20 +1187,19 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           category: labels.category,
           visitorType: labels.visitorType,
           requestedOn: doc.validFrom ? toISTDateTimeLabel(doc.validFrom) : null,
-          unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
           guest: {
             name: displayName,
-            countryCode: null,
-            phoneNumber: null,
             imageUrl: normalizeString(doc.companyImageUrl) || null,
             companyName: doc.companyName || null,
             workCategory: doc.workCategory || null,
           },
-          accompanyingCount: '0',
-          vehicleNumber: doc.vehicleNumber || null,
           validityLabel,
           isPreApproval: true,
           isSilentDelivery: doc.visitorType === 'delivery_executive' ? Boolean(doc.isSilentDelivery) : null,
+          isPrivateInvite:
+            doc.visitorType === 'taxi_vehicle_driver' || doc.visitorType === 'other_visitor'
+              ? Boolean(doc.isPrivateInvite)
+              : null,
           _sortAt: doc.createdAt || doc.validFrom || doc.validTill || null,
         };
       };
@@ -1280,17 +1281,10 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           category: VISITOR_TYPE_LABELS.guest.category,
           visitorType: VISITOR_TYPE_LABELS.guest.visitorType,
           requestedOn: invite.validFrom ? toISTDateTimeLabel(invite.validFrom) : null,
-          unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
           guest: {
             name: guest?.name || null,
-            countryCode: guest?.countryCode || '+91',
-            phoneNumber: guest?.phoneNumber || null,
             imageUrl: guestImageUrl,
-            companyName: null,
-            workCategory: null,
           },
-          accompanyingCount: '0',
-          vehicleNumber: null,
           validityLabel,
           isPreApproval: true,
           isPrivateInvite: Boolean(invite.isPrivateInvite),
@@ -1436,11 +1430,6 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             leftAt: doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null,
             exitNotifier,
             unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
-            member: {
-              name: authUser.fullName || null,
-              countryCode: authUser.countryCode || '+91',
-              phoneNumber: authUser.phoneNumber || null,
-            },
             approvedBy: approvedByUser
               ? {
                   name: approvedByUser.fullName
@@ -1481,12 +1470,17 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           preApprovalId: 1,
           visitorType: 1,
           visitorName: 1,
+          companyId: 1,
           companyName: 1,
           companyImageUrl: 1,
+          isSilentDelivery: 1,
           validFrom: 1,
           validTill: 1,
           status: 1,
           createdAt: 1,
+          cancelledReason: 1,
+          cancelledDescription: 1,
+          cancelledAt: 1,
           invitedByUserId: 1,
         }
       ).lean(),
@@ -1496,13 +1490,18 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           preApprovalId: 1,
           visitorType: 1,
           visitorName: 1,
+          companyId: 1,
           companyName: 1,
           companyImageUrl: 1,
           vehicleNumber: 1,
+          isPrivateInvite: 1,
           validFrom: 1,
           validTill: 1,
           status: 1,
           createdAt: 1,
+          cancelledReason: 1,
+          cancelledDescription: 1,
+          cancelledAt: 1,
           invitedByUserId: 1,
         }
       ).lean(),
@@ -1514,10 +1513,14 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           visitorName: 1,
           workCategory: 1,
           companyName: 1,
+          isPrivateInvite: 1,
           validFrom: 1,
           validTill: 1,
           status: 1,
           createdAt: 1,
+          cancelledReason: 1,
+          cancelledDescription: 1,
+          cancelledAt: 1,
           invitedByUserId: 1,
         }
       ).lean(),
@@ -1529,6 +1532,9 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       const fromLabel = toISTDateTimeLabelNoComma(preDoc.validFrom);
       const tillLabel = toISTDateTimeLabelNoComma(preDoc.validTill);
       const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
+      const invitedByUser = preDoc.invitedByUserId
+        ? await User.findById(preDoc.invitedByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
+        : null;
 
       return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
         data: {
@@ -1538,24 +1544,39 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           category: labels.category,
           visitorType: labels.visitorType,
           requestedOn: preDoc.validFrom ? toISTDateTimeLabel(preDoc.validFrom) : null,
+          validFrom: preDoc.validFrom ? toISTDateTimeLabel(preDoc.validFrom) : null,
+          validTill: preDoc.validTill ? toISTDateTimeLabel(preDoc.validTill) : null,
+          createdAt: preDoc.createdAt ? toISTDateTimeLabel(preDoc.createdAt) : null,
+          validityLabel,
           unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
-          member: {
-            name: authUser.fullName || null,
-            countryCode: authUser.countryCode || '+91',
-            phoneNumber: authUser.phoneNumber || null,
-          },
+          approver: invitedByUser
+            ? {
+                name: invitedByUser.fullName || null,
+                countryCode: invitedByUser.countryCode || '+91',
+                phoneNumber: invitedByUser.phoneNumber || null,
+              }
+            : null,
           guest: {
-            name: preDoc.visitorName || null,
+            name: normalizeString(preDoc.visitorName) || null,
             countryCode: null,
             phoneNumber: null,
             imageUrl: normalizeString(preDoc.companyImageUrl) || null,
-            companyName: preDoc.companyName || null,
-            workCategory: preDoc.workCategory || null,
+            companyId: normalizeString(preDoc.companyId) || null,
+            companyName: normalizeString(preDoc.companyName) || null,
+            workCategory: normalizeString(preDoc.workCategory) || null,
           },
           accompanyingCount: '0',
           vehicleNumber: preDoc.vehicleNumber || null,
-          validityLabel,
           isPreApproval: true,
+          isSilentDelivery:
+            preDoc.visitorType === 'delivery_executive' ? Boolean(preDoc.isSilentDelivery) : null,
+          isPrivateInvite:
+            preDoc.visitorType === 'taxi_vehicle_driver' || preDoc.visitorType === 'other_visitor'
+              ? Boolean(preDoc.isPrivateInvite)
+              : null,
+          cancelledReason: normalizeString(preDoc.cancelledReason) || null,
+          cancelledDescription: normalizeString(preDoc.cancelledDescription) || null,
+          cancelledAt: preDoc.cancelledAt ? toISTDateTimeLabel(preDoc.cancelledAt) : null,
         },
       });
     }
@@ -1577,6 +1598,9 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       const invitedByUser = guestInvite.invitedByUserId
         ? await User.findById(guestInvite.invitedByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
         : null;
+      const cancelledByUser = guestInvite.cancelledByUserId
+        ? await User.findById(guestInvite.cancelledByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
+        : null;
 
       const guests = (guestInvite.guests || []).map((g) => ({
         guestId: g.guestId,
@@ -1590,20 +1614,16 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       return sendSuccessResponse(res, 200, 'Guest invite fetched successfully', {
         data: {
           requestId: guestInvite.inviteId,
-          inviteType: guestInvite.type,
           status: inviteStatusLabel(guestInvite.status),
           statusKey: guestInvite.status === 'active' ? 'approved' : guestInvite.status,
           category: 'Guest',
           visitorType: 'Guest',
+          inviteType: guestInvite.type,
           isPrivateInvite: guestInvite.isPrivateInvite || false,
           requestedOn: guestInvite.createdAt ? toISTDateTimeLabel(guestInvite.createdAt) : null,
+          validityLabel,
           unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
-          member: {
-            name: authUser.fullName || null,
-            countryCode: authUser.countryCode || '+91',
-            phoneNumber: authUser.phoneNumber || null,
-          },
-          invitedBy: invitedByUser
+          approver: invitedByUser
             ? {
                 name: invitedByUser.fullName || null,
                 countryCode: invitedByUser.countryCode || '+91',
@@ -1611,9 +1631,18 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
               }
             : null,
           guests,
-          validityLabel,
           maxEntries: guestInvite.type === 'frequent' ? null : guestInvite.maxEntries,
           usedEntries: Array.isArray(guestInvite.entryLogs) ? guestInvite.entryLogs.length : 0,
+          cancelledReason: normalizeString(guestInvite.cancelledReason) || null,
+          cancelledDescription: normalizeString(guestInvite.cancelledDescription) || null,
+          cancelledAt: guestInvite.cancelledAt ? toISTDateTimeLabel(guestInvite.cancelledAt) : null,
+          cancelledBy: cancelledByUser
+            ? {
+                name: cancelledByUser.fullName || null,
+                countryCode: cancelledByUser.countryCode || '+91',
+                phoneNumber: cancelledByUser.phoneNumber || null,
+              }
+            : null,
           isGuestInvite: true,
         },
       });
