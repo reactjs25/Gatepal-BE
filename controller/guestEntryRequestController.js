@@ -1732,6 +1732,45 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         arrivedAt: g.arrivedAt ? toISTDateTimeLabel(g.arrivedAt) : null,
       }));
 
+      let guestList = [];
+      if (guestInvite.type === 'group') {
+        const entryDocs = await GuestEntryRequest.find(
+          { guestInviteId: guestInvite._id },
+          {
+            requestId: 1,
+            status: 1,
+            guestName: 1,
+            guestCountryCode: 1,
+            guestPhoneNumber: 1,
+            guestImageUrl: 1,
+            accompanyingCount: 1,
+            vehicleNumber: 1,
+            entryAllowedAt: 1,
+            entryLeftAt: 1,
+            isWrongEntry: 1,
+          }
+        )
+          .sort({ createdAt: -1 })
+          .lean();
+
+        guestList = (entryDocs || []).map((entry) => ({
+          requestId: entry.requestId,
+          status: toMemberStatusLabel(entry.status),
+          statusKey: entry.status,
+          guest: {
+            name: entry.guestName || null,
+            countryCode: entry.guestCountryCode || '+91',
+            phoneNumber: entry.guestPhoneNumber || null,
+            imageUrl: entry.guestImageUrl || null,
+          },
+          entryAt: entry.entryAllowedAt ? toISTDateTimeLabel(entry.entryAllowedAt) : null,
+          leftAt: entry.entryLeftAt ? toISTDateTimeLabel(entry.entryLeftAt) : null,
+          accompanyingCount: String(entry.accompanyingCount || 0),
+          vehicleNumber: entry.vehicleNumber || null,
+          isWrongEntry: entry.isWrongEntry || false,
+        }));
+      }
+
       return sendSuccessResponse(res, 200, 'Guest invite fetched successfully', {
         data: {
           requestId: guestInvite.inviteId,
@@ -1752,6 +1791,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
               }
             : null,
           guests,
+          guestList,
           maxEntries: guestInvite.type === 'frequent' ? null : guestInvite.maxEntries,
           usedEntries: Array.isArray(guestInvite.entryLogs) ? guestInvite.entryLogs.length : 0,
           cancelledReason: normalizeString(guestInvite.cancelledReason) || null,
