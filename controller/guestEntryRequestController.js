@@ -1123,6 +1123,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             visitorName: 1,
             companyName: 1,
             companyImageUrl: 1,
+            isSilentDelivery: 1,
             validFrom: 1,
             validTill: 1,
             status: 1,
@@ -1197,6 +1198,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           vehicleNumber: doc.vehicleNumber || null,
           validityLabel,
           isPreApproval: true,
+          isSilentDelivery: doc.visitorType === 'delivery_executive' ? Boolean(doc.isSilentDelivery) : null,
           _sortAt: doc.createdAt || doc.validFrom || doc.validTill || null,
         };
       };
@@ -1222,6 +1224,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           status: 1,
           createdAt: 1,
           invitedByUserId: 1,
+          isPrivateInvite: 1,
         }
       ).lean();
 
@@ -1290,6 +1293,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           vehicleNumber: null,
           validityLabel,
           isPreApproval: true,
+          isPrivateInvite: Boolean(invite.isPrivateInvite),
           _sortAt: invite.createdAt || invite.validFrom || invite.validTill || null,
         };
       };
