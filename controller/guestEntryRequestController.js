@@ -4,6 +4,7 @@ const GuestInvite = require('../model/guestInviteSchema');
 const MemberUnit = require('../model/memberUnitSchema');
 const User = require('../model/userSchema');
 const TaxiDriverCompany = require('../model/taxiDriverCompanySchema');
+const DeliveryCompany = require('../model/deliveryCompanySchema');
 const DeliveryPreApproval = require('../model/deliveryPreApprovalSchema');
 const TaxiDriverPreApproval = require('../model/taxiDriverPreApprovalSchema');
 const OtherVisitorPreApproval = require('../model/otherVisitorPreApprovalSchema');
@@ -11,6 +12,7 @@ const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { normalizeString } = require('../utils/strings');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
+const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const { normalizeCountryCode, normalizeDigits, normalizePhoneDigits, isTenDigitPhone } = require('../utils/phoneNumber');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
@@ -91,6 +93,27 @@ const resolveTaxiCompanyName = async (companyName) => {
 
   const fallback = getTaxiCompanyInfo(trimmed);
   return fallback?.name || null;
+};
+
+const resolveCompanyLogo = ({ visitorType, companyName, deliveryCompanyLogos }) => {
+  const trimmed = normalizeString(companyName);
+  if (!trimmed) return null;
+
+  if (visitorType === 'delivery_executive') {
+    if (!deliveryCompanyLogos) return '/assets/Default.png';
+    const logo = deliveryCompanyLogos.get(trimmed.toLowerCase());
+    return logo || '/assets/Default.png';
+  }
+
+  if (visitorType === 'taxi_vehicle_driver') {
+    return getTaxiCompanyInfo(trimmed)?.imageUrl || null;
+  }
+
+  if (visitorType === 'other_visitor') {
+    return getOtherVisitorCompanyInfo(trimmed)?.imageUrl || null;
+  }
+
+  return null;
 };
 
 const findDeliveryPreApproval = async ({ societyId, unitId, companyName, now }) => {
@@ -1013,6 +1036,28 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       .limit(50)
       .lean();
 
+    const deliveryCompanyNames = Array.from(
+      new Set(
+        (items || [])
+          .filter((d) => d.visitorType === 'delivery_executive')
+          .map((d) => normalizeString(d.visitorCompanyName).toLowerCase())
+          .filter(Boolean)
+      )
+    );
+
+    const deliveryCompanies = deliveryCompanyNames.length
+      ? await DeliveryCompany.find(
+          { name: { $in: deliveryCompanyNames.map((name) => new RegExp(`^${escapeRegex(name)}$`, 'i')) } },
+          { name: 1, imageUrl: 1 }
+        ).lean()
+      : [];
+
+    const deliveryCompanyLogos = new Map(
+      deliveryCompanies
+        .map((company) => [normalizeString(company.name).toLowerCase(), company.imageUrl || null])
+        .filter(([, imageUrl]) => Boolean(imageUrl))
+    );
+
     const toStatusLabel = (key) =>
       key === 'approved'
         ? 'Pre-Approved'
@@ -1033,6 +1078,11 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
     const mapped = (items || []).map((d) => {
       const statusLabel = toStatusLabel(d.status);
       const labels = toVisitorLabels(d.visitorType || 'guest');
+      const companyLogo = resolveCompanyLogo({
+        visitorType: d.visitorType,
+        companyName: d.visitorCompanyName,
+        deliveryCompanyLogos,
+      });
       return {
         requestId: d.requestId,
         status: statusLabel,
@@ -1048,6 +1098,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           imageUrl: d.guestImageUrl || null,
           companyName: d.visitorCompanyName || null,
           workCategory: d.visitorWorkCategory || null,
+          companyLogo,
         },
         accompanyingCount: String(d.accompanyingCount || 0),
         vehicleNumber: d.vehicleNumber || null,
@@ -1179,6 +1230,13 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         const tillLabel = toISTDateTimeLabelNoComma(doc.validTill);
         const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
         const displayName = doc.visitorName || null;
+        const preApprovalLogo =
+          normalizeString(doc.companyImageUrl) ||
+          resolveCompanyLogo({
+            visitorType: doc.visitorType,
+            companyName: doc.companyName,
+            deliveryCompanyLogos,
+          });
 
         return {
           requestId: doc.preApprovalId,
@@ -1192,6 +1250,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             imageUrl: normalizeString(doc.companyImageUrl) || null,
             companyName: doc.companyName || null,
             workCategory: doc.workCategory || null,
+            companyLogo: preApprovalLogo || null,
           },
           validityLabel,
           isPreApproval: true,
@@ -1284,6 +1343,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           guest: {
             name: guest?.name || null,
             imageUrl: guestImageUrl,
+            companyLogo: null,
           },
           validityLabel,
           isPreApproval: true,
