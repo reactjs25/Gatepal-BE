@@ -116,6 +116,27 @@ const resolveCompanyLogo = ({ visitorType, companyName, deliveryCompanyLogos }) 
   return null;
 };
 
+const resolveCompanyLogoForRequest = async ({ visitorType, companyName }) => {
+  const trimmed = normalizeString(companyName);
+  if (!trimmed) return null;
+
+  if (visitorType === 'delivery_executive') {
+    const nameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+    const record = await DeliveryCompany.findOne({ name: nameRegex }, { imageUrl: 1 }).lean();
+    return record?.imageUrl || '/assets/Default.png';
+  }
+
+  if (visitorType === 'taxi_vehicle_driver') {
+    return getTaxiCompanyInfo(trimmed)?.imageUrl || null;
+  }
+
+  if (visitorType === 'other_visitor') {
+    return getOtherVisitorCompanyInfo(trimmed)?.imageUrl || null;
+  }
+
+  return null;
+};
+
 const findDeliveryPreApproval = async ({ societyId, unitId, companyName, now }) => {
   if (!societyId || !unitId) return null;
   const trimmedCompany = normalizeString(companyName);
@@ -322,7 +343,7 @@ const resolveUnitResidents = async ({ societyId, wingNameLower, unitNumberLower 
   return unique;
 };
 
-const toGuardCardPayload = ({ reqDoc, approvedByUser }) => {
+const toGuardCardPayload = ({ reqDoc, approvedByUser, companyLogo }) => {
   const statusLabel = getStatusLabel(reqDoc.status);
 
 
@@ -349,6 +370,7 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser }) => {
     },
     imageUrl: reqDoc.guestImageUrl || null,
     companyName: reqDoc.visitorCompanyName || null,
+    companyLogo: companyLogo || null,
     workCategory: reqDoc.visitorWorkCategory || null,
     approvedBy: approvedByUser
       ? {
@@ -558,6 +580,28 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
       .limit(100)
       .lean();
 
+    const deliveryCompanyNames = Array.from(
+      new Set(
+        (docs || [])
+          .filter((d) => d.visitorType === 'delivery_executive')
+          .map((d) => normalizeString(d.visitorCompanyName).toLowerCase())
+          .filter(Boolean)
+      )
+    );
+
+    const deliveryCompanies = deliveryCompanyNames.length
+      ? await DeliveryCompany.find(
+          { name: { $in: deliveryCompanyNames.map((name) => new RegExp(`^${escapeRegex(name)}$`, 'i')) } },
+          { name: 1, imageUrl: 1 }
+        ).lean()
+      : [];
+
+    const deliveryCompanyLogos = new Map(
+      deliveryCompanies
+        .map((company) => [normalizeString(company.name).toLowerCase(), company.imageUrl || null])
+        .filter(([, imageUrl]) => Boolean(imageUrl))
+    );
+
     const approverIds = Array.from(
       new Set(
         docs
@@ -574,7 +618,12 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
 
     const mapped = docs.map((doc) => {
       const approvedByUser = doc.approvedByUserId ? approverById.get(String(doc.approvedByUserId)) : null;
-      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+      const companyLogo = resolveCompanyLogo({
+        visitorType: doc.visitorType,
+        companyName: doc.visitorCompanyName,
+        deliveryCompanyLogos,
+      });
+      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
       return {
         ...payload,
         statusKey: doc.status,
@@ -949,7 +998,11 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
         requests: await Promise.all(
           sameSociety.map(async (d) => {
             const approvedByUser = d.approvedByUserId ? await User.findById(d.approvedByUserId).lean() : null;
-            return toGuardCardPayload({ reqDoc: d, approvedByUser });
+            const companyLogo = await resolveCompanyLogoForRequest({
+              visitorType: d.visitorType,
+              companyName: d.visitorCompanyName,
+            });
+            return toGuardCardPayload({ reqDoc: d, approvedByUser, companyLogo });
           })
         ),
       };
@@ -971,7 +1024,11 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
     }
 
     const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
-    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+    const companyLogo = await resolveCompanyLogoForRequest({
+      visitorType: doc.visitorType,
+      companyName: doc.visitorCompanyName,
+    });
+    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
 
     return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', { data: payload });
   } catch (error) {
@@ -1865,7 +1922,11 @@ const allowGuestEntry = async (req, res, next) => {
 
     if (doc.status === 'entered') {
       const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
-      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+      const companyLogo = await resolveCompanyLogoForRequest({
+        visitorType: doc.visitorType,
+        companyName: doc.visitorCompanyName,
+      });
+      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
       return sendSuccessResponse(res, 200, 'Entry already allowed', { data: payload });
     }
 
@@ -1878,7 +1939,11 @@ const allowGuestEntry = async (req, res, next) => {
     await doc.save();
 
     const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
-    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+    const companyLogo = await resolveCompanyLogoForRequest({
+      visitorType: doc.visitorType,
+      companyName: doc.visitorCompanyName,
+    });
+    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
     return sendSuccessResponse(res, 200, 'Entry allowed successfully', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to allow entry'));
@@ -1950,7 +2015,11 @@ const allowGuestExit = async (req, res, next) => {
 
     if (doc.status === 'left') {
       const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
-      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+      const companyLogo = await resolveCompanyLogoForRequest({
+        visitorType: doc.visitorType,
+        companyName: doc.visitorCompanyName,
+      });
+      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
       return sendSuccessResponse(res, 200, 'Exit already allowed', { data: payload });
     }
 
@@ -1961,7 +2030,11 @@ const allowGuestExit = async (req, res, next) => {
     await doc.save();
 
     const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
-    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser });
+    const companyLogo = await resolveCompanyLogoForRequest({
+      visitorType: doc.visitorType,
+      companyName: doc.visitorCompanyName,
+    });
+    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
     return sendSuccessResponse(res, 200, 'Exit allowed successfully', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to allow exit'));
@@ -2266,6 +2339,7 @@ const markWrongEntryForMember = async (req, res, next) => {
       }
     }
 
+    const exitAt = doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null;
     const payload = {
       requestId: doc.requestId,
       status: 'Wrong Entry',
@@ -2282,8 +2356,8 @@ const markWrongEntryForMember = async (req, res, next) => {
       },
       entryAt: doc.entryAllowedAt ? toISTDateTimeLabel(doc.entryAllowedAt) : null,
       approver: approvedByUser ? { name: approvedByUser.fullName || null } : null,
-      exitAt: doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null,
-      exitNotifier,
+      ...(exitAt ? { exitAt } : {}),
+      ...(exitNotifier ? { exitNotifier } : {}),
       wrongEntryMarkedAt: toISTDateTimeLabel(doc.wrongEntryMarkedAt),
       wrongEntryNotifier: { name: authUser.fullName || 'Member' },
       wrongEntryReason: reason,
