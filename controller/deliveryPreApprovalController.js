@@ -206,7 +206,7 @@ const createDeliveryPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
-      isPrivateInvite,
+      isSilentDelivery,
     } = req.body || {};
 
     let unitDoc;
@@ -250,7 +250,7 @@ const createDeliveryPreApproval = async (req, res, next) => {
       return next(e);
     }
 
-    const silentFlag = Boolean(isPrivateInvite);
+    const silentFlag = Boolean(isSilentDelivery);
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
 
@@ -294,7 +294,7 @@ const createDeliveryPreApproval = async (req, res, next) => {
           name: member?.fullName || authUser.fullName || null,
         },
         validityLabel,
-        isPrivateInvite: approval.isSilentDelivery,
+        isSilentDelivery: approval.isSilentDelivery,
       },
     });
   } catch (error) {
@@ -327,7 +327,7 @@ const updateDeliveryPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
-      isPrivateInvite,
+      isSilentDelivery,
     } = req.body || {};
 
     if (!preApprovalId) return next(createHttpError('preApprovalId is required', 400));
@@ -386,7 +386,7 @@ const updateDeliveryPreApproval = async (req, res, next) => {
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
-    const silentFlag = Boolean(isPrivateInvite);
+    const silentFlag = Boolean(isSilentDelivery);
 
     if (resolvedCompany) {
       approval.companyId = resolvedCompany.id || null;
@@ -396,7 +396,7 @@ const updateDeliveryPreApproval = async (req, res, next) => {
     if (resolvedVisitorName !== undefined) {
       approval.visitorName = resolvedVisitorName || null;
     }
-    if (isPrivateInvite !== undefined) {
+    if (isSilentDelivery !== undefined) {
       approval.isSilentDelivery = silentFlag;
     }
     if (window) {
@@ -434,7 +434,7 @@ const updateDeliveryPreApproval = async (req, res, next) => {
         validFrom: approval.validFrom,
         validTill: approval.validTill,
         validityLabel,
-        isPrivateInvite: approval.isSilentDelivery,
+        isSilentDelivery: approval.isSilentDelivery,
       },
     });
   } catch (error) {
