@@ -577,6 +577,8 @@ const getUnitDashboard = async (req, res, next) => {
       },
     };
 
+    const shouldShowCompleteProfile = addedItems < 3;
+
     const unit = {
       id: String(unitDoc._id),
       wingName: unitDoc.wingName,
@@ -596,10 +598,10 @@ const getUnitDashboard = async (req, res, next) => {
       {
         society,
       },
-      {
+      ...(shouldShowCompleteProfile ? [{
         actionCardType: 'completeProfile',
         completeProfile,
-      },
+      }] : []),
       {
         recent_announcement: 'announcement',
         announcement: [
