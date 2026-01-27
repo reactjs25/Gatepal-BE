@@ -1724,6 +1724,10 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         name: g.name,
         countryCode: g.countryCode || '+91',
         phoneNumber: g.phoneNumber || null,
+        qrCodeImage:
+          guestInvite.type === 'group'
+            ? guestInvite.qrCodeImage || null
+            : g.qrCodeImage || null,
         hasArrived: g.hasArrived || false,
         arrivedAt: g.arrivedAt ? toISTDateTimeLabel(g.arrivedAt) : null,
       }));
