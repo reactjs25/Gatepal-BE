@@ -12,6 +12,7 @@ const {
   getRecentGuestsForGuard,
   listGuestEntryRequestsForGuard,
   createGuestEntryRequest,
+  createOnboardedVisitorEntry,
   getGuestEntryRequestForGuard,
   allowGuestEntry,
   allowGuestExit,
@@ -33,6 +34,7 @@ router.patch('/entryDetails', userAuthMiddleware, updateGuestInviteEntryDetails)
 router.post('/guestEntryRequests/recentGuests', userAuthMiddleware, getRecentGuestsForGuard);
 router.post('/guestEntryRequests/list', userAuthMiddleware, listGuestEntryRequestsForGuard);
 router.post('/guestEntryRequests', userAuthMiddleware, createGuestEntryRequest);
+router.post('/visitorEntry', userAuthMiddleware, createOnboardedVisitorEntry);
 router.get('/guestEntryRequests', userAuthMiddleware, getGuestEntryRequestForGuard);
 router.post('/guestEntryRequests/allowEntry', userAuthMiddleware, allowGuestEntry);
 router.post('/guestEntryRequests/allowExit', userAuthMiddleware, allowGuestExit);

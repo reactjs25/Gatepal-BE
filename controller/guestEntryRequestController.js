@@ -6,6 +6,7 @@ const User = require('../model/userSchema');
 const { lookupSocietyAdminByMobile } = require('../utils/societyAdminUtils');
 const TaxiDriverCompany = require('../model/taxiDriverCompanySchema');
 const DeliveryCompany = require('../model/deliveryCompanySchema');
+const OtherVisitorCompany = require('../model/otherVisitorCompanySchema');
 const DeliveryPreApproval = require('../model/deliveryPreApprovalSchema');
 const TaxiDriverPreApproval = require('../model/taxiDriverPreApprovalSchema');
 const OtherVisitorPreApproval = require('../model/otherVisitorPreApprovalSchema');
@@ -128,11 +129,21 @@ const resolveCompanyLogoForRequest = async ({ visitorType, companyName }) => {
   }
 
   if (visitorType === 'taxi_vehicle_driver') {
-    return getTaxiCompanyInfo(trimmed)?.imageUrl || null;
+    // First check hardcoded list, then database
+    const hardcodedTaxi = getTaxiCompanyInfo(trimmed);
+    if (hardcodedTaxi?.imageUrl) return hardcodedTaxi.imageUrl;
+    const taxiNameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+    const taxiRecord = await TaxiDriverCompany.findOne({ name: taxiNameRegex }, { imageUrl: 1 }).lean();
+    return taxiRecord?.imageUrl || '/assets/Default.png';
   }
 
   if (visitorType === 'other_visitor') {
-    return getOtherVisitorCompanyInfo(trimmed)?.imageUrl || null;
+    // First check hardcoded list, then database
+    const hardcodedOther = getOtherVisitorCompanyInfo(trimmed);
+    if (hardcodedOther?.imageUrl) return hardcodedOther.imageUrl;
+    const otherNameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
+    const otherRecord = await OtherVisitorCompany.findOne({ name: otherNameRegex }, { imageUrl: 1 }).lean();
+    return otherRecord?.imageUrl || '/assets/Default.png';
   }
 
   return null;
@@ -2593,10 +2604,183 @@ const markWrongEntryForMember = async (req, res, next) => {
   }
 };
 
+/**
+ * Create entry request for an onboarded visitor (with QR code)
+ * Works for all visitor types: guest, delivery_executive, taxi_vehicle_driver, other_visitor
+ * POST /api/guard/visitorEntry
+ * Body: { userId, wingName, unitNumber, imageUrl?, vehicleNumber?, accompanyingCount? }
+ */
+const createOnboardedVisitorEntry = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+
+    const activeDuty = requireGuardOnDuty(authUser);
+
+    const userId = normalizeString(req.body?.userId);
+    const wingName = normalizeString(req.body?.wingName ?? req.body?.wing);
+    const unitNumber = normalizeString(req.body?.unitNumber ?? req.body?.unit);
+    const imageUrl = normalizeString(req.body?.imageUrl) || null;
+    const vehicleNumber = normalizeString(req.body?.vehicleNumber).toUpperCase() || null;
+    const accompanyingCountRaw = req.body?.accompanyingCount ?? req.body?.accompanyingPerson;
+    const accompanyingCountNumber = Number(accompanyingCountRaw);
+    const accompanyingCount = Number.isFinite(accompanyingCountNumber) && accompanyingCountNumber > 0 ? accompanyingCountNumber : 0;
+
+    if (!userId) return next(createHttpError('userId is required', 400));
+    if (!wingName) return next(createHttpError('wingName is required', 400));
+    if (!unitNumber) return next(createHttpError('unitNumber is required', 400));
+
+    // Fetch the onboarded visitor
+    const visitor = await User.findById(userId).lean();
+    if (!visitor) return next(createHttpError('Visitor not found', 404));
+    if (visitor.role !== 'visitor') return next(createHttpError('User is not an onboarded visitor', 400));
+
+    // Auto-fill from visitor profile
+    const visitorType = visitor.visitorType || 'guest';
+    if (!VISITOR_TYPES.includes(visitorType)) {
+      return next(createHttpError('Invalid visitor type', 400));
+    }
+
+    const guestName = visitor.fullName || 'Unknown Visitor';
+    const phoneDigits = normalizePhoneDigits(visitor.phoneNumber);
+    const countryCode = normalizeCountryCode(visitor.countryCode || '+91');
+    const companyName = visitor.visitorCompanyName || null;
+    const workCategory = visitor.visitorWorkCategory || null;
+
+    if (!phoneDigits) {
+      return next(createHttpError('Visitor does not have a valid phone number', 400));
+    }
+
+    // Check if visitor is already inside the society
+    const alreadyInsideEntry = await checkVisitorAlreadyInside({
+      societyId: activeDuty.societyId,
+      phoneDigits,
+    });
+    if (alreadyInsideEntry) {
+      return next(
+        createHttpError(
+          `This visitor is already inside the society (Entry: ${alreadyInsideEntry.requestId}). Please mark exit first.`,
+          409
+        )
+      );
+    }
+
+    // Use visitor's profile photo if no imageUrl provided
+    const finalImageUrl = imageUrl || visitor.profilePhoto || null;
+
+    // Resolve unit residents for approval
+    const recipientUserIds = await resolveUnitResidents({
+      societyId: activeDuty.societyId,
+      wingNameLower: wingName.toLowerCase(),
+      unitNumberLower: unitNumber.toLowerCase(),
+    });
+
+    if (!recipientUserIds || recipientUserIds.length === 0) {
+      return next(
+        createHttpError(
+          `No residents found for unit ${wingName}-${unitNumber}. Cannot send approval request.`,
+          404
+        )
+      );
+    }
+
+    // Find unit document for pre-approval check
+    const unitDoc = await MemberUnit.findOne({
+      societyId: activeDuty.societyId,
+      wingNameLower: wingName.toLowerCase(),
+      unitNumberLower: unitNumber.toLowerCase(),
+      $or: [
+        { occupancyStatus: 'currently_residing' },
+        { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
+      ],
+    }).lean();
+
+    const now = new Date();
+
+    // Check for pre-approval based on visitor type
+    const preApproval = unitDoc
+      ? await resolvePreApprovalForUnit({
+          visitorType,
+          societyId: activeDuty.societyId,
+          unitId: unitDoc._id,
+          companyName,
+          workCategory,
+          vehicleNumber,
+          guestName,
+          phoneDigits,
+          now,
+        })
+      : null;
+
+    const autoApproved = Boolean(preApproval);
+    const expiresAt = autoApproved ? null : new Date(Date.now() + 30 * 60 * 1000);
+
+    // Create GuestEntryRequest with visitorUserId linked
+    const entryRequest = await GuestEntryRequest.create({
+      societyId: activeDuty.societyId,
+      wingName,
+      wingNameLower: wingName.toLowerCase(),
+      unitNumber,
+      unitNumberLower: unitNumber.toLowerCase(),
+      createdByGuardId: authUser._id,
+      gateId: activeDuty.dutyGateId || null,
+      gateName: activeDuty.dutyGateName || null,
+      guestName,
+      guestCountryCode: countryCode,
+      guestPhoneNumber: phoneDigits,
+      guestPhoneDigits: phoneDigits,
+      guestImageUrl: finalImageUrl,
+      visitorType,
+      visitorUserId: visitor._id,
+      visitorCompanyName: companyName,
+      visitorWorkCategory: workCategory,
+      accompanyingCount,
+      vehicleNumber,
+      status: autoApproved ? 'approved' : 'pending',
+      approvedByUserId: autoApproved && preApproval.invitedByUserId ? preApproval.invitedByUserId : null,
+      approvedAt: autoApproved ? now : null,
+      expiresAt,
+      recipientUserIds,
+    });
+
+    const labels = toVisitorLabels(visitorType);
+    const companyLogo = await resolveCompanyLogoForRequest({ visitorType, companyName });
+
+    return sendSuccessResponse(res, 201, 'Visitor entry request created successfully', {
+      data: {
+        requestId: entryRequest.requestId,
+        status: getStatusLabel(entryRequest.status),
+        statusKey: entryRequest.status,
+        category: labels.category,
+        visitorType: labels.visitorType,
+        requestedOn: entryRequest.createdAt ? toISTDateTimeLabel(entryRequest.createdAt) : null,
+        expiresAt: entryRequest.expiresAt ? toISTDateTimeLabel(entryRequest.expiresAt) : null,
+        unit: { wingName, unitNumber },
+        guest: {
+          id: String(visitor._id),
+          name: guestName,
+          countryCode,
+          phoneNumber: phoneDigits,
+          imageUrl: finalImageUrl,
+          companyName,
+          companyLogo,
+          workCategory,
+        },
+        accompanyingCount: String(accompanyingCount),
+        vehicleNumber,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to create visitor entry request'));
+  }
+};
+
 module.exports = {
   getRecentGuestsForGuard,
   listGuestEntryRequestsForGuard,
   createGuestEntryRequest,
+  createOnboardedVisitorEntry,
   getGuestEntryRequestForGuard,
   listGuestEntryRequestsForMember,
   listGuestEntryRequestsForSocietyAdmin,
