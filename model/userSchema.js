@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
-const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10); // default 5 minutes
+const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10); 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 
 const MEMBER_OCCUPANT_TYPES = [
@@ -237,6 +237,28 @@ const userSchema = new mongoose.Schema(
     },
     readMeetingIds: {
       type: [String],
+      default: [],
+    },
+    fcmTokens: {
+      type: [{
+        token: {
+          type: String,
+          required: true,
+        },
+        deviceType: {
+          type: String,
+          enum: ['android', 'ios', 'web'],
+          default: 'android',
+        },
+        deviceId: {
+          type: String,
+          default: null,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      }],
       default: [],
     },
     lastAnnouncementsSeenAt: {

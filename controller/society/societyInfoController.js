@@ -400,7 +400,7 @@ const getSocietyInfo = async (req, res, next) => {
             else otherPets += 1;
         });
 
-        // Only send non-zero/non-null counts to frontend
+        
         const petsSummary = {
             title: 'Pets',
             ...(dogs ? { dogs } : {}),
@@ -409,7 +409,7 @@ const getSocietyInfo = async (req, res, next) => {
             ...(otherPets ? { others: otherPets } : {}),
         };
 
-        // missingUnits should reflect units requested via /notify, but not yet officially created.
+        
         const pendingMissing = await MissingUnitRequest.find(
             { societyId: society._id, status: 'pending' },
             { wingName: 1, wingNameLower: 1, unitNumber: 1, unitNumberLower: 1, requestCount: 1, lastRequestedAt: 1 }
@@ -425,7 +425,7 @@ const getSocietyInfo = async (req, res, next) => {
 
         const missingUnits = Object.keys(pendingByKey)
             .filter((key) => {
-                // If the unit exists officially, it should not appear (even if cleanup hasn't happened yet).
+                
                 return !officialStructureKeys.has(key);
             })
             .map((key) => {
@@ -460,7 +460,7 @@ const getSocietyInfoUnits = async (req, res, next) => {
 
         const { society, unitDoc } = await resolveSocietyForSocietyInfo(authUser, req);
 
-        // Members should only see their own unit.
+        
         if (authUser.role === 'member' && unitDoc) {
             const kind = classifyUnitGroup([unitDoc]);
             const occupancyCategory = kind || 'owner';
@@ -620,7 +620,7 @@ const getSocietyInfoResidents = async (req, res, next) => {
 
         const { society, unitDoc } = await resolveSocietyForSocietyInfo(authUser, req);
 
-        // Members should only see their own unit's residents.
+        
         if (authUser.role === 'member' && unitDoc) {
             const familyMembers = await FamilyMember.find({ unitId: unitDoc._id }).lean();
 
@@ -769,7 +769,7 @@ const getSocietyInfoResidents = async (req, res, next) => {
             };
         });
 
-        // Add primary registered occupants who aren't present in FamilyMember.
+        
         residents.unshift(...occupantResidents);
 
         const data = {
@@ -792,7 +792,7 @@ const getSocietyInfoVehicles = async (req, res, next) => {
 
         const { society, unitDoc } = await resolveSocietyForSocietyInfo(authUser, req);
 
-        // Members should only see their own unit's vehicles.
+        
         if (authUser.role === 'member' && unitDoc) {
             const canonicalUnitId = buildCanonicalUnitId(unitDoc);
             const vehicles = await Vehicle.find({ unitId: canonicalUnitId, deletedAt: null }).lean();
@@ -898,7 +898,7 @@ const getSocietyInfoPets = async (req, res, next) => {
 
         const { society, unitDoc } = await resolveSocietyForSocietyInfo(authUser, req);
 
-        // Members should only see their own unit's pets.
+        
         if (authUser.role === 'member' && unitDoc) {
             const canonicalUnitId = buildCanonicalUnitId(unitDoc);
             const pets = await Pet.find({ unitId: canonicalUnitId, deletedAt: null }).lean();
@@ -971,7 +971,7 @@ const getSocietyInfoPets = async (req, res, next) => {
             else otherPets += 1;
         });
 
-        // Only send non-zero/non-null counts to frontend
+        
         const petsSummary = {
             title: 'Pets',
             ...(dogs ? { dogs } : {}),

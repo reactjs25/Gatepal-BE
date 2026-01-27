@@ -43,13 +43,13 @@ const guestEntryRequestSchema = new mongoose.Schema(
     },
     guestImageUrl: { type: String, trim: true, default: null },
 
-    // Visitor metadata (used for delivery executive / other visitor types)
+    
     visitorType: { type: String, enum: VISITOR_TYPES, default: 'guest', index: true },
     visitorUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     visitorCompanyName: { type: String, trim: true, default: null },
     visitorWorkCategory: { type: String, trim: true, default: null },
 
-    // Link to GuestInvite if created from QR scan
+    
     guestInviteId: { type: mongoose.Schema.Types.ObjectId, ref: 'GuestInvite', default: null, index: true },
 
     accompanyingCount: { type: Number, default: 0 },
@@ -58,7 +58,7 @@ const guestEntryRequestSchema = new mongoose.Schema(
     status: { type: String, enum: REQUEST_STATUSES, default: 'pending', index: true },
     expiresAt: { type: Date, default: null, index: true },
 
-    // Snapshot of who should receive the request (computed at creation time)
+    
     recipientUserIds: {
       type: [mongoose.Schema.Types.ObjectId],
       ref: 'User',
@@ -77,7 +77,7 @@ const guestEntryRequestSchema = new mongoose.Schema(
     entryLeftByMemberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     entryLeftAt: { type: Date, default: null },
 
-    // Wrong entry tracking
+    
     isWrongEntry: { type: Boolean, default: false },
     wrongEntryReason: { type: String, trim: true, default: null },
     wrongEntryDescription: { type: String, trim: true, default: null },

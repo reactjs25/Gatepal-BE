@@ -8,6 +8,7 @@ const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateLabel, toISTTimeLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
+const { sendToSocietyMembers } = require('../../utils/pushNotificationService');
 
 const resolveAdminSociety = async (authUser) => {
   if (!authUser) throw createHttpError('Unauthorized', 401);
@@ -270,6 +271,25 @@ const createMeeting = async (req, res, next) => {
       discussionHtml: validated.discussionHtml || '',
       discussionPhotos: validated.discussionPhotos || [],
       discussionAttachments: validated.discussionAttachments || [],
+    });
+
+    // Send push notification to all society members
+    const meetingDateTime = parseMeetingDateTime(doc.meetingDate, doc.meetingStartingFrom);
+    const dateLabel = meetingDateTime ? toISTDateLabel(meetingDateTime) : doc.meetingDate;
+    const timeLabel = meetingDateTime ? toISTTimeLabel(meetingDateTime) : doc.meetingStartingFrom;
+    
+    sendToSocietyMembers(
+      society._id,
+      'New Meeting Scheduled',
+      `Meeting on ${dateLabel} at ${timeLabel}. Venue: ${validated.venue}`,
+      {
+        type: 'meeting',
+        meetingId: doc.meetingId,
+        societyId: String(society._id),
+      },
+      { roles: ['member'] }
+    ).catch((err) => {
+      console.error('[Meeting] Failed to send push notification:', err.message);
     });
 
     return sendSuccessResponse(res, 201, 'Meeting created successfully.', {

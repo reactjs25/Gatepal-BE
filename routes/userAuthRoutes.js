@@ -1,5 +1,5 @@
 const express = require('express');
-const { login, requestPasswordOtp, verifyOtp, resetPassword } = require('../controller/userAuthController');
+const { login, requestPasswordOtp, verifyOtp, resetPassword, registerFcmToken, removeFcmToken } = require('../controller/userAuthController');
 const { registerUser, verifyRegistrationOtp, completeOnboarding } = require('../controller/userRegistrationController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 const { notifyMissingLocation } = require('../controller/societyHierarchy');
@@ -14,6 +14,10 @@ router.post('/forgotPassword', requestPasswordOtp);
 router.post('/verifyOtp', verifyOtp);
 router.post('/resetPassword', resetPassword);
 router.post('/notify', userAuthMiddleware, notifyMissingLocation);
+
+
+router.post('/fcm-token', userAuthMiddleware, registerFcmToken);
+router.delete('/fcm-token', userAuthMiddleware, removeFcmToken);
 
 module.exports = router;
 

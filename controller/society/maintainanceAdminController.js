@@ -10,6 +10,7 @@ const { normalizeString } = require('../../utils/strings');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { toDateOnly, toISTDateLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { sendToUser } = require('../../utils/pushNotificationService');
 
 const MONTH_LABELS = [
   'January',
@@ -38,7 +39,7 @@ const MAINTENANCE_REJECT_REASON_CODES = new Set(
   MAINTENANCE_REJECT_REASON_CATEGORIES.map((name) => name.toLowerCase().replace(/\s+/g, '_'))
 );
 
-// Font paths for PDF generation (supports ₹ symbol)
+
 const FONT_PATH = path.join(__dirname, '../../assets/fonts');
 const FONTS = {
   regular: path.join(FONT_PATH, 'NotoSans-Regular.ttf'),
@@ -95,7 +96,7 @@ const buildMaintenanceReceiptPdf = async ({
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const chunks = [];
 
-    // Register custom fonts that support ₹ symbol
+    
     doc.registerFont('NotoSans', FONTS.regular);
     doc.registerFont('NotoSans-Bold', FONTS.bold);
     doc.registerFont('NotoSans-Italic', FONTS.italic);
@@ -107,16 +108,16 @@ const buildMaintenanceReceiptPdf = async ({
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const left = doc.page.margins.left;
 
-    // Draw GatePal logo from image
+    
     doc.image(LOGO_PATH, left, 35, { height: 30 });
 
-    // Society Name
+    
     doc.moveDown(1.5);
     doc.fillColor('#000000').fontSize(12).font('NotoSans-Bold');
     doc.text(`Society Name: ${toTitleCase(society.societyName)}`, left, 75);
     doc.font('NotoSans');
 
-    // Address on separate line
+    
     const addressParts = [society.address, society.city, society.state, society.country].filter(Boolean);
     if (addressParts.length) {
       doc.fontSize(10).text(`Address: ${addressParts.join(', ')}`, left, 95);
@@ -127,11 +128,11 @@ const buildMaintenanceReceiptPdf = async ({
     const headerRightWidthRatio = 0.42;
     const headerRightX = left + pageWidth * (1 - headerRightWidthRatio);
 
-    // Draw info box with blue dashed border
+    
     doc.lineWidth(1).strokeColor('#4A90D9').dash(3, { space: 2 });
     doc.rect(left, y, pageWidth, headerHeight).stroke();
     doc.moveTo(headerRightX, y).lineTo(headerRightX, y + headerHeight).stroke();
-    doc.undash(); // Reset dash
+    doc.undash(); 
 
     const labelOffsetX = 10;
     const valueOffsetX = 120;
@@ -317,7 +318,7 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
 
     const now = new Date();
     const currentYear = now.getFullYear();
-    const currentMonthIndex = now.getMonth(); // 0 = Jan, 11 = Dec
+    const currentMonthIndex = now.getMonth(); 
     const minYear = currentYear - 2;
     const maxYear = currentYear + 2;
     if (year < minYear || year > maxYear) {
@@ -385,7 +386,7 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
         });
       }
     } else if (year === currentYear) {
-      // For current year, show Jan..current month only.
+      
       monthsToReturn = MONTH_LABELS.slice(0, currentMonthIndex + 1);
     }
 
@@ -935,6 +936,23 @@ const verifyMaintenance = async (req, res, next) => {
     doc.verifiedByUserId = authUser._id || null;
     await doc.save();
 
+    // Send push notification to the member who uploaded the proof
+    if (doc.memberId) {
+      sendToUser(
+        doc.memberId,
+        'Maintenance Verified',
+        `Your maintenance payment for ${doc.month} ${doc.year} has been verified.`,
+        {
+          type: 'maintenance_verified',
+          maintenanceId: doc.maintenanceId,
+          month: doc.month,
+          year: String(doc.year),
+        }
+      ).catch((err) => {
+        console.error('[Maintenance] Failed to send verification notification:', err.message);
+      });
+    }
+
     const unitLabel =
       expectedWing && expectedNumber ? `${expectedWing}-${expectedNumber}` : expectedNumber || '';
 
@@ -1027,7 +1045,25 @@ const rejectMaintenance = async (req, res, next) => {
     doc.rejectionDescription = desc || null;
     await doc.save();
 
-    const User = require('../../model/userSchema');
+    // Send push notification to the member who uploaded the proof
+    if (doc.memberId) {
+      const reasonDisplay = reasonRaw.replace(/_/g, ' ');
+      sendToUser(
+        doc.memberId,
+        'Maintenance Rejected',
+        `Your maintenance payment for ${doc.month} ${doc.year} was rejected. Reason: ${reasonDisplay}`,
+        {
+          type: 'maintenance_rejected',
+          maintenanceId: doc.maintenanceId,
+          month: doc.month,
+          year: String(doc.year),
+          reason: reasonCanonical,
+        }
+      ).catch((err) => {
+        console.error('[Maintenance] Failed to send rejection notification:', err.message);
+      });
+    }
+
     const uploaderUser = await User.findById(doc.memberId, { fullName: 1 }).lean();
     const primaryUnitDoc = unitDocs.find((u) => u.occupantType === 'unit_owner') || unitDocs.find((u) => u.occupantType === 'tenant') || unitDocs[0] || null;
 

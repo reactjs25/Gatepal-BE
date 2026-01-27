@@ -9,6 +9,7 @@ const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
+const { sendToSocietyMembers } = require('../../utils/pushNotificationService');
 
 const MONTH_LABELS = [
   'January',
@@ -180,6 +181,21 @@ const createAnnouncement = async (req, res, next) => {
     });
 
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
+
+    
+    sendToSocietyMembers(
+      society._id,
+      'New Announcement',
+      validated.title,
+      {
+        type: 'announcement',
+        announcementId: doc.announcementId,
+        societyId: String(society._id),
+      },
+      { roles: ['member'] }
+    ).catch((err) => {
+      console.error('[Announcement] Failed to send push notification:', err.message);
+    });
 
     return sendSuccessResponse(res, 201, 'Announcement details saved successfully.', {
       data: {

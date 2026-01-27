@@ -3,6 +3,7 @@ const app = require('./app');
 const config = require('./config/appConfig');
 const connectToDb = require('./connectToDb/connectToDb');
 const MemberUnit = require('./model/memberUnitSchema');
+const { initializeFirebase } = require('./config/firebaseConfig');
 
 const startServer = async () => {
   try {
@@ -12,6 +13,10 @@ const startServer = async () => {
     });
 
     await MemberUnit.syncIndexes();
+    
+    
+    initializeFirebase();
+    
     const server = http.createServer(app);
 
     server.listen(config.server.port, () => {

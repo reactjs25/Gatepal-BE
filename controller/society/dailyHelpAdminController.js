@@ -305,7 +305,7 @@ const addSocietyDailyHelp = async (req, res, next) => {
         { $set: { status: 'APPROVED' } }
       );
     } else if (nm && normalizeString(person.name).toLowerCase() !== nm.toLowerCase()) {
-      // Keep persisted name consistently formatted when re-submitted.
+      
       person.name = nm;
       await person.save();
     }

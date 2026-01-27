@@ -89,7 +89,7 @@ const VISITOR_QR_VERSION = 2;
 
 const ensureVisitorQrCode = async (user) => {
     let qrCodeImageUrl = user.qrCodeImage || null;
-    // Regenerate if no QR exists or if version is outdated
+    
     const needsRegeneration = !qrCodeImageUrl || (user.qrCodeVersion || 0) < VISITOR_QR_VERSION;
     if (needsRegeneration) {
         try {
@@ -167,8 +167,8 @@ const updateVisitorProfile = async (req, res, next) => {
 
         const payload = req.body || {};
 
-        // Allowed fields:
-        // image, fullName, phoneNumber, vehicleNumber, companyName, subCategory
+        
+        
         const imageRaw = payload.image !== undefined ? payload.image : (payload.imageUrl !== undefined ? payload.imageUrl : payload.profilePhoto);
         const fullNameRaw = payload.fullName;
         const phoneNumberRaw = payload.phoneNumber;
@@ -276,7 +276,7 @@ const updateVisitorProfile = async (req, res, next) => {
 
         Object.assign(user, updates);
 
-        // Keep onboardingData in sync (best-effort, non-breaking)
+        
         if (user.onboardingData) {
             user.onboardingData = {
                 ...(user.onboardingData || {}),
@@ -300,7 +300,7 @@ const updateVisitorProfile = async (req, res, next) => {
 
         await user.save();
 
-        // Return same payload as getProfile, including fresh QR if invalidated.
+        
         const qrCodeImageUrl = await ensureVisitorQrCode(user);
         const companyLogo = await resolveCompanyLogo(user.visitorType, user.visitorCompanyName);
         user.qrCodeImage = qrCodeImageUrl;

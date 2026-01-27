@@ -143,7 +143,7 @@ const ensureAccountIsActive = (principal) => {
 
 const login = async (req, res, next) => {
   try {
-    const { role, countryCode, phoneNumber, password } = req.body;
+    const { role, countryCode, phoneNumber, password, fcmToken, deviceType, deviceId } = req.body;
 
     if (!role || !phoneNumber || !password) {
       throw createHttpError('Role, phone number, and password are required', 400);
@@ -206,6 +206,52 @@ const login = async (req, res, next) => {
           ? { societyId: principal.society?._id }
           : {},
     });
+
+    
+    if (fcmToken && principal.type === 'user') {
+      const normalizedDeviceType = (deviceType || 'android').toLowerCase();
+      const user = principal.doc;
+
+      
+      const existingTokenIndex = user.fcmTokens
+        ? user.fcmTokens.findIndex((t) => t.token === fcmToken)
+        : -1;
+
+      if (existingTokenIndex !== -1) {
+        
+        user.fcmTokens[existingTokenIndex].deviceType = normalizedDeviceType;
+        user.fcmTokens[existingTokenIndex].deviceId = deviceId || null;
+        user.fcmTokens[existingTokenIndex].createdAt = new Date();
+      } else {
+        
+        await User.updateMany(
+          { _id: { $ne: user._id }, 'fcmTokens.token': fcmToken },
+          { $pull: { fcmTokens: { token: fcmToken } } }
+        );
+
+        
+        if (!user.fcmTokens) {
+          user.fcmTokens = [];
+        }
+
+        
+        user.fcmTokens.push({
+          token: fcmToken,
+          deviceType: normalizedDeviceType,
+          deviceId: deviceId || null,
+          createdAt: new Date(),
+        });
+
+        
+        if (user.fcmTokens.length > 5) {
+          user.fcmTokens = user.fcmTokens
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 5);
+        }
+      }
+
+      await user.save();
+    }
 
     return sendSuccessResponse(res, 200, 'Login successful', {
       data: mapPrincipalResponse(principal),
@@ -351,11 +397,107 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
+
+const registerFcmToken = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      throw createHttpError('Unauthorized', 401);
+    }
+
+    const { fcmToken, deviceType, deviceId } = req.body;
+
+    if (!fcmToken) {
+      throw createHttpError('fcmToken is required', 400);
+    }
+
+    const normalizedDeviceType = (deviceType || 'android').toLowerCase();
+    if (!['android', 'ios', 'web'].includes(normalizedDeviceType)) {
+      throw createHttpError('deviceType must be android, ios, or web', 400);
+    }
+
+    
+    const user = await User.findById(authUser._id);
+    if (!user) {
+      throw createHttpError('User not found', 404);
+    }
+
+    
+    const existingTokenIndex = user.fcmTokens.findIndex(
+      (t) => t.token === fcmToken
+    );
+
+    if (existingTokenIndex !== -1) {
+      
+      user.fcmTokens[existingTokenIndex].deviceType = normalizedDeviceType;
+      user.fcmTokens[existingTokenIndex].deviceId = deviceId || null;
+      user.fcmTokens[existingTokenIndex].createdAt = new Date();
+    } else {
+      
+      await User.updateMany(
+        { _id: { $ne: authUser._id }, 'fcmTokens.token': fcmToken },
+        { $pull: { fcmTokens: { token: fcmToken } } }
+      );
+
+      
+      user.fcmTokens.push({
+        token: fcmToken,
+        deviceType: normalizedDeviceType,
+        deviceId: deviceId || null,
+        createdAt: new Date(),
+      });
+
+      
+      if (user.fcmTokens.length > 5) {
+        user.fcmTokens = user.fcmTokens
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+          .slice(0, 5);
+      }
+    }
+
+    await user.save();
+
+    return sendSuccessResponse(res, 200, 'FCM token registered successfully', {
+      data: {
+        tokenCount: user.fcmTokens.length,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to register FCM token'));
+  }
+};
+
+
+const removeFcmToken = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      throw createHttpError('Unauthorized', 401);
+    }
+
+    const { fcmToken } = req.body;
+
+    if (!fcmToken) {
+      throw createHttpError('fcmToken is required', 400);
+    }
+
+    await User.findByIdAndUpdate(authUser._id, {
+      $pull: { fcmTokens: { token: fcmToken } },
+    });
+
+    return sendSuccessResponse(res, 200, 'FCM token removed successfully');
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to remove FCM token'));
+  }
+};
+
 module.exports = {
   login,
   requestPasswordOtp,
   verifyOtp,
   resetPassword,
+  registerFcmToken,
+  removeFcmToken,
 };
 
 

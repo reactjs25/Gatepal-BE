@@ -19,6 +19,7 @@ const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const { normalizeCountryCode, normalizeDigits, normalizePhoneDigits, isTenDigitPhone } = require('../utils/phoneNumber');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { toISTDateLabel, toISTDateTimeLabel, toISTDateTimeLabelNoComma, toISTTimeLabel } = require('../utils/dateTime');
+const { sendToUsers } = require('../utils/pushNotificationService');
 
 const VISITOR_TYPE_LABELS = {
   guest: { category: 'Guest', visitorType: 'Guest' },
@@ -129,7 +130,7 @@ const resolveCompanyLogoForRequest = async ({ visitorType, companyName }) => {
   }
 
   if (visitorType === 'taxi_vehicle_driver') {
-    // First check hardcoded list, then database
+    
     const hardcodedTaxi = getTaxiCompanyInfo(trimmed);
     if (hardcodedTaxi?.imageUrl) return hardcodedTaxi.imageUrl;
     const taxiNameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
@@ -138,7 +139,7 @@ const resolveCompanyLogoForRequest = async ({ visitorType, companyName }) => {
   }
 
   if (visitorType === 'other_visitor') {
-    // First check hardcoded list, then database
+    
     const hardcodedOther = getOtherVisitorCompanyInfo(trimmed);
     if (hardcodedOther?.imageUrl) return hardcodedOther.imageUrl;
     const otherNameRegex = new RegExp(`^${escapeRegex(trimmed)}$`, 'i');
@@ -334,10 +335,6 @@ const requireGuardOnDuty = (authUser) => {
   return activeDuty;
 };
 
-/**
- * Check if a visitor with the given phone number is already inside the society.
- * Returns the existing entry request if found, null otherwise.
- */
 const checkVisitorAlreadyInside = async ({ societyId, phoneDigits }) => {
   if (!societyId || !phoneDigits) return null;
   
@@ -747,7 +744,7 @@ const createGuestEntryRequest = async (req, res, next) => {
     const unitsToProcess = unitNumbers.length > 0 ? unitNumbers : [unitNumber];
     const phoneDigits = normalizePhoneDigits(phoneRaw);
 
-    // Check if visitor is already inside the society
+    
     const alreadyInsideEntry = await checkVisitorAlreadyInside({
       societyId: activeDuty.societyId,
       phoneDigits,
@@ -927,6 +924,29 @@ const createGuestEntryRequest = async (req, res, next) => {
       vehicleNumber: primaryDoc.vehicleNumber || null,
     };
 
+    
+    for (const doc of createdDocs) {
+      if (doc.status === 'pending' && doc.recipientUserIds && doc.recipientUserIds.length > 0) {
+        const visitorLabel = doc.visitorCompanyName
+          ? `${doc.guestName} (${doc.visitorCompanyName})`
+          : doc.guestName;
+        
+        sendToUsers(
+          doc.recipientUserIds,
+          'Visitor at Gate',
+          `${visitorLabel} is waiting for your approval at the gate.`,
+          {
+            type: 'guest_entry_request',
+            requestId: doc.requestId,
+            visitorType: doc.visitorType || 'guest',
+            status: 'pending',
+          }
+        ).catch((err) => {
+          console.error('[GuestEntryRequest] Failed to send push notification:', err.message);
+        });
+      }
+    }
+
     if (createdDocs.length === 1) {
       return sendSuccessResponse(res, 201, 'Guest approval request created successfully', {
         data: {
@@ -973,7 +993,7 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
 
     if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
 
-    // Multi-request fetch: used for Delivery Executive "partial approved" UI.
+    
     if (!requestId && requestIds.length > 0) {
       const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
       if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
@@ -981,7 +1001,7 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
       const filtered = docs.filter((d) => String(d.societyId) === String(activeDuty.societyId));
       if (filtered.length === 0) return next(createHttpError('Request does not belong to this society', 403));
 
-      // auto-expire pending requests
+      
       const nowMs = Date.now();
       const toSave = [];
       for (const d of filtered) {
@@ -1040,7 +1060,7 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
       return sendSuccessResponse(res, 200, 'Entry requests fetched successfully', { data: payload });
     }
 
-    // Single request fetch (existing behavior)
+    
     const doc = await GuestEntryRequest.findOne({ requestId });
     if (!doc) return next(createHttpError('Request not found', 404));
 
@@ -1411,7 +1431,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         const tillLabel = toISTDateTimeLabelNoComma(invite.validTill);
         const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
-        // Find imageUrl from entry logs for this guest
+        
         let guestImageUrl = null;
         if (guest?.guestId && Array.isArray(invite.entryLogs)) {
           const entryLog = invite.entryLogs.find((log) => log.guestId === guest.guestId);
@@ -1504,7 +1524,7 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
       return next(createHttpError('visitorType is invalid', 400));
     }
 
-    // For admin log, only show visitors who are inside society or have left
+    
     const ADMIN_LOG_STATUSES = ['entered', 'left'];
     const statusFilter = statusKey === 'inside_society'
       ? ['entered']
@@ -1560,7 +1580,7 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
       status: { $in: statusFilter },
       visitorType: { $in: normalizedVisitorTypes },
     };
-    // Filter by entryAllowedAt since we're showing visitors who entered the society
+    
     if (startAt || endAt) {
       query.entryAllowedAt = {};
       if (startAt) query.entryAllowedAt.$gte = startAt;
@@ -1700,7 +1720,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           : null;
         const isPreApproved = Boolean(doc.approvedByUserId && !doc.expiresAt);
 
-        // Build exit notifier
+        
         let exitNotifier = null;
         if (doc.entryLeftByGuardId) {
           const guard = await User.findById(doc.entryLeftByGuardId, { fullName: 1 }).lean();
@@ -1719,7 +1739,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           }
         }
 
-        // Build wrong entry notifier
+        
         let wrongEntryNotifier = null;
         if (doc.wrongEntryMarkedByMemberId) {
           const markedByMember = await User.findById(doc.wrongEntryMarkedByMemberId, { fullName: 1 }).lean();
@@ -1762,7 +1782,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             },
             accompanyingCount: String(doc.accompanyingCount || 0),
             vehicleNumber: doc.vehicleNumber || null,
-            // Wrong entry fields
+            
             isWrongEntry: doc.isWrongEntry || false,
             wrongEntryReason: doc.wrongEntryReason || null,
             wrongEntryDescription: doc.wrongEntryDescription || null,
@@ -1891,7 +1911,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       });
     }
 
-    // Check for GuestInvite (quick, frequent, group, private invites)
+    
     const guestInvite = await GuestInvite.findOne({
       inviteId: requestId,
       societyId: unitDoc.societyId,
@@ -2044,7 +2064,7 @@ const decideGuestEntryRequest = async (req, res, next) => {
       return next(createHttpError('Forbidden: request does not belong to this unit', 403));
     }
 
-    // auto-expire
+    
     if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
       doc.status = 'expired';
       await doc.save();
@@ -2103,7 +2123,7 @@ const allowGuestEntry = async (req, res, next) => {
 
     if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
 
-    // Multi-request allow: mark all approved requests as entered.
+    
     if (!requestId && requestIds.length > 0) {
       const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
       if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
@@ -2134,13 +2154,13 @@ const allowGuestEntry = async (req, res, next) => {
 
       await Promise.all(sameSociety.map((d) => d.save()));
 
-      // Return aggregated payload (same shape as multi-fetch)
+      
       req.query.requestIds = requestIds.join(',');
       req.query.requestId = undefined;
       return getGuestEntryRequestForGuard(req, res, next);
     }
 
-    // Single request allow (existing behavior)
+    
     const doc = await GuestEntryRequest.findOne({ requestId });
     if (!doc) return next(createHttpError('Request not found', 404));
 
@@ -2210,7 +2230,7 @@ const allowGuestExit = async (req, res, next) => {
 
     if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
 
-    // Multi-request exit: mark all entered requests as left.
+    
     if (!requestId && requestIds.length > 0) {
       const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
       if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
@@ -2395,7 +2415,7 @@ const allowGuestExitForMember = async (req, res, next) => {
       return next(createHttpError('Exit can only be marked for visitors inside society', 409));
     }
 
-    // Find a guard on duty at this society to be the exit notifier
+    
     const findGuardOnDuty = async (societyId) => {
       const guard = await User.findOne({
         role: 'guard',
@@ -2417,12 +2437,12 @@ const allowGuestExitForMember = async (req, res, next) => {
         const guard = await User.findById(document.entryLeftByGuardId, { fullName: 1 }).lean();
         exitNotifier = guard ? { name: `${guard.fullName || 'Guard'} (Security)`, role: 'guard' } : null;
       } else if (document.entryLeftByMemberId) {
-        // When member marks exit, find the guard on duty at the society
+        
         const guardOnDuty = await findGuardOnDuty(document.societyId);
         if (guardOnDuty) {
           exitNotifier = { name: `${guardOnDuty.fullName || 'Guard'} (Security)`, role: 'guard' };
         } else {
-          // Fallback to member if no guard on duty
+          
           const member = await User.findById(document.entryLeftByMemberId, { fullName: 1 }).lean();
           exitNotifier = member ? { name: member.fullName || 'Member', role: 'member' } : null;
         }
@@ -2475,11 +2495,6 @@ const allowGuestExitForMember = async (req, res, next) => {
   }
 };
 
-/**
- * Mark a visitor as wrong entry (by member)
- * POST /api/member/guestEntryRequests/markWrongEntry
- * Body: { unitId, requestId, reason, description }
- */
 const WRONG_ENTRY_REASONS = [
   'unknown_visitor',
   'did_not_invite',
@@ -2541,7 +2556,7 @@ const markWrongEntryForMember = async (req, res, next) => {
       });
     }
 
-    // Mark as wrong entry
+    
     doc.isWrongEntry = true;
     doc.wrongEntryReason = reason;
     doc.wrongEntryDescription = reason === 'other' ? description : null;
@@ -2552,12 +2567,12 @@ const markWrongEntryForMember = async (req, res, next) => {
 
     const labels = toVisitorLabels(doc.visitorType || 'guest');
 
-    // Get approver info
+    
     const approvedByUser = doc.approvedByUserId
       ? await User.findById(doc.approvedByUserId, { fullName: 1 }).lean()
       : null;
 
-    // Build exit notifier
+    
     let exitNotifier = null;
     if (doc.entryLeftByGuardId) {
       const guard = await User.findById(doc.entryLeftByGuardId, { fullName: 1 }).lean();
@@ -2607,12 +2622,6 @@ const markWrongEntryForMember = async (req, res, next) => {
   }
 };
 
-/**
- * Create entry request for an onboarded visitor (with QR code)
- * Works for all visitor types: guest, delivery_executive, taxi_vehicle_driver, other_visitor
- * POST /api/guard/visitorEntry
- * Body: { userId, wingName, unitNumber, imageUrl?, vehicleNumber?, accompanyingCount? }
- */
 const createOnboardedVisitorEntry = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -2634,12 +2643,12 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     if (!wingName) return next(createHttpError('wingName is required', 400));
     if (!unitNumber) return next(createHttpError('unitNumber is required', 400));
 
-    // Fetch the onboarded visitor
+    
     const visitor = await User.findById(userId).lean();
     if (!visitor) return next(createHttpError('Visitor not found', 404));
     if (visitor.role !== 'visitor') return next(createHttpError('User is not an onboarded visitor', 400));
 
-    // Auto-fill from visitor profile
+    
     const visitorType = visitor.visitorType || 'guest';
     if (!VISITOR_TYPES.includes(visitorType)) {
       return next(createHttpError('Invalid visitor type', 400));
@@ -2655,7 +2664,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
       return next(createHttpError('Visitor does not have a valid phone number', 400));
     }
 
-    // Check if visitor is already inside the society
+    
     const alreadyInsideEntry = await checkVisitorAlreadyInside({
       societyId: activeDuty.societyId,
       phoneDigits,
@@ -2669,10 +2678,10 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
       );
     }
 
-    // Use visitor's profile photo if no imageUrl provided
+    
     const finalImageUrl = imageUrl || visitor.profilePhoto || null;
 
-    // Resolve unit residents for approval
+    
     const recipientUserIds = await resolveUnitResidents({
       societyId: activeDuty.societyId,
       wingNameLower: wingName.toLowerCase(),
@@ -2688,7 +2697,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
       );
     }
 
-    // Find unit document for pre-approval check
+    
     const unitDoc = await MemberUnit.findOne({
       societyId: activeDuty.societyId,
       wingNameLower: wingName.toLowerCase(),
@@ -2701,7 +2710,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
 
     const now = new Date();
 
-    // Check for pre-approval based on visitor type
+    
     const preApproval = unitDoc
       ? await resolvePreApprovalForUnit({
           visitorType,
@@ -2719,7 +2728,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     const autoApproved = Boolean(preApproval);
     const expiresAt = autoApproved ? null : new Date(Date.now() + 30 * 60 * 1000);
 
-    // Create GuestEntryRequest with visitorUserId linked
+    
     const entryRequest = await GuestEntryRequest.create({
       societyId: activeDuty.societyId,
       wingName,
@@ -2749,6 +2758,25 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
 
     const labels = toVisitorLabels(visitorType);
     const companyLogo = await resolveCompanyLogoForRequest({ visitorType, companyName });
+
+    
+    if (entryRequest.status === 'pending' && recipientUserIds && recipientUserIds.length > 0) {
+      const visitorLabel = companyName ? `${guestName} (${companyName})` : guestName;
+      
+      sendToUsers(
+        recipientUserIds,
+        'Visitor at Gate',
+        `${visitorLabel} is waiting for your approval at the gate.`,
+        {
+          type: 'guest_entry_request',
+          requestId: entryRequest.requestId,
+          visitorType: visitorType || 'guest',
+          status: 'pending',
+        }
+      ).catch((err) => {
+        console.error('[OnboardedVisitorEntry] Failed to send push notification:', err.message);
+      });
+    }
 
     return sendSuccessResponse(res, 201, 'Visitor entry request created successfully', {
       data: {

@@ -8,13 +8,13 @@ const { buildCanonicalUnitId, assertUnitResidentAccess } = require('../../utils/
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { buildMaintenanceReceiptPdf } = require('../society/maintainanceAdminController');
 
-// Format amount with 2 decimal places for API response
+
 const formatAmount = (value) => {
     if (value == null || Number.isNaN(Number(value))) return null;
     return Number(value).toFixed(2);
 };
 
-// Capitalize first letter of each word
+
 const toTitleCase = (str) => {
     if (!str) return '';
     return str

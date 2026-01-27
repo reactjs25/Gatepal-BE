@@ -81,7 +81,7 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
     user.profilePhotoCapturedAt = new Date();
   }
 
-  // Generate QR code server-side (frontend should not send qrCodeImage)
+  
   if (!user.qrCodeImage) {
     try {
       const qrPayload = buildVisitorQrPayload(user);
@@ -93,7 +93,7 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
       user.qrCodeImage = qrCodeImage;
       user.qrCodeGeneratedAt = new Date();
     } catch (e) {
-      // If QR generation fails, keep onboarding flow successful.
+      
       user.qrCodeImage = user.qrCodeImage || null;
       user.qrCodeGeneratedAt = user.qrCodeGeneratedAt || null;
     }

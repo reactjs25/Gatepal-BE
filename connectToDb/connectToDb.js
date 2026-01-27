@@ -86,7 +86,7 @@ const registerDatabaseListeners = () => {
   });
 
   connection.on('connected', () => {
-    // eslint-disable-next-line no-console
+    
     console.log('MongoDB connection restored');
   });
 

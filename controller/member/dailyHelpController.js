@@ -122,7 +122,7 @@ const addDailyHelp = async (req, res, next) => {
         createdByRole: authUser.role,
       });
     } else if (nm && normalizeString(person.name).toLowerCase() !== nm.toLowerCase()) {
-      // Keep persisted name consistently formatted when re-submitted.
+      
       person.name = nm;
       await person.save();
     }

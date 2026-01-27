@@ -181,7 +181,7 @@ const updateSocietyById = async (req, res, next) => {
       return next(createHttpError('Society not found', 404));
     }
 
-    // Auto-resolve/remove missing unit requests once unit is officially added.
+    
     try {
       const wings = Array.isArray(updatedSociety.structure) ? updatedSociety.structure : [];
       const officialKeys = new Set();
@@ -207,7 +207,7 @@ const updateSocietyById = async (req, res, next) => {
         await MissingUnitRequest.deleteMany({ _id: { $in: toDelete } });
       }
     } catch (e) {
-      // Non-fatal: society update should still succeed even if cleanup fails.
+      
     }
 
     return sendSuccessResponse(res, 200, 'Society updated successfully', { data: updatedSociety });

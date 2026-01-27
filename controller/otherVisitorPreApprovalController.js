@@ -471,7 +471,7 @@ const cancelOtherVisitorPreApproval = async (req, res, next) => {
       unitId: unitDoc._id,
     });
 
-    // If pre-approval not found, check if it's a GuestEntryRequest with status 'approved'
+    
     if (!approval) {
       const entryRequest = await GuestEntryRequest.findOne({
         requestId: preApprovalId,
