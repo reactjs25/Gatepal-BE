@@ -1504,11 +1504,13 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
       return next(createHttpError('visitorType is invalid', 400));
     }
 
-    const statusFilter = STATUS_FILTERS[statusKey]
-      ? STATUS_FILTERS[statusKey]
-      : REQUEST_STATUSES.includes(statusKey)
-        ? [statusKey]
-        : STATUS_FILTERS.all;
+    // For admin log, only show visitors who are inside society or have left
+    const ADMIN_LOG_STATUSES = ['entered', 'left'];
+    const statusFilter = statusKey === 'inside_society'
+      ? ['entered']
+      : statusKey === 'left_society' || statusKey === 'left'
+        ? ['left']
+        : ADMIN_LOG_STATUSES;
 
     let startAt = null;
     let endAt = null;
@@ -1558,10 +1560,11 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
       status: { $in: statusFilter },
       visitorType: { $in: normalizedVisitorTypes },
     };
+    // Filter by entryAllowedAt since we're showing visitors who entered the society
     if (startAt || endAt) {
-      query.createdAt = {};
-      if (startAt) query.createdAt.$gte = startAt;
-      if (endAt) query.createdAt.$lte = endAt;
+      query.entryAllowedAt = {};
+      if (startAt) query.entryAllowedAt.$gte = startAt;
+      if (endAt) query.entryAllowedAt.$lte = endAt;
     }
 
     const docs = await GuestEntryRequest.find(
