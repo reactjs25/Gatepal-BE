@@ -26,6 +26,7 @@ const {
 } = require('../controller/guestInviteController');
 const {
   listGuestEntryRequestsForMember,
+  listGuestEntryRequestsForSocietyAdmin,
   getGuestEntryRequestDetailForMember,
   decideGuestEntryRequest,
   allowGuestExitForMember,
@@ -67,6 +68,7 @@ router.post('/guestInvites/recentGuests', userAuthMiddleware, getRecentGuests);
 router.patch('/guestInvites', userAuthMiddleware, updateGuestInviteForMember);
 router.delete('/guestInvites', userAuthMiddleware, cancelGuestInviteForMember);
 router.post('/guestEntryRequests/list', userAuthMiddleware, listGuestEntryRequestsForMember);
+router.post('/guestEntryRequests/adminLog', userAuthMiddleware, listGuestEntryRequestsForSocietyAdmin);
 router.post('/guestEntryRequests/detail', userAuthMiddleware, getGuestEntryRequestDetailForMember);
 router.patch('/guestEntryRequests/decision', userAuthMiddleware, decideGuestEntryRequest);
 router.post('/guestEntryRequests/allowExit', userAuthMiddleware, allowGuestExitForMember);

@@ -3,6 +3,7 @@ const GuestEntryRequestDraft = require('../model/guestEntryRequestDraftSchema');
 const GuestInvite = require('../model/guestInviteSchema');
 const MemberUnit = require('../model/memberUnitSchema');
 const User = require('../model/userSchema');
+const { lookupSocietyAdminByMobile } = require('../utils/societyAdminUtils');
 const TaxiDriverCompany = require('../model/taxiDriverCompanySchema');
 const DeliveryCompany = require('../model/deliveryCompanySchema');
 const DeliveryPreApproval = require('../model/deliveryPreApprovalSchema');
@@ -293,6 +294,24 @@ const resolveExistingVisitorPhoto = async ({ phoneDigits, visitorType }) => {
   }
 
   return null;
+};
+
+const resolveAdminSocietyId = async (authUser) => {
+  if (!authUser) {
+    throw createHttpError('Unauthorized', 401);
+  }
+  if (authUser.adminSocietyId) {
+    return authUser.adminSocietyId;
+  }
+  if (authUser.societyId) {
+    return authUser.societyId;
+  }
+  const digits = normalizeDigits(authUser.phoneNumber || '');
+  const match = digits ? await lookupSocietyAdminByMobile(digits) : null;
+  if (!match?.societyId) {
+    throw createHttpError('Society not found', 404);
+  }
+  return match.societyId;
 };
 
 const requireGuardOnDuty = (authUser) => {
@@ -1443,6 +1462,166 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
   }
 };
 
+const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
+      return next(createHttpError('Only society admins can perform this action', 403));
+    }
+
+    const societyId = await resolveAdminSocietyId(authUser);
+    const statusKey = normalizeOption(req.body?.status ?? req.body?.statusKey ?? req.body?.statusFilter ?? 'all');
+    const visitorTypeRaw = req.body?.visitorType ?? req.body?.visitorTypeKey;
+    const dateFilter = normalizeOption(req.body?.dateFilter ?? req.body?.range ?? req.body?.period ?? 'today');
+    const startDateRaw = req.body?.fromDate ?? req.body?.startDate ?? req.body?.from;
+    const endDateRaw = req.body?.toDate ?? req.body?.endDate ?? req.body?.to;
+
+    const visitorTypes =
+      Array.isArray(visitorTypeRaw)
+        ? visitorTypeRaw.map((v) => normalizeOption(v)).filter(Boolean)
+        : normalizeOption(visitorTypeRaw)
+          ? [normalizeOption(visitorTypeRaw)]
+          : [];
+
+    const normalizedVisitorTypes =
+      visitorTypes.length > 0
+        ? visitorTypes.filter((t) => VISITOR_TYPES.includes(t))
+        : VISITOR_TYPES;
+
+    if (visitorTypes.length > 0 && normalizedVisitorTypes.length === 0) {
+      return next(createHttpError('visitorType is invalid', 400));
+    }
+
+    const statusFilter = STATUS_FILTERS[statusKey]
+      ? STATUS_FILTERS[statusKey]
+      : REQUEST_STATUSES.includes(statusKey)
+        ? [statusKey]
+        : STATUS_FILTERS.all;
+
+    let startAt = null;
+    let endAt = null;
+    const now = new Date();
+
+    if (startDateRaw || endDateRaw) {
+      if (startDateRaw) {
+        startAt = new Date(startDateRaw);
+        if (Number.isNaN(startAt.getTime())) {
+          return next(createHttpError('Invalid startDate format', 400));
+        }
+        startAt.setHours(0, 0, 0, 0);
+      }
+      if (endDateRaw) {
+        endAt = new Date(endDateRaw);
+        if (Number.isNaN(endAt.getTime())) {
+          return next(createHttpError('Invalid endDate format', 400));
+        }
+        endAt.setHours(23, 59, 59, 999);
+      }
+    } else if (dateFilter && dateFilter !== 'all') {
+      if (dateFilter === 'today') {
+        startAt = new Date(now);
+        startAt.setHours(0, 0, 0, 0);
+        endAt = now;
+      } else if (dateFilter === 'this_month' || dateFilter === 'thismonth') {
+        startAt = new Date(now.getFullYear(), now.getMonth(), 1);
+        endAt = now;
+      } else if (
+        dateFilter === 'past_3_months' ||
+        dateFilter === 'past_3_month' ||
+        dateFilter === 'past3months' ||
+        dateFilter === 'past3month' ||
+        dateFilter === 'last_3_months' ||
+        dateFilter === 'last3months' ||
+        dateFilter === 'past_90_days' ||
+        dateFilter === 'last_90_days'
+      ) {
+        startAt = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        startAt.setHours(0, 0, 0, 0);
+        endAt = now;
+      }
+    }
+
+    const query = {
+      societyId,
+      status: { $in: statusFilter },
+      visitorType: { $in: normalizedVisitorTypes },
+    };
+    if (startAt || endAt) {
+      query.createdAt = {};
+      if (startAt) query.createdAt.$gte = startAt;
+      if (endAt) query.createdAt.$lte = endAt;
+    }
+
+    const docs = await GuestEntryRequest.find(
+      query,
+      {
+        requestId: 1,
+        visitorType: 1,
+        guestName: 1,
+        status: 1,
+        wingName: 1,
+        unitNumber: 1,
+        visitorCompanyName: 1,
+        createdAt: 1,
+        guestImageUrl: 1,
+        entryAllowedAt: 1,
+        entryLeftAt: 1,
+      }
+    )
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+
+    const deliveryCompanyNames = Array.from(
+      new Set(
+        (docs || [])
+          .filter((d) => d.visitorType === 'delivery_executive')
+          .map((d) => normalizeString(d.visitorCompanyName).toLowerCase())
+          .filter(Boolean)
+      )
+    );
+
+    const deliveryCompanies = deliveryCompanyNames.length
+      ? await DeliveryCompany.find(
+          { name: { $in: deliveryCompanyNames.map((name) => new RegExp(`^${escapeRegex(name)}$`, 'i')) } },
+          { name: 1, imageUrl: 1 }
+        ).lean()
+      : [];
+
+    const deliveryCompanyLogos = new Map(
+      deliveryCompanies
+        .map((company) => [normalizeString(company.name).toLowerCase(), company.imageUrl || null])
+        .filter(([, imageUrl]) => Boolean(imageUrl))
+    );
+
+    const payload = (docs || []).map((doc) => {
+      const companyLogo = resolveCompanyLogo({
+        visitorType: doc.visitorType,
+        companyName: doc.visitorCompanyName,
+        deliveryCompanyLogos,
+      });
+      return {
+        requestId: doc.requestId,
+        status: getStatusLabel(doc.status),
+        statusKey: doc.status,
+        name: doc.guestName || null,
+        companyLogo: companyLogo || null,
+        unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
+        imageUrl: doc.guestImageUrl || null,
+        entryAt: doc.entryAllowedAt ? toISTDateTimeLabel(doc.entryAllowedAt) : null,
+        leftAt: doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null,
+      };
+    });
+
+    return sendSuccessResponse(res, 200, 'Visitor log fetched successfully', {
+      data: payload,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch visitor log'));
+  }
+};
+
 const getGuestEntryRequestDetailForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -2420,6 +2599,7 @@ module.exports = {
   createGuestEntryRequest,
   getGuestEntryRequestForGuard,
   listGuestEntryRequestsForMember,
+  listGuestEntryRequestsForSocietyAdmin,
   getGuestEntryRequestDetailForMember,
   decideGuestEntryRequest,
   allowGuestEntry,
