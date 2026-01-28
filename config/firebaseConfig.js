@@ -1,6 +1,4 @@
 const admin = require('firebase-admin');
-const path = require('path');
-const fs = require('fs');
 
 let firebaseApp = null;
 
@@ -10,19 +8,15 @@ const initializeFirebase = () => {
   }
 
   try {
-    
-    const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
-      || path.join(__dirname, '..', 'firebase-service-account.json');
+    const firebaseJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 
-    
-    if (!fs.existsSync(serviceAccountPath)) {
-      console.warn('[Firebase] Service account file not found at:', serviceAccountPath);
+    if (!firebaseJson) {
+      console.warn('[Firebase] FIREBASE_SERVICE_ACCOUNT_JSON not found');
       console.warn('[Firebase] Push notifications will be disabled.');
       return null;
     }
 
-    
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+    const serviceAccount = JSON.parse(firebaseJson);
 
     firebaseApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
