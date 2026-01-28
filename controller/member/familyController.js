@@ -543,9 +543,7 @@ const deleteFamilyMember = async (req, res, next) => {
         return next(createHttpError('Forbidden: you do not own this unit', 403));
       }
 
-      const idsToDelete = overlapping.map((u) => u._id);
-      await MemberUnit.deleteMany({ _id: { $in: idsToDelete } });
-
+      // Keep unit access for active GatePal users; only remove from family list if applicable.
       return sendSuccessResponse(res, 200, 'Family member deleted successfully');
     }
 

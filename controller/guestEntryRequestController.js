@@ -1207,6 +1207,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         createdAt: 1,
         expiresAt: 1,
         approvedByUserId: 1,
+        entryAllowedAt: 1,
+        entryLeftAt: 1,
       }
     )
       .sort({ createdAt: -1 })
@@ -1279,6 +1281,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         },
         accompanyingCount: String(d.accompanyingCount || 0),
         vehicleNumber: d.vehicleNumber || null,
+        entryAt: d.entryAllowedAt ? toISTDateTimeLabel(d.entryAllowedAt) : null,
+        leftAt: d.entryLeftAt ? toISTDateTimeLabel(d.entryLeftAt) : null,
 
       };
     });
@@ -1690,10 +1694,16 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
         requestId: 1,
         visitorType: 1,
         guestName: 1,
+        guestCountryCode: 1,
+        guestPhoneNumber: 1,
+        guestPhoneDigits: 1,
+        visitorCompanyName: 1,
+        visitorWorkCategory: 1,
+        accompanyingCount: 1,
+        vehicleNumber: 1,
         status: 1,
         wingName: 1,
         unitNumber: 1,
-        visitorCompanyName: 1,
         createdAt: 1,
         guestImageUrl: 1,
         entryAllowedAt: 1,
@@ -1732,14 +1742,26 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
         companyName: doc.visitorCompanyName,
         deliveryCompanyLogos,
       });
+      const labels = toVisitorLabels(doc.visitorType || 'guest');
       return {
         requestId: doc.requestId,
         status: getStatusLabel(doc.status),
         statusKey: doc.status,
-        name: doc.guestName || null,
-        companyLogo: companyLogo || null,
+        category: labels.category,
+        visitorType: labels.visitorType,
+        requestedOn: doc.createdAt ? toISTDateTimeLabel(doc.createdAt) : null,
         unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
-        imageUrl: doc.guestImageUrl || null,
+        guest: {
+          name: doc.guestName,
+          countryCode: doc.guestCountryCode || '+91',
+          phoneNumber: doc.guestPhoneNumber,
+          imageUrl: doc.guestImageUrl || null,
+          companyName: doc.visitorCompanyName || null,
+          workCategory: doc.visitorWorkCategory || null,
+          companyLogo,
+        },
+        accompanyingCount: String(doc.accompanyingCount || 0),
+        vehicleNumber: doc.vehicleNumber || null,
         entryAt: doc.entryAllowedAt ? toISTDateTimeLabel(doc.entryAllowedAt) : null,
         leftAt: doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null,
       };

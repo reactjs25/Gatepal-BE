@@ -1,9 +1,12 @@
+const mongoose = require('mongoose');
 const Society = require('../../model/societySchema');
 const MemberUnit = require('../../model/memberUnitSchema');
 const FamilyMember = require('../../model/familyMemberSchema');
 const User = require('../../model/userSchema');
 const Vehicle = require('../../model/vehicleSchema');
 const Pet = require('../../model/petSchema');
+const Maintenance = require('../../model/maintenanceSchema');
+const DailyHelpAssignment = require('../../model/dailyHelpAssignmentSchema');
 const Announcement = require('../../model/announcementSchema');
 const Meeting = require('../../model/meetingSchema');
 const SocietyRule = require('../../model/societyRuleSchema');
@@ -155,6 +158,15 @@ const classifyUnitGroup = (items) => {
         return 'owner';
     }
     return 'owner';
+};
+
+const findWingAndUnit = (society, wingName, unitNumber) => {
+    const wings = Array.isArray(society.structure) ? society.structure : [];
+    const wing = wings.find((w) => w?.wingName && w.wingName.trim().toLowerCase() === wingName.toLowerCase());
+    if (!wing) return { wing: null, unit: null };
+    const units = Array.isArray(wing.units) ? wing.units : [];
+    const unit = units.find((u) => u?.unitNumber && u.unitNumber.trim().toLowerCase() === unitNumber.toLowerCase());
+    return { wing, unit };
 };
 
 const buildCreatedAndUpdatedOn = (doc) => {
@@ -651,6 +663,8 @@ const getSocietyInfoResidents = async (req, res, next) => {
                 id: String(fm._id),
                 name: fm.name,
                 category: fm.category,
+                unitId: String(fm.unitId),
+                wingName: unitDoc.wingName || null,
                 unitNumber: unitDoc.unitNumber || null,
                 occupantType: unitDoc.occupantType || null,
                 imageUrl: fm.imageUrl || null,
@@ -661,6 +675,8 @@ const getSocietyInfoResidents = async (req, res, next) => {
                     id: selfUserId,
                     name: toTruthyString(authUser.fullName || authUser.name || null) || null,
                     category: 'adult',
+                    unitId: String(unitDoc._id),
+                    wingName: unitDoc.wingName || null,
                     unitNumber: unitDoc.unitNumber || null,
                     occupantType: unitDoc.occupantType || null,
                     imageUrl: authUser.profilePhoto || authUser.profileImageUrl || null,
@@ -741,6 +757,8 @@ const getSocietyInfoResidents = async (req, res, next) => {
                 id: userId,
                 name: userDoc.fullName || null,
                 category: 'adult',
+                unitId: String(u._id),
+                wingName: u.wingName || null,
                 unitNumber: u.unitNumber || null,
                 occupantType: u.occupantType || null,
                 imageUrl: userDoc.profilePhoto || null,
@@ -763,6 +781,8 @@ const getSocietyInfoResidents = async (req, res, next) => {
                 id: String(fm._id),
                 name: fm.name,
                 category: fm.category,
+                unitId: String(fm.unitId),
+                wingName: unitInfo.wingName || null,
                 unitNumber: unitNumber || null,
                 occupantType: unitInfo.occupantType || null,
                 imageUrl: fm.imageUrl || null,
@@ -782,6 +802,169 @@ const getSocietyInfoResidents = async (req, res, next) => {
         return sendSuccessResponse(res, 200, 'Society residents fetched successfully', { data });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to fetch society residents'));
+    }
+};
+
+const updateSocietyResidentUnit = async (req, res, next) => {
+    try {
+        const authUser = req.appUser;
+        if (!authUser) {
+            return next(createHttpError('Unauthorized', 401));
+        }
+
+        const isSocietyAdmin =
+            authUser.role === 'society_admin' || Boolean(authUser.linkedSocietyAdminId) || Boolean(authUser.adminSocietyId);
+        if (!isSocietyAdmin) {
+            return next(createHttpError('Only society admins can perform this action', 403));
+        }
+
+        const society = await resolveAdminSociety(authUser);
+
+        const unitIdCandidate = normalizeString(
+            (req.params && (req.params.unitId || req.params.id)) ||
+            (req.body && req.body.unitId) ||
+            ''
+        );
+        if (!unitIdCandidate || !mongoose.Types.ObjectId.isValid(unitIdCandidate)) {
+            return next(createHttpError('Invalid unitId', 400));
+        }
+
+        const wingName = normalizeString(req.body?.wingName ?? req.body?.wing);
+        const unitNumber = normalizeString(req.body?.unitNumber ?? req.body?.unit);
+
+        if (!wingName || !unitNumber) {
+            return next(createHttpError('wingName and unitNumber are required', 400));
+        }
+
+        const unitDoc = await MemberUnit.findById(unitIdCandidate);
+        if (!unitDoc) {
+            return next(createHttpError('Unit not found', 404));
+        }
+        if (String(unitDoc.societyId) !== String(society._id)) {
+            return next(createHttpError('Unit does not belong to this society', 403));
+        }
+
+        const { wing, unit } = findWingAndUnit(society, wingName, unitNumber);
+        if (!wing) {
+            return next(createHttpError('Wing not found in the society', 404));
+        }
+        if (!unit) {
+            return next(createHttpError('Unit not found in the specified wing', 404));
+        }
+
+        const newWingLower = wingName.toLowerCase();
+        const newUnitLower = unitNumber.toLowerCase();
+        const oldWingLower = unitDoc.wingNameLower;
+        const oldUnitLower = unitDoc.unitNumberLower;
+
+        if (oldWingLower === newWingLower && oldUnitLower === newUnitLower) {
+            return sendSuccessResponse(res, 200, 'No changes provided', {
+                data: {
+                    id: String(unitDoc._id),
+                    memberId: String(unitDoc.memberId),
+                    wingName: unitDoc.wingName,
+                    unitNumber: unitDoc.unitNumber,
+                    occupantType: unitDoc.occupantType,
+                },
+            });
+        }
+
+        const duplicate = await MemberUnit.exists({
+            memberId: unitDoc.memberId,
+            societyId: unitDoc.societyId,
+            wingNameLower: newWingLower,
+            unitNumberLower: newUnitLower,
+            _id: { $ne: unitDoc._id },
+        });
+        if (duplicate) {
+            return next(createHttpError('This unit has already been added for the member', 409));
+        }
+
+        if (unitDoc.occupantType === 'tenant') {
+            const existingTenant = await MemberUnit.exists({
+                societyId: unitDoc.societyId,
+                wingNameLower: newWingLower,
+                unitNumberLower: newUnitLower,
+                occupantType: 'tenant',
+                _id: { $ne: unitDoc._id },
+            });
+            if (existingTenant) {
+                return next(createHttpError('A tenant is already registered for this unit.', 409));
+            }
+        }
+
+        let primaryMemberId = unitDoc.primaryMemberId || null;
+        if (unitDoc.occupantType === 'unit_owner_family_member') {
+            const primaryOwner = await MemberUnit.findOne({
+                societyId: unitDoc.societyId,
+                wingNameLower: newWingLower,
+                unitNumberLower: newUnitLower,
+                occupantType: 'unit_owner',
+            })
+                .sort({ createdAt: 1 })
+                .lean();
+            primaryMemberId = primaryOwner ? primaryOwner.memberId : null;
+        }
+        if (unitDoc.occupantType === 'tenant_family_member') {
+            const primaryTenant = await MemberUnit.findOne({
+                societyId: unitDoc.societyId,
+                wingNameLower: newWingLower,
+                unitNumberLower: newUnitLower,
+                occupantType: 'tenant',
+            }).lean();
+            primaryMemberId = primaryTenant ? primaryTenant.memberId : null;
+        }
+
+        const oldCanonicalUnitId = buildCanonicalUnitId(unitDoc);
+
+        unitDoc.wingName = wingName;
+        unitDoc.wingNameLower = newWingLower;
+        unitDoc.unitNumber = unitNumber;
+        unitDoc.unitNumberLower = newUnitLower;
+        if (unitDoc.occupantType === 'unit_owner_family_member' || unitDoc.occupantType === 'tenant_family_member') {
+            unitDoc.primaryMemberId = primaryMemberId;
+        }
+
+        await unitDoc.save();
+
+        const newCanonicalUnitId = buildCanonicalUnitId(unitDoc);
+
+        await Promise.all([
+            Vehicle.updateMany({ memberId: unitDoc.memberId, unitId: oldCanonicalUnitId }, { $set: { unitId: newCanonicalUnitId } }),
+            Pet.updateMany({ memberId: unitDoc.memberId, unitId: oldCanonicalUnitId }, { $set: { unitId: newCanonicalUnitId } }),
+            Maintenance.updateMany({ memberId: unitDoc.memberId, unitId: oldCanonicalUnitId }, { $set: { unitId: newCanonicalUnitId } }),
+            DailyHelpAssignment.updateMany({ memberId: unitDoc.memberId, unitId: oldCanonicalUnitId }, { $set: { unitId: newCanonicalUnitId } }),
+        ]);
+
+        const memberUser = await User.findById(unitDoc.memberId);
+        if (memberUser && String(memberUser.societyId || '') === String(unitDoc.societyId)) {
+            const memberWingLower = normalizeString(memberUser.wingName).toLowerCase();
+            const memberUnitLower = normalizeString(memberUser.unitNumber).toLowerCase();
+            if (!memberWingLower || !memberUnitLower || (memberWingLower === oldWingLower && memberUnitLower === oldUnitLower)) {
+                memberUser.wingName = unitDoc.wingName;
+                memberUser.unitNumber = unitDoc.unitNumber;
+                if (memberUser.onboardingData?.member) {
+                    memberUser.onboardingData.member.wingName = unitDoc.wingName;
+                    memberUser.onboardingData.member.unitNumber = unitDoc.unitNumber;
+                }
+                memberUser.qrCodeImage = null;
+                memberUser.qrCodeGeneratedAt = null;
+                await memberUser.save();
+            }
+        }
+
+        return sendSuccessResponse(res, 200, 'Resident unit updated successfully', {
+            data: {
+                id: String(unitDoc._id),
+                memberId: String(unitDoc.memberId),
+                wingName: unitDoc.wingName,
+                unitNumber: unitDoc.unitNumber,
+                occupantType: unitDoc.occupantType,
+                updatedAt: unitDoc.updatedAt,
+            },
+        });
+    } catch (error) {
+        return next(setErrorDefaults(error, 'Failed to update resident unit'));
     }
 };
 
@@ -1233,6 +1416,7 @@ module.exports = {
     getSocietyInfo,
     getSocietyInfoUnits,
     getSocietyInfoResidents,
+    updateSocietyResidentUnit,
     getSocietyInfoVehicles,
     getSocietyInfoPets,
     getSocietyActivitySummary,
