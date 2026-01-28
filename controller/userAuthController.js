@@ -207,50 +207,81 @@ const login = async (req, res, next) => {
           : {},
     });
 
-    
-    if (fcmToken && principal.type === 'user') {
+    if (fcmToken) {
       const normalizedDeviceType = (deviceType || 'android').toLowerCase();
-      const user = principal.doc;
 
-      
-      const existingTokenIndex = user.fcmTokens
-        ? user.fcmTokens.findIndex((t) => t.token === fcmToken)
-        : -1;
+      if (principal.type === 'user') {
+        const user = principal.doc;
 
-      if (existingTokenIndex !== -1) {
-        
-        user.fcmTokens[existingTokenIndex].deviceType = normalizedDeviceType;
-        user.fcmTokens[existingTokenIndex].deviceId = deviceId || null;
-        user.fcmTokens[existingTokenIndex].createdAt = new Date();
-      } else {
-        
-        await User.updateMany(
-          { _id: { $ne: user._id }, 'fcmTokens.token': fcmToken },
-          { $pull: { fcmTokens: { token: fcmToken } } }
-        );
+        const existingTokenIndex = user.fcmTokens
+          ? user.fcmTokens.findIndex((t) => t.token === fcmToken)
+          : -1;
 
-        
-        if (!user.fcmTokens) {
-          user.fcmTokens = [];
+        if (existingTokenIndex !== -1) {
+          user.fcmTokens[existingTokenIndex].deviceType = normalizedDeviceType;
+          user.fcmTokens[existingTokenIndex].deviceId = deviceId || null;
+          user.fcmTokens[existingTokenIndex].createdAt = new Date();
+        } else {
+          await User.updateMany(
+            { _id: { $ne: user._id }, 'fcmTokens.token': fcmToken },
+            { $pull: { fcmTokens: { token: fcmToken } } }
+          );
+
+          if (!user.fcmTokens) {
+            user.fcmTokens = [];
+          }
+
+          user.fcmTokens.push({
+            token: fcmToken,
+            deviceType: normalizedDeviceType,
+            deviceId: deviceId || null,
+            createdAt: new Date(),
+          });
+
+          if (user.fcmTokens.length > 5) {
+            user.fcmTokens = user.fcmTokens
+              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+              .slice(0, 5);
+          }
         }
 
-        
-        user.fcmTokens.push({
-          token: fcmToken,
-          deviceType: normalizedDeviceType,
-          deviceId: deviceId || null,
-          createdAt: new Date(),
-        });
-
-        
-        if (user.fcmTokens.length > 5) {
-          user.fcmTokens = user.fcmTokens
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-            .slice(0, 5);
-        }
+        await user.save();
       }
 
-      await user.save();
+      if (principal.type === ROLE_TYPES.SOCIETY_ADMIN) {
+        const admin = principal.doc;
+
+        if (!admin.fcmTokens) {
+          admin.fcmTokens = [];
+        }
+
+        const existingTokenIndex = admin.fcmTokens.findIndex(
+          (t) => t.token === fcmToken
+        );
+
+        if (existingTokenIndex !== -1) {
+          admin.fcmTokens[existingTokenIndex].deviceType = normalizedDeviceType;
+          admin.fcmTokens[existingTokenIndex].deviceId = deviceId || null;
+          admin.fcmTokens[existingTokenIndex].createdAt = new Date();
+        } else {
+          admin.fcmTokens.push({
+            token: fcmToken,
+            deviceType: normalizedDeviceType,
+            deviceId: deviceId || null,
+            createdAt: new Date(),
+          });
+
+          if (admin.fcmTokens.length > 5) {
+            admin.fcmTokens = admin.fcmTokens
+              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+              .slice(0, 5);
+          }
+        }
+
+        if (principal.save) {
+          await principal.save();
+        }
+      }
     }
 
     return sendSuccessResponse(res, 200, 'Login successful', {

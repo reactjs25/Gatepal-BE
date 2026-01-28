@@ -30,6 +30,19 @@ const societyAdminSchema = new mongoose.Schema(
         otpCode: { type: String, default: null },
         otpExpiresAt: { type: Date, default: null },
         otpVerifiedAt: { type: Date, default: null },
+        fcmTokens: {
+            type: [{
+                token: { type: String, required: true },
+                deviceType: {
+                    type: String,
+                    enum: ['android', 'ios', 'web'],
+                    default: 'android',
+                },
+                deviceId: { type: String, default: null },
+                createdAt: { type: Date, default: Date.now },
+            }],
+            default: [],
+        },
     },
     { timestamps: true }
 );
