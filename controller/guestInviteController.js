@@ -386,24 +386,22 @@ const computeFrequentInviteValidityWindow = ({
 };
 
 const buildGuestInviteQrPayload = ({ invite, guest }) => {
-  
   const payload = {
-    t: 'gi', 
-    v: 2,    
-    i: invite.inviteId,
-    g: guest.guestId,
+    type: 'gatepal_guest_invite',
+    version: 2,
+    inviteId: invite.inviteId,
+    guestId: guest.guestId,
   };
   return JSON.stringify(payload);
 };
 
 
 const buildGroupInviteQrPayload = ({ invite }) => {
-  
   const payload = {
-    t: 'gi', 
-    v: 2,    
-    i: invite.inviteId,
-    g: 'group',
+    type: 'gatepal_guest_invite',
+    version: 2,
+    inviteId: invite.inviteId,
+    guestId: 'group',
   };
   return JSON.stringify(payload);
 };
@@ -1065,18 +1063,21 @@ const scanGuestInvite = async (req, res, next) => {
       return next(createHttpError('Invalid QR data', 400));
     }
 
-    
-    
+    // Determine QR type - support both shorthand (t) and full name (type)
     let qrType = payload.type || null;
     if (!qrType && payload.t) {
-      
+      // Shorthand mapping: gi = guest_invite, v = visitor, m = member
       const typeMap = { gi: 'gatepal_guest_invite', v: 'gatepal_visitor', m: 'gatepal_member' };
       qrType = typeMap[payload.t] || null;
     }
     
-    if (qrType === 'gatepal_guest_invite' && payload.t === 'gi') {
-      payload.inviteId = payload.i;
-      payload.guestId = payload.g;
+    // Map shorthand fields to full names for guest invite (backward compatibility for old QR codes)
+    // New format: { type: "gatepal_guest_invite", version: 2, inviteId: "invite-id", guestId: "guest-id" }
+    // Legacy format: { t: "gi", v: 2, i: "invite-id", g: "guest-id" }
+    if (qrType === 'gatepal_guest_invite') {
+      payload.inviteId = payload.inviteId || payload.i;
+      payload.guestId = payload.guestId || payload.g;
+      payload.version = payload.version || payload.v;
     }
     
     
