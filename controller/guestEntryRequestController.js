@@ -1143,6 +1143,34 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
     }
 
     const statusRaw = normalizeString(req.body?.status || 'pending').toLowerCase();
+    const dateFilter = normalizeOption(req.body?.dateFilter ?? req.body?.range ?? req.body?.period ?? '');
+    let startAt = null;
+    let endAt = null;
+    const now = new Date();
+
+    if (dateFilter) {
+      if (dateFilter === 'today') {
+        startAt = new Date(now);
+        startAt.setHours(0, 0, 0, 0);
+        endAt = now;
+      } else if (dateFilter === 'this_month' || dateFilter === 'thismonth') {
+        startAt = new Date(now.getFullYear(), now.getMonth(), 1);
+        endAt = now;
+      } else if (
+        dateFilter === 'past_3_months' ||
+        dateFilter === 'past_3_month' ||
+        dateFilter === 'past3months' ||
+        dateFilter === 'past3month' ||
+        dateFilter === 'last_3_months' ||
+        dateFilter === 'last3months' ||
+        dateFilter === 'past_90_days' ||
+        dateFilter === 'last_90_days'
+      ) {
+        startAt = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        startAt.setHours(0, 0, 0, 0);
+        endAt = now;
+      }
+    }
     const status = ['pending', 'approved', 'rejected', 'expired', 'cancelled', 'entered', 'left', 'all'].includes(
       statusRaw
     )
@@ -1155,6 +1183,11 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       unitNumberLower: unitDoc.unitNumberLower,
       ...(status === 'all' ? {} : { status }),
     };
+    if (startAt || endAt) {
+      listQuery.createdAt = {};
+      if (startAt) listQuery.createdAt.$gte = startAt;
+      if (endAt) listQuery.createdAt.$lte = endAt;
+    }
 
     const items = await GuestEntryRequest.find(
       listQuery,
