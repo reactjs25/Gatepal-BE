@@ -1340,11 +1340,23 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       });
     };
 
+    const preApprovalDateQuery = {};
+    if (startAt || endAt) {
+      preApprovalDateQuery.validFrom = {};
+      if (startAt) preApprovalDateQuery.validFrom.$gte = startAt;
+      if (endAt) preApprovalDateQuery.validFrom.$lte = endAt;
+    }
+
     let preApprovalCards = [];
     if (preApprovalStatusFilter.length > 0) {
       const [deliveryApprovals, taxiApprovals, otherApprovals] = await Promise.all([
         DeliveryPreApproval.find(
-          { societyId: unitDoc.societyId, unitId: unitDoc._id, status: { $in: preApprovalStatusFilter } },
+          {
+            societyId: unitDoc.societyId,
+            unitId: unitDoc._id,
+            status: { $in: preApprovalStatusFilter },
+            ...preApprovalDateQuery,
+          },
           {
             preApprovalId: 1,
             visitorType: 1,
@@ -1360,7 +1372,12 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           }
         ).lean(),
         TaxiDriverPreApproval.find(
-          { societyId: unitDoc.societyId, unitId: unitDoc._id, status: { $in: preApprovalStatusFilter } },
+          {
+            societyId: unitDoc.societyId,
+            unitId: unitDoc._id,
+            status: { $in: preApprovalStatusFilter },
+            ...preApprovalDateQuery,
+          },
           {
             preApprovalId: 1,
             visitorType: 1,
@@ -1377,7 +1394,12 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           }
         ).lean(),
         OtherVisitorPreApproval.find(
-          { societyId: unitDoc.societyId, unitId: unitDoc._id, status: { $in: preApprovalStatusFilter } },
+          {
+            societyId: unitDoc.societyId,
+            unitId: unitDoc._id,
+            status: { $in: preApprovalStatusFilter },
+            ...preApprovalDateQuery,
+          },
           {
             preApprovalId: 1,
             visitorType: 1,
@@ -1450,7 +1472,12 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
     let guestInviteCards = [];
     if (preApprovalStatusFilter.length > 0) {
       const guestInvites = await GuestInvite.find(
-        { societyId: unitDoc.societyId, unitId: unitDoc._id, status: { $in: preApprovalStatusFilter } },
+        {
+          societyId: unitDoc.societyId,
+          unitId: unitDoc._id,
+          status: { $in: preApprovalStatusFilter },
+          ...preApprovalDateQuery,
+        },
         {
           inviteId: 1,
           type: 1,
