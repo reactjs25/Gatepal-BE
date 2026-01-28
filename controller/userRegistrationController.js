@@ -196,6 +196,7 @@ const completeOnboarding = async (req, res, next) => {
 
     const flow = user.onboardingFlow || resolveOnboardingFlow(user.intendedRole || user.role);
     const payload = req.body || {};
+    const { fcmToken, deviceType, deviceId } = payload;
 
     let upgradeResult = { upgraded: false };
 
@@ -212,6 +213,47 @@ const completeOnboarding = async (req, res, next) => {
 
     user.onboardedAt = new Date();
     user.onboardingStatus = 'completed';
+
+    // Handle FCM token registration during onboarding
+    if (fcmToken) {
+      const normalizedDeviceType = (deviceType || 'android').toLowerCase();
+
+      const existingTokenIndex = user.fcmTokens
+        ? user.fcmTokens.findIndex((t) => t.token === fcmToken)
+        : -1;
+
+      if (existingTokenIndex !== -1) {
+        // Update existing token
+        user.fcmTokens[existingTokenIndex].deviceType = normalizedDeviceType;
+        user.fcmTokens[existingTokenIndex].deviceId = deviceId || null;
+        user.fcmTokens[existingTokenIndex].createdAt = new Date();
+      } else {
+        // Remove this token from any other user
+        await User.updateMany(
+          { _id: { $ne: user._id }, 'fcmTokens.token': fcmToken },
+          { $pull: { fcmTokens: { token: fcmToken } } }
+        );
+
+        if (!user.fcmTokens) {
+          user.fcmTokens = [];
+        }
+
+        // Add new token
+        user.fcmTokens.push({
+          token: fcmToken,
+          deviceType: normalizedDeviceType,
+          deviceId: deviceId || null,
+          createdAt: new Date(),
+        });
+
+        // Keep only the 5 most recent tokens
+        if (user.fcmTokens.length > 5) {
+          user.fcmTokens = user.fcmTokens
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 5);
+        }
+      }
+    }
 
     await user.save();
 
