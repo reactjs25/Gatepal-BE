@@ -376,12 +376,10 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser, approvedByGuard, companyLo
 
   const labels = toVisitorLabels(reqDoc.visitorType || 'guest');
 
-  // Determine approvedBy based on who approved
   let approvedByInfo = null;
   let approvedOnDate = null;
 
   if (reqDoc.approvedByGuardWithoutMemberResponse && approvedByGuard) {
-    // Guard approved without member response
     approvedByInfo = {
       id: String(approvedByGuard._id),
       name: approvedByGuard.fullName ? `${approvedByGuard.fullName} (Security Guard)` : 'Security Guard',
@@ -391,7 +389,6 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser, approvedByGuard, companyLo
     };
     approvedOnDate = reqDoc.approvedByGuardAt;
   } else if (approvedByUser) {
-    // Member approved
     approvedByInfo = {
       id: String(approvedByUser._id),
       name: approvedByUser.fullName || null,
@@ -656,7 +653,6 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
       )
     );
 
-    // Also collect guard approver IDs for guard-approved entries
     const guardApproverIds = Array.from(
       new Set(
         docs
@@ -670,7 +666,6 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
       : [];
     const approverById = new Map(approvers.map((u) => [String(u._id), u]));
 
-    // Fetch guard approvers
     const guardApprovers = guardApproverIds.length
       ? await User.find({ _id: { $in: guardApproverIds } }, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
       : [];
@@ -2255,10 +2250,6 @@ const allowGuestEntry = async (req, res, next) => {
   }
 };
 
-/**
- * Allow entry without member approval - Guard can approve and allow entry
- * when member hasn't responded to the approval request
- */
 const allowEntryWithoutApproval = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -2282,7 +2273,6 @@ const allowEntryWithoutApproval = async (req, res, next) => {
 
     if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
 
-    // Handle multiple request IDs (batch processing)
     if (!requestId && requestIds.length > 0) {
       const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
       if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
@@ -2294,14 +2284,12 @@ const allowEntryWithoutApproval = async (req, res, next) => {
       let anyPending = false;
 
       for (const d of sameSociety) {
-        // Check if expired
         if (d.status === 'pending' && d.expiresAt && d.expiresAt.getTime() <= nowMs) {
           d.status = 'expired';
           await d.save();
           continue;
         }
         
-        // Allow entry for pending requests without member approval
         if (d.status === 'pending') {
           anyPending = true;
           d.status = 'approved';
@@ -2312,7 +2300,6 @@ const allowEntryWithoutApproval = async (req, res, next) => {
           d.entryAllowedAt = new Date();
           d.gateId = activeDuty.dutyGateId || d.gateId;
           d.gateName = activeDuty.dutyGateName || d.gateName;
-          // Directly move to entered status
           d.status = 'entered';
         }
       }
@@ -2323,13 +2310,11 @@ const allowEntryWithoutApproval = async (req, res, next) => {
 
       await Promise.all(sameSociety.map((d) => d.save()));
 
-      // Return the updated request details
       req.query.requestIds = requestIds.join(',');
       req.query.requestId = undefined;
       return getGuestEntryRequestForGuard(req, res, next);
     }
 
-    // Handle single request ID
     const doc = await GuestEntryRequest.findOne({ requestId });
     if (!doc) return next(createHttpError('Request not found', 404));
 
@@ -2337,20 +2322,17 @@ const allowEntryWithoutApproval = async (req, res, next) => {
       return next(createHttpError('Request does not belong to this society', 403));
     }
 
-    // Check if expired
     if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
       doc.status = 'expired';
       await doc.save();
       return next(createHttpError('Request has expired', 409));
     }
 
-    // Only allow for pending requests
     if (doc.status !== 'pending') {
       if (doc.status === 'approved') {
         return next(createHttpError('Request is already approved. Use allowEntry endpoint instead.', 409));
       }
       if (doc.status === 'entered') {
-        // Fetch guard who approved if it was guard-approved
         const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
           ? await User.findById(doc.approvedByGuardId).lean()
           : null;
@@ -2364,7 +2346,6 @@ const allowEntryWithoutApproval = async (req, res, next) => {
       return next(createHttpError(`Cannot allow entry for request with status: ${doc.status}`, 409));
     }
 
-    // Approve and allow entry without member approval
     doc.status = 'approved';
     doc.approvedByGuardWithoutMemberResponse = true;
     doc.approvedByGuardId = authUser._id;
@@ -2373,7 +2354,6 @@ const allowEntryWithoutApproval = async (req, res, next) => {
     doc.entryAllowedAt = new Date();
     doc.gateId = activeDuty.dutyGateId || doc.gateId;
     doc.gateName = activeDuty.dutyGateName || doc.gateName;
-    // Directly move to entered status
     doc.status = 'entered';
 
     await doc.save();

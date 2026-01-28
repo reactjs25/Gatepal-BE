@@ -77,7 +77,6 @@ const guestEntryRequestSchema = new mongoose.Schema(
     entryLeftByMemberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     entryLeftAt: { type: Date, default: null },
 
-    // Guard approved entry without member response
     approvedByGuardWithoutMemberResponse: { type: Boolean, default: false },
     approvedByGuardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     approvedByGuardAt: { type: Date, default: null },
