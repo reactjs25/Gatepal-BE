@@ -370,11 +370,37 @@ const resolveUnitResidents = async ({ societyId, wingNameLower, unitNumberLower 
   return unique;
 };
 
-const toGuardCardPayload = ({ reqDoc, approvedByUser, companyLogo }) => {
+const toGuardCardPayload = ({ reqDoc, approvedByUser, approvedByGuard, companyLogo }) => {
   const statusLabel = getStatusLabel(reqDoc.status);
 
 
   const labels = toVisitorLabels(reqDoc.visitorType || 'guest');
+
+  // Determine approvedBy based on who approved
+  let approvedByInfo = null;
+  let approvedOnDate = null;
+
+  if (reqDoc.approvedByGuardWithoutMemberResponse && approvedByGuard) {
+    // Guard approved without member response
+    approvedByInfo = {
+      id: String(approvedByGuard._id),
+      name: approvedByGuard.fullName ? `${approvedByGuard.fullName} (Security Guard)` : 'Security Guard',
+      countryCode: approvedByGuard.countryCode || '+91',
+      phoneNumber: approvedByGuard.phoneNumber || null,
+      isGuard: true,
+    };
+    approvedOnDate = reqDoc.approvedByGuardAt;
+  } else if (approvedByUser) {
+    // Member approved
+    approvedByInfo = {
+      id: String(approvedByUser._id),
+      name: approvedByUser.fullName || null,
+      countryCode: approvedByUser.countryCode || '+91',
+      phoneNumber: approvedByUser.phoneNumber || null,
+      isGuard: false,
+    };
+    approvedOnDate = reqDoc.approvedAt;
+  }
 
   return {
 
@@ -399,16 +425,8 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser, companyLogo }) => {
     companyName: reqDoc.visitorCompanyName || null,
     companyLogo: companyLogo || null,
     workCategory: reqDoc.visitorWorkCategory || null,
-    approvedBy: approvedByUser
-      ? {
-        id: String(approvedByUser._id),
-        name: approvedByUser.fullName || null,
-        countryCode: approvedByUser.countryCode || '+91',
-        phoneNumber: approvedByUser.phoneNumber || null,
-      }
-      : null,
-
-    approvedOn: reqDoc.approvedAt ? toISTDateTimeLabel(reqDoc.approvedAt) : null,
+    approvedBy: approvedByInfo,
+    approvedOn: approvedOnDate ? toISTDateTimeLabel(approvedOnDate) : null,
     requestedOn: reqDoc.createdAt ? toISTDateTimeLabel(reqDoc.createdAt) : null,
   };
 };
@@ -638,19 +656,37 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
       )
     );
 
+    // Also collect guard approver IDs for guard-approved entries
+    const guardApproverIds = Array.from(
+      new Set(
+        docs
+          .filter((d) => d.approvedByGuardWithoutMemberResponse && d.approvedByGuardId)
+          .map((d) => String(d.approvedByGuardId))
+      )
+    );
+
     const approvers = approverIds.length
       ? await User.find({ _id: { $in: approverIds } }, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
       : [];
     const approverById = new Map(approvers.map((u) => [String(u._id), u]));
 
+    // Fetch guard approvers
+    const guardApprovers = guardApproverIds.length
+      ? await User.find({ _id: { $in: guardApproverIds } }, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
+      : [];
+    const guardApproverById = new Map(guardApprovers.map((u) => [String(u._id), u]));
+
     const mapped = docs.map((doc) => {
       const approvedByUser = doc.approvedByUserId ? approverById.get(String(doc.approvedByUserId)) : null;
+      const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
+        ? guardApproverById.get(String(doc.approvedByGuardId))
+        : null;
       const companyLogo = resolveCompanyLogo({
         visitorType: doc.visitorType,
         companyName: doc.visitorCompanyName,
         deliveryCompanyLogos,
       });
-      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
+      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
       return {
         ...payload,
         statusKey: doc.status,
@@ -1048,11 +1084,14 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
         requests: await Promise.all(
           sameSociety.map(async (d) => {
             const approvedByUser = d.approvedByUserId ? await User.findById(d.approvedByUserId).lean() : null;
+            const approvedByGuard = d.approvedByGuardWithoutMemberResponse && d.approvedByGuardId
+              ? await User.findById(d.approvedByGuardId).lean()
+              : null;
             const companyLogo = await resolveCompanyLogoForRequest({
               visitorType: d.visitorType,
               companyName: d.visitorCompanyName,
             });
-            return toGuardCardPayload({ reqDoc: d, approvedByUser, companyLogo });
+            return toGuardCardPayload({ reqDoc: d, approvedByUser, approvedByGuard, companyLogo });
           })
         ),
       };
@@ -1074,11 +1113,14 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
     }
 
     const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
+    const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
+      ? await User.findById(doc.approvedByGuardId).lean()
+      : null;
     const companyLogo = await resolveCompanyLogoForRequest({
       visitorType: doc.visitorType,
       companyName: doc.visitorCompanyName,
     });
-    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
+    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
 
     return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', { data: payload });
   } catch (error) {
@@ -2179,11 +2221,14 @@ const allowGuestEntry = async (req, res, next) => {
 
     if (doc.status === 'entered') {
       const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
+      const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
+        ? await User.findById(doc.approvedByGuardId).lean()
+        : null;
       const companyLogo = await resolveCompanyLogoForRequest({
         visitorType: doc.visitorType,
         companyName: doc.visitorCompanyName,
       });
-      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
+      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
       return sendSuccessResponse(res, 200, 'Entry already allowed', { data: payload });
     }
 
@@ -2196,14 +2241,151 @@ const allowGuestEntry = async (req, res, next) => {
     await doc.save();
 
     const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
+    const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
+      ? await User.findById(doc.approvedByGuardId).lean()
+      : null;
     const companyLogo = await resolveCompanyLogoForRequest({
       visitorType: doc.visitorType,
       companyName: doc.visitorCompanyName,
     });
-    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
+    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
     return sendSuccessResponse(res, 200, 'Entry allowed successfully', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to allow entry'));
+  }
+};
+
+/**
+ * Allow entry without member approval - Guard can approve and allow entry
+ * when member hasn't responded to the approval request
+ */
+const allowEntryWithoutApproval = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+
+    const activeDuty = requireGuardOnDuty(authUser);
+
+    const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
+    const requestIdsRaw = req.body?.requestIds ?? req.query?.requestIds;
+
+    const requestIds =
+      Array.isArray(requestIdsRaw)
+        ? requestIdsRaw.map((x) => normalizeString(x)).filter(Boolean)
+        : typeof requestIdsRaw === 'string'
+          ? requestIdsRaw
+              .split(',')
+              .map((x) => normalizeString(x))
+              .filter(Boolean)
+          : [];
+
+    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
+
+    // Handle multiple request IDs (batch processing)
+    if (!requestId && requestIds.length > 0) {
+      const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
+      if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
+
+      const sameSociety = docs.filter((d) => String(d.societyId) === String(activeDuty.societyId));
+      if (sameSociety.length === 0) return next(createHttpError('Request does not belong to this society', 403));
+
+      const nowMs = Date.now();
+      let anyPending = false;
+
+      for (const d of sameSociety) {
+        // Check if expired
+        if (d.status === 'pending' && d.expiresAt && d.expiresAt.getTime() <= nowMs) {
+          d.status = 'expired';
+          await d.save();
+          continue;
+        }
+        
+        // Allow entry for pending requests without member approval
+        if (d.status === 'pending') {
+          anyPending = true;
+          d.status = 'approved';
+          d.approvedByGuardWithoutMemberResponse = true;
+          d.approvedByGuardId = authUser._id;
+          d.approvedByGuardAt = new Date();
+          d.entryAllowedByGuardId = authUser._id;
+          d.entryAllowedAt = new Date();
+          d.gateId = activeDuty.dutyGateId || d.gateId;
+          d.gateName = activeDuty.dutyGateName || d.gateName;
+          // Directly move to entered status
+          d.status = 'entered';
+        }
+      }
+
+      if (!anyPending && !sameSociety.some((d) => d.status === 'entered')) {
+        return next(createHttpError('No pending requests found to allow entry without approval', 409));
+      }
+
+      await Promise.all(sameSociety.map((d) => d.save()));
+
+      // Return the updated request details
+      req.query.requestIds = requestIds.join(',');
+      req.query.requestId = undefined;
+      return getGuestEntryRequestForGuard(req, res, next);
+    }
+
+    // Handle single request ID
+    const doc = await GuestEntryRequest.findOne({ requestId });
+    if (!doc) return next(createHttpError('Request not found', 404));
+
+    if (String(doc.societyId) !== String(activeDuty.societyId)) {
+      return next(createHttpError('Request does not belong to this society', 403));
+    }
+
+    // Check if expired
+    if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
+      doc.status = 'expired';
+      await doc.save();
+      return next(createHttpError('Request has expired', 409));
+    }
+
+    // Only allow for pending requests
+    if (doc.status !== 'pending') {
+      if (doc.status === 'approved') {
+        return next(createHttpError('Request is already approved. Use allowEntry endpoint instead.', 409));
+      }
+      if (doc.status === 'entered') {
+        // Fetch guard who approved if it was guard-approved
+        const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
+          ? await User.findById(doc.approvedByGuardId).lean()
+          : null;
+        const companyLogo = await resolveCompanyLogoForRequest({
+          visitorType: doc.visitorType,
+          companyName: doc.visitorCompanyName,
+        });
+        const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser: null, approvedByGuard, companyLogo });
+        return sendSuccessResponse(res, 200, 'Entry already allowed', { data: payload });
+      }
+      return next(createHttpError(`Cannot allow entry for request with status: ${doc.status}`, 409));
+    }
+
+    // Approve and allow entry without member approval
+    doc.status = 'approved';
+    doc.approvedByGuardWithoutMemberResponse = true;
+    doc.approvedByGuardId = authUser._id;
+    doc.approvedByGuardAt = new Date();
+    doc.entryAllowedByGuardId = authUser._id;
+    doc.entryAllowedAt = new Date();
+    doc.gateId = activeDuty.dutyGateId || doc.gateId;
+    doc.gateName = activeDuty.dutyGateName || doc.gateName;
+    // Directly move to entered status
+    doc.status = 'entered';
+
+    await doc.save();
+
+    const companyLogo = await resolveCompanyLogoForRequest({
+      visitorType: doc.visitorType,
+      companyName: doc.visitorCompanyName,
+    });
+    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser: null, approvedByGuard: authUser, companyLogo });
+    return sendSuccessResponse(res, 200, 'Entry allowed without member approval', { data: payload });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to allow entry without approval'));
   }
 };
 
@@ -2272,11 +2454,14 @@ const allowGuestExit = async (req, res, next) => {
 
     if (doc.status === 'left') {
       const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
+      const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
+        ? await User.findById(doc.approvedByGuardId).lean()
+        : null;
       const companyLogo = await resolveCompanyLogoForRequest({
         visitorType: doc.visitorType,
         companyName: doc.visitorCompanyName,
       });
-      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
+      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
       return sendSuccessResponse(res, 200, 'Exit already allowed', { data: payload });
     }
 
@@ -2287,11 +2472,14 @@ const allowGuestExit = async (req, res, next) => {
     await doc.save();
 
     const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
+    const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
+      ? await User.findById(doc.approvedByGuardId).lean()
+      : null;
     const companyLogo = await resolveCompanyLogoForRequest({
       visitorType: doc.visitorType,
       companyName: doc.visitorCompanyName,
     });
-    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, companyLogo });
+    const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
     return sendSuccessResponse(res, 200, 'Exit allowed successfully', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to allow exit'));
@@ -2818,6 +3006,7 @@ module.exports = {
   getGuestEntryRequestDetailForMember,
   decideGuestEntryRequest,
   allowGuestEntry,
+  allowEntryWithoutApproval,
   allowGuestExit,
   allowGuestExitForMember,
   markWrongEntryForMember,

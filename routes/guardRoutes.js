@@ -15,6 +15,7 @@ const {
   createOnboardedVisitorEntry,
   getGuestEntryRequestForGuard,
   allowGuestEntry,
+  allowEntryWithoutApproval,
   allowGuestExit,
   updateGuestEntryRequestPhoto,
 } = require('../controller/guestEntryRequestController');
@@ -37,6 +38,7 @@ router.post('/guestEntryRequests', userAuthMiddleware, createGuestEntryRequest);
 router.post('/visitorEntry', userAuthMiddleware, createOnboardedVisitorEntry);
 router.get('/guestEntryRequests', userAuthMiddleware, getGuestEntryRequestForGuard);
 router.post('/guestEntryRequests/allowEntry', userAuthMiddleware, allowGuestEntry);
+router.post('/guestEntryRequests/allowEntryWithoutApproval', userAuthMiddleware, allowEntryWithoutApproval);
 router.post('/guestEntryRequests/allowExit', userAuthMiddleware, allowGuestExit);
 router.patch('/guestEntryRequests/photo', userAuthMiddleware, updateGuestEntryRequestPhoto);
 
