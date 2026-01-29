@@ -2159,8 +2159,6 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             wrongEntryNotifier,
             rejectedReason: doc.rejectedReason || null,
             rejectedDescription: doc.rejectedDescription || null,
-            entryDenialReason: doc.rejectedReason || '',
-            entryDenialDescription: doc.rejectedDescription || '',
           },
         });
       }
