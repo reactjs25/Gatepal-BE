@@ -70,6 +70,8 @@ const guestEntryRequestSchema = new mongoose.Schema(
 
     rejectedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     rejectedAt: { type: Date, default: null },
+    rejectedReason: { type: String, trim: true, default: null },
+    rejectedDescription: { type: String, trim: true, default: null },
 
     entryAllowedByGuardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     entryAllowedAt: { type: Date, default: null },

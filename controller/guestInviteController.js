@@ -386,22 +386,24 @@ const computeFrequentInviteValidityWindow = ({
 };
 
 const buildGuestInviteQrPayload = ({ invite, guest }) => {
+  // Minimal payload - only essential identifiers; rest fetched from DB on scan
   const payload = {
-    type: 'gatepal_guest_invite',
-    version: 2,
-    inviteId: invite.inviteId,
-    guestId: guest.guestId,
+    t: 'gi', // type: gatepal_guest_invite (shortened)
+    v: 2,    // version
+    i: invite.inviteId,
+    g: guest.guestId,
   };
   return JSON.stringify(payload);
 };
 
-
+// For group invites - single shared QR for all guests
 const buildGroupInviteQrPayload = ({ invite }) => {
+  // Minimal payload - only essential identifiers
   const payload = {
-    type: 'gatepal_guest_invite',
-    version: 2,
-    inviteId: invite.inviteId,
-    guestId: 'group',
+    t: 'gi', // type: gatepal_guest_invite (shortened)
+    v: 2,    // version
+    i: invite.inviteId,
+    g: 'group',
   };
   return JSON.stringify(payload);
 };
@@ -608,7 +610,7 @@ const createFrequentInvite = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    
+    // Generate individual QR codes for each guest
     const updatedGuests = await generateGuestQrCodes({ invite });
     invite.guests = updatedGuests;
     await invite.save();
@@ -729,7 +731,7 @@ const createQuickInvite = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    
+    // Generate individual QR codes for each guest
     const updatedGuests = await generateGuestQrCodes({ invite });
     invite.guests = updatedGuests;
     await invite.save();
@@ -1045,7 +1047,7 @@ const scanGuestInvite = async (req, res, next) => {
         const image = await Jimp.read(buffer);
         const width = image.width;
         const height = image.height;
-        
+        // Convert Jimp bitmap data to Uint8ClampedArray for jsQR
         const imageData = new Uint8ClampedArray(image.bitmap.data);
         const decoded = jsQR(imageData, width, height);
         if (!decoded) {
@@ -1063,29 +1065,26 @@ const scanGuestInvite = async (req, res, next) => {
       return next(createHttpError('Invalid QR data', 400));
     }
 
-    // Determine QR type - support both shorthand (t) and full name (type)
+    // Handle different QR types
+    // Support both old format (type: 'gatepal_*') and new compact format (t: 'gi')
     let qrType = payload.type || null;
     if (!qrType && payload.t) {
-      // Shorthand mapping: gi = guest_invite, v = visitor, m = member
+      // Map compact type codes to full type names
       const typeMap = { gi: 'gatepal_guest_invite', v: 'gatepal_visitor', m: 'gatepal_member' };
       qrType = typeMap[payload.t] || null;
     }
-    
-    // Map shorthand fields to full names for guest invite (backward compatibility for old QR codes)
-    // New format: { type: "gatepal_guest_invite", version: 2, inviteId: "invite-id", guestId: "guest-id" }
-    // Legacy format: { t: "gi", v: 2, i: "invite-id", g: "guest-id" }
-    if (qrType === 'gatepal_guest_invite') {
-      payload.inviteId = payload.inviteId || payload.i;
-      payload.guestId = payload.guestId || payload.g;
-      payload.version = payload.version || payload.v;
+    // Also normalize payload fields from compact to full names for guest invites
+    if (qrType === 'gatepal_guest_invite' && payload.t === 'gi') {
+      payload.inviteId = payload.i;
+      payload.guestId = payload.g;
     }
     
-    
+    // If it's a visitor QR (delivery_executive, taxi_driver, other_visitor, guest already onboarded)
     if (qrType === 'gatepal_visitor') {
       const visitorType = (payload.visitorType || '').toString().trim().toLowerCase();
       const isGuest = visitorType === 'guest';
       const companyLogo = isGuest ? null : await resolveVisitorCompanyLogo(payload.visitorType, payload.companyName);
-      
+      // Fetch visitor's profile photo from database
       let imageUrl = null;
       if (payload.userId) {
         const visitor = await User.findById(payload.userId).select('profilePhoto').lean();
@@ -1109,7 +1108,7 @@ const scanGuestInvite = async (req, res, next) => {
       });
     }
 
-    
+    // If it's a member QR
     if (qrType === 'gatepal_member') {
       return sendSuccessResponse(res, 200, 'Member QR code scanned successfully', {
         qrType: 'member',
@@ -1126,7 +1125,7 @@ const scanGuestInvite = async (req, res, next) => {
       });
     }
 
-    
+    // Guest invite QR
     if (qrType !== 'gatepal_guest_invite' || !payload.inviteId) {
       return next(createHttpError('QR code is not a valid GatePal QR', 400));
     }
@@ -1157,12 +1156,12 @@ const scanGuestInvite = async (req, res, next) => {
       return next(createHttpError('Invite has expired', 400));
     }
 
-    
+    // Find the specific guest from the QR code (for quick/frequent invites with per-guest QR)
     const guestId = payload.guestId;
     let arrivingGuest = null;
     let arrivingGuestIndex = -1;
 
-    
+    // For group invites, guestId is 'group' - skip individual guest lookup
     if (guestId && guestId !== 'group') {
       arrivingGuestIndex = invite.guests.findIndex((g) => g.guestId === guestId);
       if (arrivingGuestIndex === -1) {
@@ -1170,21 +1169,21 @@ const scanGuestInvite = async (req, res, next) => {
       }
       arrivingGuest = invite.guests[arrivingGuestIndex];
 
-      
+      // For quick invites, check if this specific guest has already arrived
       if (invite.type === 'quick' && arrivingGuest.hasArrived) {
         return next(createHttpError(`${arrivingGuest.name} has already used this invite`, 400));
       }
     }
 
-    
+    // For group invites without guestId, use the old logic
     const usedEntries = Array.isArray(invite.entryLogs) ? invite.entryLogs.length : 0;
     const hasEntryLimit = invite.type === 'group';
     if (hasEntryLimit && usedEntries >= invite.maxEntries) {
       return next(createHttpError('Entry limit reached for this invite', 400));
     }
 
-    
-    
+    // For frequent invites, check if guest is already inside (has 'entered' status but not 'left')
+    // This prevents duplicate GuestEntryRequest records when same guest scans multiple times
     if (invite.type === 'frequent' && arrivingGuest) {
       const guestPhoneDigits = normalizePhoneDigits(arrivingGuest.phoneNumber || arrivingGuest.phoneDigits);
       if (guestPhoneDigits) {
@@ -1205,18 +1204,18 @@ const scanGuestInvite = async (req, res, next) => {
       }
     }
 
-    
+    // For group invites, check if the phone number (if provided) is already inside
     if (invite.type === 'group') {
-      
-      
-      
+      // Group invites don't have per-guest phone numbers in the invite,
+      // but we should still check by society-level for any entered status
+      // This is handled by the guard manually
     }
 
     const normalizedVehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
     const countNumber = Number(accompanyingCount);
     const safeCount = Number.isFinite(countNumber) && countNumber > 0 ? countNumber : 0;
 
-    
+    // Add entry log with guest information
     invite.entryLogs.push({
       guestId: guestId || 'group',
       guestName: arrivingGuest ? arrivingGuest.name : 'Group Guest',
@@ -1228,7 +1227,7 @@ const scanGuestInvite = async (req, res, next) => {
       accompanyingCount: safeCount,
     });
 
-    
+    // Mark the specific guest as arrived (for quick/frequent invites)
     if (arrivingGuestIndex !== -1) {
       invite.guests[arrivingGuestIndex].hasArrived = true;
       invite.guests[arrivingGuestIndex].arrivedAt = now;
@@ -1239,7 +1238,7 @@ const scanGuestInvite = async (req, res, next) => {
     const member = await User.findById(invite.invitedByUserId).lean();
     const unit = await MemberUnit.findById(invite.unitId).lean();
 
-    
+    // Create GuestEntryRequest so guard can see visitor in today's list
     const guestEntryRequest = await GuestEntryRequest.create({
       societyId: invite.societyId,
       wingName: unit?.wingName || '',
@@ -1274,15 +1273,15 @@ const scanGuestInvite = async (req, res, next) => {
 
     const usedEntriesAfterScan = usedEntries + 1;
     
-    
+    // Calculate remaining entries based on invite type
     let remainingEntries = null;
     if (invite.type === 'quick') {
-      
+      // For quick invites, remaining = guests who haven't arrived
       remainingEntries = invite.guests.filter((g) => !g.hasArrived).length;
     } else if (invite.type === 'group') {
       remainingEntries = Math.max(invite.maxEntries - usedEntriesAfterScan, 0);
     }
-    
+    // For frequent invites, remainingEntries stays null (unlimited)
 
     const responseData = {
       qrType: 'guest_invite',
@@ -1325,7 +1324,7 @@ const scanGuestInvite = async (req, res, next) => {
       validFrom: invite.validFrom,
       validTill: invite.validTill,
       validityLabel: `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`,
-      vehicleNumber: normalizedVehicleNumber || '',
+      vehicleNumber: normalizedVehicleNumber,
       accompanyingCount: safeCount,
       maxEntries: invite.type === 'frequent' ? null : invite.maxEntries,
       usedEntries: usedEntriesAfterScan,
@@ -1350,7 +1349,7 @@ const getRecentGuests = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (!['member', 'society_admin'].includes(authUser.role)) {
+    if (authUser.role !== 'member') {
       return next(createHttpError('Only members can view recent guests', 403));
     }
 
@@ -1365,7 +1364,7 @@ const getRecentGuests = async (req, res, next) => {
         invitedByUserId: authUser._id,
         createdAt: { $gte: since },
       },
-      { guests: 1, createdAt: 1 }
+      { guests: 1, entryLogs: 1, createdAt: 1 }
     )
       .sort({ createdAt: -1 })
       .limit(200)
@@ -1382,16 +1381,31 @@ const getRecentGuests = async (req, res, next) => {
     };
 
     for (const invite of invites) {
+      const entryLogImageByGuestId = new Map();
+      for (const log of invite.entryLogs || []) {
+        if (!log?.guestId || !log.imageUrl) continue;
+        const key = String(log.guestId);
+        const scannedAt = log.scannedAt || invite.createdAt;
+        const existing = entryLogImageByGuestId.get(key);
+        if (!existing || new Date(scannedAt).getTime() > new Date(existing.scannedAt).getTime()) {
+          entryLogImageByGuestId.set(key, { imageUrl: log.imageUrl, scannedAt });
+        }
+      }
+
       const guests = Array.isArray(invite.guests) ? invite.guests : [];
       for (const g of guests) {
         if (!g) continue;
         const name = normalizeString(g.name);
         const phoneDigits = g.phoneDigits || (g.phoneNumber ? normalizeDigits(g.phoneNumber) : null);
         const key = phoneDigits || `${name.toLowerCase()}|${String(g.guestId || '')}`;
+        const entryLogImage = g.guestId
+          ? entryLogImageByGuestId.get(String(g.guestId))?.imageUrl || null
+          : null;
         upsert(key, {
           name: name || null,
           countryCode: g.countryCode || null,
           phoneNumber: g.phoneNumber || null,
+          imageUrl: entryLogImage,
           source: g.source || 'recent',
           lastInvitedAt: invite.createdAt,
         });
@@ -1491,7 +1505,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
 
     await invite.save();
 
-    
+    // Build full response matching scan response
     const member = await User.findById(invite.invitedByUserId).lean();
     const unit = await MemberUnit.findById(invite.unitId).lean();
 
@@ -1499,14 +1513,14 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
     const fromTimeLabel = toISTTimeLabel(invite.validFrom);
     const tillTimeLabel = toISTTimeLabel(invite.validTill);
 
-    
+    // Find arriving guest from the entry log
     const targetLog = invite.entryLogs[targetLogIndex];
     const arrivingGuest = invite.guests.find((g) => g.guestId === targetLog.guestId) || null;
 
-    
+    // Calculate used entries
     const usedEntries = invite.entryLogs.length;
 
-    
+    // Calculate remaining entries based on invite type
     let remainingEntries = null;
     if (invite.type === 'quick') {
       remainingEntries = invite.guests.filter((g) => !g.hasArrived).length;

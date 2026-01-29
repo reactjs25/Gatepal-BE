@@ -501,17 +501,31 @@ const getRecentGuestsForGuard = async (req, res, next) => {
     };
 
     for (const invite of invites) {
+      const entryLogImageByGuestId = new Map();
+      for (const log of invite.entryLogs || []) {
+        if (!log?.guestId || !log.imageUrl) continue;
+        const key = String(log.guestId);
+        const scannedAt = log.scannedAt || invite.createdAt;
+        const existing = entryLogImageByGuestId.get(key);
+        if (!existing || new Date(scannedAt).getTime() > new Date(existing.scannedAt).getTime()) {
+          entryLogImageByGuestId.set(key, { imageUrl: log.imageUrl, scannedAt });
+        }
+      }
+
       if (invite.type === 'quick' || invite.type === 'frequent') {
         for (const g of invite.guests || []) {
           if (!g || !g.hasArrived || !g.arrivedAt) continue;
           const phoneDigits = g.phoneDigits || (g.phoneNumber ? normalizeDigits(g.phoneNumber) : null);
           const key = phoneDigits || `${(g.name || '').toLowerCase()}|${String(g.guestId || '')}`;
+          const entryLogImage = g.guestId
+            ? entryLogImageByGuestId.get(String(g.guestId))?.imageUrl || null
+            : null;
           upsert(key, {
             name: g.name || null,
             countryCode: g.countryCode || null,
             phoneNumber: g.phoneNumber || null,
             lastVisitedAt: g.arrivedAt,
-            imageUrl: null,
+            imageUrl: entryLogImage,
             source: g.source || 'recent',
           });
         }
@@ -582,6 +596,15 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
     }
 
     const statusFilter = STATUS_FILTERS[statusKey] || STATUS_FILTERS.awaiting_approval;
+    const shouldGroupDelivery =
+      ['awaiting_approval', 'pending', 'approved'].includes(statusKey) &&
+      normalizedVisitorTypes.includes('delivery_executive');
+    const deliveryStatusFilter =
+      statusKey === 'approved'
+        ? ['approved']
+        : statusKey === 'awaiting_approval' || statusKey === 'pending'
+          ? ['pending', 'approved', 'entered']
+          : statusFilter;
 
     const now = new Date();
     await GuestEntryRequest.updateMany(
@@ -593,34 +616,74 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
       { $set: { status: 'expired' } }
     );
 
-    const docs = await GuestEntryRequest.find(
-      {
-        societyId: activeDuty.societyId,
-        status: { $in: statusFilter },
-        visitorType: { $in: normalizedVisitorTypes },
-      },
-      {
-        requestId: 1,
-        visitorType: 1,
-        guestName: 1,
-        guestCountryCode: 1,
-        guestPhoneNumber: 1,
-        guestImageUrl: 1,
-        accompanyingCount: 1,
-        vehicleNumber: 1,
-        status: 1,
-        wingName: 1,
-        unitNumber: 1,
-        visitorCompanyName: 1,
-        visitorWorkCategory: 1,
-        approvedByUserId: 1,
-        approvedAt: 1,
-        createdAt: 1,
-      }
-    )
-      .sort({ createdAt: -1 })
-      .limit(100)
-      .lean();
+    const baseProjection = {
+      requestId: 1,
+      visitorType: 1,
+      guestName: 1,
+      guestCountryCode: 1,
+      guestPhoneNumber: 1,
+      guestPhoneDigits: 1,
+      guestImageUrl: 1,
+      accompanyingCount: 1,
+      vehicleNumber: 1,
+      status: 1,
+      wingName: 1,
+      unitNumber: 1,
+      visitorCompanyName: 1,
+      visitorWorkCategory: 1,
+      approvedByUserId: 1,
+      approvedAt: 1,
+      approvedByGuardWithoutMemberResponse: 1,
+      approvedByGuardId: 1,
+      approvedByGuardAt: 1,
+      createdAt: 1,
+      gateId: 1,
+      createdByGuardId: 1,
+    };
+
+    let docs = [];
+    if (shouldGroupDelivery) {
+      const nonDeliveryTypes = normalizedVisitorTypes.filter((t) => t !== 'delivery_executive');
+      const [nonDeliveryDocs, deliveryDocs] = await Promise.all([
+        nonDeliveryTypes.length > 0
+          ? GuestEntryRequest.find(
+              {
+                societyId: activeDuty.societyId,
+                status: { $in: statusFilter },
+                visitorType: { $in: nonDeliveryTypes },
+              },
+              baseProjection
+            )
+              .sort({ createdAt: -1 })
+              .limit(100)
+              .lean()
+          : Promise.resolve([]),
+        GuestEntryRequest.find(
+          {
+            societyId: activeDuty.societyId,
+            status: { $in: deliveryStatusFilter },
+            visitorType: 'delivery_executive',
+          },
+          baseProjection
+        )
+          .sort({ createdAt: -1 })
+          .limit(200)
+          .lean(),
+      ]);
+      docs = [...nonDeliveryDocs, ...deliveryDocs];
+    } else {
+      docs = await GuestEntryRequest.find(
+        {
+          societyId: activeDuty.societyId,
+          status: { $in: statusFilter },
+          visitorType: { $in: normalizedVisitorTypes },
+        },
+        baseProjection
+      )
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .lean();
+    }
 
     const deliveryCompanyNames = Array.from(
       new Set(
@@ -671,7 +734,10 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
       : [];
     const guardApproverById = new Map(guardApprovers.map((u) => [String(u._id), u]));
 
-    const mapped = docs.map((doc) => {
+    const deliveryDocs = shouldGroupDelivery ? docs.filter((d) => d.visitorType === 'delivery_executive') : [];
+    const otherDocs = shouldGroupDelivery ? docs.filter((d) => d.visitorType !== 'delivery_executive') : docs;
+
+    const mappedOthers = otherDocs.map((doc) => {
       const approvedByUser = doc.approvedByUserId ? approverById.get(String(doc.approvedByUserId)) : null;
       const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
         ? guardApproverById.get(String(doc.approvedByGuardId))
@@ -686,8 +752,186 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
         ...payload,
         statusKey: doc.status,
         visitorTypeKey: doc.visitorType || 'guest',
+        _sortTime: doc.createdAt ? new Date(doc.createdAt).getTime() : 0,
       };
     });
+
+    const mappedDelivery = [];
+    const isApprovedList = statusKey === 'approved';
+    const isAwaitingList = statusKey === 'awaiting_approval' || statusKey === 'pending';
+    if (shouldGroupDelivery && deliveryDocs.length > 0) {
+      const groups = new Map();
+      for (const doc of deliveryDocs) {
+        const timeKey = toISTDateTimeLabelNoComma(doc.createdAt) || '';
+        const keyParts = [
+          normalizeString(doc.guestPhoneDigits || doc.guestPhoneNumber || '').toLowerCase(),
+          normalizeString(doc.guestName || '').toLowerCase(),
+          normalizeString(doc.visitorCompanyName || '').toLowerCase(),
+          String(doc.createdByGuardId || ''),
+          String(doc.gateId || ''),
+          timeKey,
+        ];
+        const key = keyParts.join('|');
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(doc);
+      }
+
+      for (const groupDocs of groups.values()) {
+        if (isApprovedList) {
+          const primaryDoc = groupDocs.reduce(
+            (latest, d) => (!latest || new Date(d.createdAt).getTime() > new Date(latest.createdAt).getTime() ? d : latest),
+            null
+          );
+          const approvedByUser = primaryDoc?.approvedByUserId ? approverById.get(String(primaryDoc.approvedByUserId)) : null;
+          const approvedByGuard = primaryDoc?.approvedByGuardWithoutMemberResponse && primaryDoc?.approvedByGuardId
+            ? guardApproverById.get(String(primaryDoc.approvedByGuardId))
+            : null;
+          const companyLogo = resolveCompanyLogo({
+            visitorType: primaryDoc?.visitorType,
+            companyName: primaryDoc?.visitorCompanyName,
+            deliveryCompanyLogos,
+          });
+          const payload = primaryDoc
+            ? toGuardCardPayload({ reqDoc: primaryDoc, approvedByUser, approvedByGuard, companyLogo })
+            : null;
+          if (payload) {
+            mappedDelivery.push({
+              ...payload,
+              status: 'Approved',
+              statusKey: 'approved',
+              visitorTypeKey: primaryDoc.visitorType || 'guest',
+              approvedBy: null,
+              approvedOn: null,
+              unit: null,
+              approvedFor: groupDocs.map((d) => ({
+                requestId: d.requestId,
+                wingName: d.wingName,
+                unitNumber: d.unitNumber,
+                approvedBy: d.approvedByGuardWithoutMemberResponse && d.approvedByGuardId
+                  ? (() => {
+                      const guard = guardApproverById.get(String(d.approvedByGuardId));
+                      return guard
+                        ? {
+                            id: String(guard._id),
+                            name: guard.fullName ? `${guard.fullName} (Security Guard)` : 'Security Guard',
+                            countryCode: guard.countryCode || '+91',
+                            phoneNumber: guard.phoneNumber || null,
+                            isGuard: true,
+                          }
+                        : '';
+                    })()
+                  : d.approvedByUserId
+                    ? (() => {
+                        const user = approverById.get(String(d.approvedByUserId));
+                        return user
+                          ? {
+                              id: String(user._id),
+                              name: user.fullName || null,
+                              countryCode: user.countryCode || '+91',
+                              phoneNumber: user.phoneNumber || null,
+                              isGuard: false,
+                            }
+                          : '';
+                      })()
+                    : '',
+                approvedOn: d.approvedByGuardWithoutMemberResponse && d.approvedByGuardAt
+                  ? toISTDateTimeLabel(d.approvedByGuardAt)
+                  : d.approvedAt
+                    ? toISTDateTimeLabel(d.approvedAt)
+                    : '',
+              })),
+              notApprovedFor: [],
+              _sortTime: primaryDoc.createdAt ? new Date(primaryDoc.createdAt).getTime() : 0,
+            });
+          }
+          continue;
+        }
+
+        if (isAwaitingList) {
+          if (groupDocs.length === 1) {
+            const doc = groupDocs[0];
+            if (doc.status !== 'pending') {
+              continue;
+            }
+            const approvedByUser = doc.approvedByUserId ? approverById.get(String(doc.approvedByUserId)) : null;
+            const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
+              ? guardApproverById.get(String(doc.approvedByGuardId))
+              : null;
+            const companyLogo = resolveCompanyLogo({
+              visitorType: doc.visitorType,
+              companyName: doc.visitorCompanyName,
+              deliveryCompanyLogos,
+            });
+            const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
+            mappedDelivery.push({
+              ...payload,
+              statusKey: doc.status,
+              visitorTypeKey: doc.visitorType || 'guest',
+              _sortTime: doc.createdAt ? new Date(doc.createdAt).getTime() : 0,
+            });
+            continue;
+          }
+
+          const approved = groupDocs.filter((d) => d.status === 'approved' || d.status === 'entered');
+          const notApproved = groupDocs.filter((d) => !(d.status === 'approved' || d.status === 'entered'));
+          if (notApproved.length === 0) {
+            continue;
+          }
+
+          const overallStatus =
+            approved.length === 0
+              ? 'Awaiting Approval'
+              : 'Partial Approved';
+
+          const primaryDoc = groupDocs.reduce(
+            (latest, d) => (!latest || new Date(d.createdAt).getTime() > new Date(latest.createdAt).getTime() ? d : latest),
+            null
+          );
+          const approvedByUser = primaryDoc?.approvedByUserId ? approverById.get(String(primaryDoc.approvedByUserId)) : null;
+          const approvedByGuard = primaryDoc?.approvedByGuardWithoutMemberResponse && primaryDoc?.approvedByGuardId
+            ? guardApproverById.get(String(primaryDoc.approvedByGuardId))
+            : null;
+          const companyLogo = resolveCompanyLogo({
+            visitorType: primaryDoc?.visitorType,
+            companyName: primaryDoc?.visitorCompanyName,
+            deliveryCompanyLogos,
+          });
+          const payload = primaryDoc
+            ? toGuardCardPayload({ reqDoc: primaryDoc, approvedByUser, approvedByGuard, companyLogo })
+            : null;
+          if (payload) {
+            mappedDelivery.push({
+              ...payload,
+              status: overallStatus,
+              statusKey: 'pending',
+              visitorTypeKey: primaryDoc.visitorType || 'guest',
+              approvedBy: '',
+              approvedOn: '',
+              unit: null,
+              approvedFor: approved.map((d) => ({
+                requestId: d.requestId,
+                wingName: d.wingName,
+                unitNumber: d.unitNumber,
+              })),
+              notApprovedFor: notApproved.map((d) => ({
+                requestId: d.requestId,
+                wingName: d.wingName,
+                unitNumber: d.unitNumber,
+              })),
+              _sortTime: primaryDoc.createdAt ? new Date(primaryDoc.createdAt).getTime() : 0,
+            });
+          }
+        }
+      }
+    }
+
+    const mapped = [...mappedOthers, ...mappedDelivery]
+      .sort((a, b) => (b._sortTime || 0) - (a._sortTime || 0))
+      .slice(0, 100)
+      .map((entry) => {
+        const { _sortTime, ...rest } = entry;
+        return rest;
+      });
 
     return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully', {
       data: mapped,
@@ -1865,6 +2109,11 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           wrongEntryNotifier = markedByMember ? { name: markedByMember.fullName || 'Member' } : null;
         }
 
+        const companyLogo = await resolveCompanyLogoForRequest({
+          visitorType: doc.visitorType,
+          companyName: doc.visitorCompanyName,
+        });
+
         return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
           data: {
             requestId: doc.requestId,
@@ -1897,6 +2146,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
               phoneNumber: doc.guestPhoneNumber,
               imageUrl: doc.guestImageUrl || null,
               companyName: doc.visitorCompanyName || null,
+              companyLogo,
               workCategory: doc.visitorWorkCategory || null,
             },
             accompanyingCount: String(doc.accompanyingCount || 0),
@@ -1907,6 +2157,10 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             wrongEntryDescription: doc.wrongEntryDescription || null,
             wrongEntryMarkedAt: doc.wrongEntryMarkedAt ? toISTDateTimeLabel(doc.wrongEntryMarkedAt) : null,
             wrongEntryNotifier,
+            rejectedReason: doc.rejectedReason || null,
+            rejectedDescription: doc.rejectedDescription || null,
+            entryDenialReason: doc.rejectedReason || '',
+            entryDenialDescription: doc.rejectedDescription || '',
           },
         });
       }
@@ -1985,6 +2239,11 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         ? await User.findById(preDoc.invitedByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
         : null;
 
+      const companyLogo = await resolveCompanyLogoForRequest({
+        visitorType: preDoc.visitorType,
+        companyName: preDoc.companyName,
+      });
+
       return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
         data: {
           requestId: preDoc.preApprovalId,
@@ -2012,6 +2271,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             imageUrl: normalizeString(preDoc.companyImageUrl) || null,
             companyId: normalizeString(preDoc.companyId) || null,
             companyName: normalizeString(preDoc.companyName) || null,
+            companyLogo,
             workCategory: normalizeString(preDoc.workCategory) || null,
           },
           accompanyingCount: '0',
@@ -2051,7 +2311,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         ? await User.findById(guestInvite.cancelledByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
         : null;
 
-      const guests = (guestInvite.guests || []).map((g) => ({
+      let guests = (guestInvite.guests || []).map((g) => ({
         guestId: g.guestId,
         name: g.name,
         countryCode: g.countryCode || '+91',
@@ -2064,7 +2324,6 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         arrivedAt: g.arrivedAt ? toISTDateTimeLabel(g.arrivedAt) : null,
       }));
 
-      let guestList = [];
       if (guestInvite.type === 'group') {
         const entryDocs = await GuestEntryRequest.find(
           { guestInviteId: guestInvite._id },
@@ -2085,22 +2344,25 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           .sort({ createdAt: -1 })
           .lean();
 
-        guestList = (entryDocs || []).map((entry) => ({
-          requestId: entry.requestId,
-          status: toMemberStatusLabel(entry.status),
-          statusKey: entry.status,
-          guest: {
+        if (Array.isArray(entryDocs) && entryDocs.length > 0) {
+          guests = entryDocs.map((entry) => ({
+            guestId: entry.requestId,
             name: entry.guestName || null,
             countryCode: entry.guestCountryCode || '+91',
             phoneNumber: entry.guestPhoneNumber || null,
             imageUrl: entry.guestImageUrl || null,
-          },
-          entryAt: entry.entryAllowedAt ? toISTDateTimeLabel(entry.entryAllowedAt) : null,
-          leftAt: entry.entryLeftAt ? toISTDateTimeLabel(entry.entryLeftAt) : null,
-          accompanyingCount: String(entry.accompanyingCount || 0),
-          vehicleNumber: entry.vehicleNumber || null,
-          isWrongEntry: entry.isWrongEntry || false,
-        }));
+            status: toMemberStatusLabel(entry.status),
+            statusKey: entry.status,
+            entryAt: entry.entryAllowedAt ? toISTDateTimeLabel(entry.entryAllowedAt) : null,
+            leftAt: entry.entryLeftAt ? toISTDateTimeLabel(entry.entryLeftAt) : null,
+            accompanyingCount: String(entry.accompanyingCount || 0),
+            vehicleNumber: entry.vehicleNumber || null,
+            isWrongEntry: entry.isWrongEntry || false,
+            qrCodeImage: guestInvite.qrCodeImage || null,
+            hasArrived: Boolean(entry.entryAllowedAt),
+            arrivedAt: entry.entryAllowedAt ? toISTDateTimeLabel(entry.entryAllowedAt) : null,
+          }));
+        }
       }
 
       return sendSuccessResponse(res, 200, 'Guest invite fetched successfully', {
@@ -2123,7 +2385,6 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
               }
             : null,
           guests,
-          guestList,
           maxEntries: guestInvite.type === 'frequent' ? null : guestInvite.maxEntries,
           usedEntries: Array.isArray(guestInvite.entryLogs) ? guestInvite.entryLogs.length : 0,
           cancelledReason: normalizeString(guestInvite.cancelledReason) || null,
@@ -2165,6 +2426,15 @@ const decideGuestEntryRequest = async (req, res, next) => {
       return next(createHttpError("decision must be 'approve' or 'reject'", 400));
     }
 
+    const reason = normalizeString(req.body?.reason);
+    const description = normalizeString(req.body?.description);
+    if (decision === 'reject') {
+      if (!reason) return next(createHttpError('reason is required for rejection', 400));
+      if (reason.toLowerCase() === 'other' && !description) {
+        return next(createHttpError('description is required when reason is other', 400));
+      }
+    }
+
     let unitDoc;
     try {
       unitDoc = await assertUnitResidentAccess({ unitId, authUser });
@@ -2198,10 +2468,14 @@ const decideGuestEntryRequest = async (req, res, next) => {
       doc.status = 'approved';
       doc.approvedByUserId = authUser._id;
       doc.approvedAt = new Date();
+      doc.rejectedReason = null;
+      doc.rejectedDescription = null;
     } else {
       doc.status = 'rejected';
       doc.rejectedByUserId = authUser._id;
       doc.rejectedAt = new Date();
+      doc.rejectedReason = reason;
+      doc.rejectedDescription = description;
     }
 
     await doc.save();
@@ -2882,7 +3156,11 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
 
     const userId = normalizeString(req.body?.userId);
     const wingName = normalizeString(req.body?.wingName ?? req.body?.wing);
-    const unitNumber = normalizeString(req.body?.unitNumber ?? req.body?.unit);
+    const unitNumberRaw = req.body?.unitNumber ?? req.body?.unit;
+    const unitNumbers = Array.isArray(unitNumberRaw)
+      ? unitNumberRaw.map((value) => normalizeString(value)).filter(Boolean)
+      : [];
+    const unitNumber = Array.isArray(unitNumberRaw) ? null : normalizeString(unitNumberRaw);
     const imageUrl = normalizeString(req.body?.imageUrl) || null;
     const vehicleNumber = normalizeString(req.body?.vehicleNumber).toUpperCase() || null;
     const accompanyingCountRaw = req.body?.accompanyingCount ?? req.body?.accompanyingPerson;
@@ -2891,7 +3169,9 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
 
     if (!userId) return next(createHttpError('userId is required', 400));
     if (!wingName) return next(createHttpError('wingName is required', 400));
-    if (!unitNumber) return next(createHttpError('unitNumber is required', 400));
+    if (unitNumbers.length === 0 && !unitNumber) {
+      return next(createHttpError('unitNumber is required', 400));
+    }
 
     
     const visitor = await User.findById(userId).lean();
@@ -2902,6 +3182,11 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     const visitorType = visitor.visitorType || 'guest';
     if (!VISITOR_TYPES.includes(visitorType)) {
       return next(createHttpError('Invalid visitor type', 400));
+    }
+    if (unitNumbers.length > 0 && visitorType !== 'delivery_executive') {
+      return next(
+        createHttpError('Multiple units are only supported for delivery executive', 400)
+      );
     }
 
     const guestName = visitor.fullName || 'Unknown Visitor';
@@ -2932,124 +3217,165 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     const finalImageUrl = imageUrl || visitor.profilePhoto || null;
 
     
-    const recipientUserIds = await resolveUnitResidents({
-      societyId: activeDuty.societyId,
-      wingNameLower: wingName.toLowerCase(),
-      unitNumberLower: unitNumber.toLowerCase(),
-    });
+    const unitsToProcess = unitNumbers.length > 0 ? unitNumbers : [unitNumber];
+    const recipientsByUnit = new Map();
+    const missingUnits = [];
 
-    if (!recipientUserIds || recipientUserIds.length === 0) {
+    for (const targetUnit of unitsToProcess) {
+      const recipientUserIds = await resolveUnitResidents({
+        societyId: activeDuty.societyId,
+        wingNameLower: wingName.toLowerCase(),
+        unitNumberLower: targetUnit.toLowerCase(),
+      });
+
+      if (!recipientUserIds || recipientUserIds.length === 0) {
+        missingUnits.push(targetUnit);
+      } else {
+        recipientsByUnit.set(targetUnit, recipientUserIds);
+      }
+    }
+
+    if (missingUnits.length > 0) {
       return next(
         createHttpError(
-          `No residents found for unit ${wingName}-${unitNumber}. Cannot send approval request.`,
+          `No residents found for units: ${missingUnits.join(', ')}. Cannot send approval request.`,
           404
         )
       );
     }
 
-    
-    const unitDoc = await MemberUnit.findOne({
-      societyId: activeDuty.societyId,
-      wingNameLower: wingName.toLowerCase(),
-      unitNumberLower: unitNumber.toLowerCase(),
-      $or: [
-        { occupancyStatus: 'currently_residing' },
-        { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
-      ],
-    }).lean();
+    const unitNumberLowers = unitsToProcess.map((u) => u.toLowerCase());
+    const unitDocs = await MemberUnit.find(
+      {
+        societyId: activeDuty.societyId,
+        wingNameLower: wingName.toLowerCase(),
+        unitNumberLower: { $in: unitNumberLowers },
+        $or: [
+          { occupancyStatus: 'currently_residing' },
+          { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
+        ],
+      },
+      { _id: 1, unitNumberLower: 1 }
+    ).lean();
+    const unitByNumber = new Map();
+    for (const unit of unitDocs || []) {
+      const key = unit.unitNumberLower;
+      if (key && !unitByNumber.has(key)) {
+        unitByNumber.set(key, unit);
+      }
+    }
 
     const now = new Date();
+    const createdDocs = await Promise.all(
+      unitsToProcess.map(async (targetUnit) => {
+        const unitKey = targetUnit.toLowerCase();
+        const unitDoc = unitByNumber.get(unitKey);
+        const preApproval = unitDoc
+          ? await resolvePreApprovalForUnit({
+              visitorType,
+              societyId: activeDuty.societyId,
+              unitId: unitDoc._id,
+              companyName,
+              workCategory,
+              vehicleNumber,
+              guestName,
+              phoneDigits,
+              now,
+            })
+          : null;
 
-    
-    const preApproval = unitDoc
-      ? await resolvePreApprovalForUnit({
-          visitorType,
+        const autoApproved = Boolean(preApproval);
+        const expiresAt = autoApproved ? null : new Date(Date.now() + 30 * 60 * 1000);
+
+        return GuestEntryRequest.create({
           societyId: activeDuty.societyId,
-          unitId: unitDoc._id,
-          companyName,
-          workCategory,
-          vehicleNumber,
+          wingName,
+          wingNameLower: wingName.toLowerCase(),
+          unitNumber: targetUnit,
+          unitNumberLower: unitKey,
+          createdByGuardId: authUser._id,
+          gateId: activeDuty.dutyGateId || null,
+          gateName: activeDuty.dutyGateName || null,
           guestName,
-          phoneDigits,
-          now,
-        })
-      : null;
-
-    const autoApproved = Boolean(preApproval);
-    const expiresAt = autoApproved ? null : new Date(Date.now() + 30 * 60 * 1000);
-
-    
-    const entryRequest = await GuestEntryRequest.create({
-      societyId: activeDuty.societyId,
-      wingName,
-      wingNameLower: wingName.toLowerCase(),
-      unitNumber,
-      unitNumberLower: unitNumber.toLowerCase(),
-      createdByGuardId: authUser._id,
-      gateId: activeDuty.dutyGateId || null,
-      gateName: activeDuty.dutyGateName || null,
-      guestName,
-      guestCountryCode: countryCode,
-      guestPhoneNumber: phoneDigits,
-      guestPhoneDigits: phoneDigits,
-      guestImageUrl: finalImageUrl,
-      visitorType,
-      visitorUserId: visitor._id,
-      visitorCompanyName: companyName,
-      visitorWorkCategory: workCategory,
-      accompanyingCount,
-      vehicleNumber,
-      status: autoApproved ? 'approved' : 'pending',
-      approvedByUserId: autoApproved && preApproval.invitedByUserId ? preApproval.invitedByUserId : null,
-      approvedAt: autoApproved ? now : null,
-      expiresAt,
-      recipientUserIds,
-    });
+          guestCountryCode: countryCode,
+          guestPhoneNumber: phoneDigits,
+          guestPhoneDigits: phoneDigits,
+          guestImageUrl: finalImageUrl,
+          visitorType,
+          visitorUserId: visitor._id,
+          visitorCompanyName: companyName,
+          visitorWorkCategory: workCategory,
+          accompanyingCount,
+          vehicleNumber,
+          status: autoApproved ? 'approved' : 'pending',
+          approvedByUserId: autoApproved && preApproval?.invitedByUserId ? preApproval.invitedByUserId : null,
+          approvedAt: autoApproved ? now : null,
+          expiresAt,
+          recipientUserIds: recipientsByUnit.get(targetUnit),
+        });
+      })
+    );
 
     const labels = toVisitorLabels(visitorType);
     const companyLogo = await resolveCompanyLogoForRequest({ visitorType, companyName });
 
     
-    if (entryRequest.status === 'pending' && recipientUserIds && recipientUserIds.length > 0) {
-      const visitorLabel = companyName ? `${guestName} (${companyName})` : guestName;
-      
-      sendToUsers(
-        recipientUserIds,
-        'Visitor at Gate',
-        `${visitorLabel} is waiting for your approval at the gate.`,
-        {
-          type: 'guest_entry_request',
-          requestId: entryRequest.requestId,
-          visitorType: visitorType || 'guest',
-          status: 'pending',
-        }
-      ).catch((err) => {
-        console.error('[OnboardedVisitorEntry] Failed to send push notification:', err.message);
+    for (const doc of createdDocs) {
+      if (doc.status === 'pending' && doc.recipientUserIds && doc.recipientUserIds.length > 0) {
+        const visitorLabel = companyName ? `${guestName} (${companyName})` : guestName;
+        sendToUsers(
+          doc.recipientUserIds,
+          'Visitor at Gate',
+          `${visitorLabel} is waiting for your approval at the gate.`,
+          {
+            type: 'guest_entry_request',
+            requestId: doc.requestId,
+            visitorType: visitorType || 'guest',
+            status: 'pending',
+          }
+        ).catch((err) => {
+          console.error('[OnboardedVisitorEntry] Failed to send push notification:', err.message);
+        });
+      }
+    }
+
+    const primaryDoc = createdDocs[0];
+    const basePayload = {
+      status: getStatusLabel(primaryDoc.status),
+      statusKey: primaryDoc.status,
+      category: labels.category,
+      visitorType: labels.visitorType,
+      requestedOn: primaryDoc.createdAt ? toISTDateTimeLabel(primaryDoc.createdAt) : null,
+      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabel(primaryDoc.expiresAt) : null,
+      guest: {
+        id: String(visitor._id),
+        name: guestName,
+        countryCode,
+        phoneNumber: phoneDigits,
+        imageUrl: finalImageUrl,
+        companyName,
+        companyLogo,
+        workCategory,
+      },
+      accompanyingCount: String(accompanyingCount),
+      vehicleNumber,
+    };
+
+    if (createdDocs.length === 1) {
+      return sendSuccessResponse(res, 201, 'Visitor entry request created successfully', {
+        data: {
+          ...basePayload,
+          requestId: primaryDoc.requestId,
+          unit: { wingName: primaryDoc.wingName, unitNumber: primaryDoc.unitNumber },
+        },
       });
     }
 
-    return sendSuccessResponse(res, 201, 'Visitor entry request created successfully', {
+    return sendSuccessResponse(res, 201, 'Visitor entry requests created successfully', {
       data: {
-        requestId: entryRequest.requestId,
-        status: getStatusLabel(entryRequest.status),
-        statusKey: entryRequest.status,
-        category: labels.category,
-        visitorType: labels.visitorType,
-        requestedOn: entryRequest.createdAt ? toISTDateTimeLabel(entryRequest.createdAt) : null,
-        expiresAt: entryRequest.expiresAt ? toISTDateTimeLabel(entryRequest.expiresAt) : null,
-        unit: { wingName, unitNumber },
-        guest: {
-          id: String(visitor._id),
-          name: guestName,
-          countryCode,
-          phoneNumber: phoneDigits,
-          imageUrl: finalImageUrl,
-          companyName,
-          companyLogo,
-          workCategory,
-        },
-        accompanyingCount: String(accompanyingCount),
-        vehicleNumber,
+        ...basePayload,
+        requestIds: createdDocs.map((d) => d.requestId),
+        units: createdDocs.map((d) => ({ wingName: d.wingName, unitNumber: d.unitNumber })),
       },
     });
   } catch (error) {
