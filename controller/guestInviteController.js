@@ -1325,7 +1325,7 @@ const scanGuestInvite = async (req, res, next) => {
       validFrom: invite.validFrom,
       validTill: invite.validTill,
       validityLabel: `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`,
-      vehicleNumber: normalizedVehicleNumber,
+      vehicleNumber: normalizedVehicleNumber || '',
       accompanyingCount: safeCount,
       maxEntries: invite.type === 'frequent' ? null : invite.maxEntries,
       usedEntries: usedEntriesAfterScan,
