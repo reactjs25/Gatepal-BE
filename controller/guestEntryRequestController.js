@@ -2141,6 +2141,14 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         const approvedByUser = doc.approvedByUserId
           ? await User.findById(doc.approvedByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
           : null;
+        const deniedByUser = doc.rejectedByUserId
+          ? await User.findById(doc.rejectedByUserId, {
+              fullName: 1,
+              countryCode: 1,
+              phoneNumber: 1,
+              role: 1,
+            }).lean()
+          : null;
         const isPreApproved = Boolean(doc.approvedByUserId && !doc.expiresAt);
 
         
@@ -2200,6 +2208,15 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
                   isPreApproved,
                 }
               : null,
+            deniedBy:
+              doc.status === 'rejected' && deniedByUser
+                ? {
+                    name: deniedByUser.fullName || null,
+                    countryCode: deniedByUser.countryCode || '+91',
+                    phoneNumber: deniedByUser.phoneNumber || null,
+                    role: deniedByUser.role || 'member',
+                  }
+                : null,
             guest: {
               name: doc.guestName,
               countryCode: doc.guestCountryCode || '+91',
