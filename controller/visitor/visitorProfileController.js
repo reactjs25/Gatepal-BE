@@ -74,7 +74,7 @@ const resolveCompanyLogo = async (visitorType, companyName) => {
 const buildVisitorQrPayload = (user) =>
     JSON.stringify({
         type: 'gatepal_visitor',
-        version: 2,
+        version: 3,
         userId: String(user._id),
         role: user.role,
         visitorType: user.visitorType || null,
@@ -83,9 +83,10 @@ const buildVisitorQrPayload = (user) =>
         phoneNumber: user.phoneNumber || null,
         companyName: user.visitorCompanyName || null,
         workCategory: user.visitorWorkCategory || null,
+        vehicleNumber: user.visitorVehicleNumber || null,
     });
 
-const VISITOR_QR_VERSION = 2;
+const VISITOR_QR_VERSION = 3;
 
 const ensureVisitorQrCode = async (user) => {
     let qrCodeImageUrl = user.qrCodeImage || null;

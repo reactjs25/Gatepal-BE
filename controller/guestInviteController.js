@@ -1084,11 +1084,17 @@ const scanGuestInvite = async (req, res, next) => {
       const visitorType = (payload.visitorType || '').toString().trim().toLowerCase();
       const isGuest = visitorType === 'guest';
       const companyLogo = isGuest ? null : await resolveVisitorCompanyLogo(payload.visitorType, payload.companyName);
-      // Fetch visitor's profile photo from database
+      // Fetch visitor's profile photo and vehicle number from database
       let imageUrl = null;
+      let vehicleNumber = '';
       if (payload.userId) {
-        const visitor = await User.findById(payload.userId).select('profilePhoto').lean();
+        const visitor = await User.findById(payload.userId)
+          .select('profilePhoto visitorVehicleNumber')
+          .lean();
         imageUrl = visitor?.profilePhoto || null;
+        vehicleNumber = normalizeString(payload.vehicleNumber || visitor?.visitorVehicleNumber) || '';
+      } else {
+        vehicleNumber = normalizeString(payload.vehicleNumber) || '';
       }
       return sendSuccessResponse(res, 200, 'Visitor QR code scanned successfully', {
         qrType: 'visitor',
@@ -1099,6 +1105,7 @@ const scanGuestInvite = async (req, res, next) => {
           fullName: payload.fullName || null,
           countryCode: payload.countryCode || '+91',
           phoneNumber: payload.phoneNumber || null,
+          vehicleNumber,
           companyName: isGuest ? null : (payload.companyName || null),
           companyLogo: isGuest ? null : companyLogo,
           workCategory: isGuest ? null : (payload.workCategory || null),

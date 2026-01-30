@@ -29,12 +29,13 @@ const ensureImage = ({ value, fieldLabel }) => {
 const buildVisitorQrPayload = (user) =>
   JSON.stringify({
     type: 'gatepal_visitor',
-    version: 1,
+    version: 2,
     userId: String(user._id),
     role: user.role,
     visitorType: user.visitorType || null,
     fullName: user.fullName || null,
     phoneNumber: user.phoneNumber || null,
+    vehicleNumber: user.visitorVehicleNumber || null,
   });
 
 const handleVisitorOnboarding = async ({ user, payload }) => {
