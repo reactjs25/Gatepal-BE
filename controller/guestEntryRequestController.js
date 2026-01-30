@@ -648,15 +648,6 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
 
     const now = new Date();
 
-    await Promise.all([
-      expirePendingGuestEntryRequests({
-        societyId: unitDoc.societyId,
-        wingNameLower: unitDoc.wingNameLower,
-        unitNumberLower: unitDoc.unitNumberLower,
-        now,
-      }),
-      expirePreApprovalsAndInvites({ societyId: unitDoc.societyId, unitId: unitDoc._id, now }),
-    ]);
     await GuestEntryRequest.updateMany(
       {
         societyId: activeDuty.societyId,
