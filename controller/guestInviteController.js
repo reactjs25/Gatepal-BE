@@ -1417,6 +1417,43 @@ const getRecentGuests = async (req, res, next) => {
       .sort((a, b) => new Date(b.lastInvitedAt).getTime() - new Date(a.lastInvitedAt).getTime())
       .slice(0, limit);
 
+    const guestsNeedingImages = recentGuests.filter((g) => !g.imageUrl);
+    if (guestsNeedingImages.length > 0) {
+      const phoneDigitsList = Array.from(
+        new Set(
+          guestsNeedingImages
+            .map((g) => normalizeDigits(g.phoneNumber || ''))
+            .filter(Boolean)
+        )
+      );
+
+      if (phoneDigitsList.length > 0) {
+        const entryImages = await GuestEntryRequest.find(
+          {
+            guestPhoneDigits: { $in: phoneDigitsList },
+            guestImageUrl: { $nin: [null, ''] },
+          },
+          { guestPhoneDigits: 1, guestImageUrl: 1, createdAt: 1 }
+        )
+          .sort({ createdAt: -1 })
+          .lean();
+
+        const imageByDigits = new Map();
+        for (const entry of entryImages) {
+          const digits = entry?.guestPhoneDigits;
+          if (!digits || imageByDigits.has(digits)) continue;
+          imageByDigits.set(digits, entry.guestImageUrl || null);
+        }
+
+        for (const guest of guestsNeedingImages) {
+          const digits = normalizeDigits(guest.phoneNumber || '');
+          if (digits && imageByDigits.has(digits)) {
+            guest.imageUrl = imageByDigits.get(digits);
+          }
+        }
+      }
+    }
+
     return sendSuccessResponse(res, 200, 'Recent guests fetched successfully', {
       data: { guests: recentGuests },
     });
