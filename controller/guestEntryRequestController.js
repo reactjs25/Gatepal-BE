@@ -150,6 +150,46 @@ const resolveCompanyLogoForRequest = async ({ visitorType, companyName }) => {
   return null;
 };
 
+const resolveActiveStatus = (status, validTill, now) => {
+  if (status === 'active' && validTill) {
+    const validTillMs = new Date(validTill).getTime();
+    if (Number.isFinite(validTillMs) && validTillMs <= now.getTime()) {
+      return 'expired';
+    }
+  }
+  return status;
+};
+
+const expirePendingGuestEntryRequests = async ({ societyId, wingNameLower, unitNumberLower, now }) => {
+  if (!societyId || !wingNameLower || !unitNumberLower) return;
+  await GuestEntryRequest.updateMany(
+    {
+      societyId,
+      wingNameLower,
+      unitNumberLower,
+      status: 'pending',
+      expiresAt: { $ne: null, $lte: now },
+    },
+    { $set: { status: 'expired' } }
+  );
+};
+
+const expirePreApprovalsAndInvites = async ({ societyId, unitId, now }) => {
+  if (!societyId || !unitId) return;
+  const expiryQuery = {
+    societyId,
+    unitId,
+    status: 'active',
+    validTill: { $lte: now },
+  };
+  await Promise.all([
+    DeliveryPreApproval.updateMany(expiryQuery, { $set: { status: 'expired' } }),
+    TaxiDriverPreApproval.updateMany(expiryQuery, { $set: { status: 'expired' } }),
+    OtherVisitorPreApproval.updateMany(expiryQuery, { $set: { status: 'expired' } }),
+    GuestInvite.updateMany(expiryQuery, { $set: { status: 'expired' } }),
+  ]);
+};
+
 const findDeliveryPreApproval = async ({ societyId, unitId, companyName, now }) => {
   if (!societyId || !unitId) return null;
   const trimmedCompany = normalizeString(companyName);
@@ -607,6 +647,16 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
           : statusFilter;
 
     const now = new Date();
+
+    await Promise.all([
+      expirePendingGuestEntryRequests({
+        societyId: unitDoc.societyId,
+        wingNameLower: unitDoc.wingNameLower,
+        unitNumberLower: unitDoc.unitNumberLower,
+        now,
+      }),
+      expirePreApprovalsAndInvites({ societyId: unitDoc.societyId, unitId: unitDoc._id, now }),
+    ]);
     await GuestEntryRequest.updateMany(
       {
         societyId: activeDuty.societyId,
@@ -1386,6 +1436,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       return next(e);
     }
 
+
     const statusRaw = normalizeString(req.body?.status || 'pending').toLowerCase();
     const dateFilter = normalizeOption(req.body?.dateFilter ?? req.body?.range ?? req.body?.period ?? '');
     let startAt = null;
@@ -1535,7 +1586,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       status === 'approved'
         ? ['active']
         : status === 'expired'
-          ? ['expired']
+          ? ['expired', 'active']
           : status === 'cancelled'
             ? ['cancelled']
             : status === 'all'
@@ -1666,11 +1717,12 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
       const mapPreApproval = (doc) => {
         const labels = toVisitorLabels(doc.visitorType || 'guest');
-        const statusKey = doc.status === 'active' ? 'approved' : doc.status;
+        const effectiveStatus = resolveActiveStatus(doc.status, doc.validTill, now);
+        const statusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
         const statusLabel =
-          doc.status === 'active'
+          effectiveStatus === 'active'
             ? 'Pre-Approved'
-            : doc.status === 'expired'
+            : effectiveStatus === 'expired'
               ? 'Expired'
               : 'Cancelled';
         const fromLabel = toISTDateTimeLabelNoComma(doc.validFrom);
@@ -1715,6 +1767,14 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         ...taxiApprovals.filter((doc) => !hasMatchingEntry(doc, 'taxi_vehicle_driver')),
         ...otherApprovals.filter((doc) => !hasMatchingEntry(doc, 'other_visitor')),
       ].map(mapPreApproval);
+
+      if (status === 'expired') {
+        preApprovalCards = preApprovalCards.filter((card) => card.statusKey === 'expired');
+      } else if (status === 'approved') {
+        preApprovalCards = preApprovalCards.filter((card) => card.statusKey === 'approved');
+      } else if (status === 'cancelled') {
+        preApprovalCards = preApprovalCards.filter((card) => card.statusKey === 'cancelled');
+      }
     }
 
     let guestInviteCards = [];
@@ -1765,11 +1825,12 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       };
 
       const mapGuestInvite = (invite, guest) => {
-        const statusKey = invite.status === 'active' ? 'approved' : invite.status;
+        const effectiveStatus = resolveActiveStatus(invite.status, invite.validTill, now);
+        const statusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
         const statusLabel =
-          invite.status === 'active'
+          effectiveStatus === 'active'
             ? 'Pre-Approved'
-            : invite.status === 'expired'
+            : effectiveStatus === 'expired'
               ? 'Expired'
               : 'Cancelled';
         const fromLabel = toISTDateTimeLabelNoComma(invite.validFrom);
@@ -1820,6 +1881,14 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       }
 
       guestInviteCards = mappedInvites;
+
+      if (status === 'expired') {
+        guestInviteCards = guestInviteCards.filter((card) => card.statusKey === 'expired');
+      } else if (status === 'approved') {
+        guestInviteCards = guestInviteCards.filter((card) => card.statusKey === 'approved');
+      } else if (status === 'cancelled') {
+        guestInviteCards = guestInviteCards.filter((card) => card.statusKey === 'cancelled');
+      }
     }
 
     const combined = [...mapped, ...preApprovalCards, ...guestInviteCards].sort((a, b) => {
@@ -2229,6 +2298,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
 
     const preDoc = deliveryDoc || taxiDoc || otherDoc;
     if (preDoc) {
+      const effectiveStatus = resolveActiveStatus(preDoc.status, preDoc.validTill, new Date());
       const labels = toVisitorLabels(preDoc.visitorType || 'guest');
       const fromLabel = toISTDateTimeLabelNoComma(preDoc.validFrom);
       const tillLabel = toISTDateTimeLabelNoComma(preDoc.validTill);
@@ -2245,8 +2315,8 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
         data: {
           requestId: preDoc.preApprovalId,
-          status: preApprovalLabel(preDoc.status),
-          statusKey: preDoc.status === 'active' ? 'approved' : preDoc.status,
+          status: preApprovalLabel(effectiveStatus),
+          statusKey: effectiveStatus === 'active' ? 'approved' : effectiveStatus,
           category: labels.category,
           visitorType: labels.visitorType,
           requestedOn: preDoc.validFrom ? toISTDateTimeLabel(preDoc.validFrom) : null,
@@ -2296,6 +2366,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
     }).lean();
 
     if (guestInvite) {
+      const effectiveStatus = resolveActiveStatus(guestInvite.status, guestInvite.validTill, new Date());
       const inviteStatusLabel = (status) =>
         status === 'active' ? 'Pre-Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
       const fromLabel = toISTDateTimeLabelNoComma(guestInvite.validFrom);
@@ -2366,8 +2437,8 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       return sendSuccessResponse(res, 200, 'Guest invite fetched successfully', {
         data: {
           requestId: guestInvite.inviteId,
-          status: inviteStatusLabel(guestInvite.status),
-          statusKey: guestInvite.status === 'active' ? 'approved' : guestInvite.status,
+          status: inviteStatusLabel(effectiveStatus),
+          statusKey: effectiveStatus === 'active' ? 'approved' : effectiveStatus,
           category: 'Guest',
           visitorType: 'Guest',
           inviteType: guestInvite.type,
