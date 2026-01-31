@@ -1258,6 +1258,10 @@ const scanGuestInvite = async (req, res, next) => {
     const unit = await MemberUnit.findById(invite.unitId).lean();
 
     // Create GuestEntryRequest so guard can see visitor in today's list
+    const guestPhoneRaw = arrivingGuest?.phoneNumber || '';
+    const guestPhoneDigits = normalizePhoneDigits(guestPhoneRaw);
+    const hasGuestPhone = Boolean(guestPhoneDigits);
+
     const guestEntryRequest = await GuestEntryRequest.create({
       societyId: invite.societyId,
       wingName: unit?.wingName || '',
@@ -1269,8 +1273,8 @@ const scanGuestInvite = async (req, res, next) => {
       gateName: activeDuty.dutyGateName || null,
       guestName: arrivingGuest?.name || 'Group Guest',
       guestCountryCode: arrivingGuest?.countryCode || '+91',
-      guestPhoneNumber: arrivingGuest?.phoneNumber || '',
-      guestPhoneDigits: normalizePhoneDigits(arrivingGuest?.phoneNumber || ''),
+      guestPhoneNumber: hasGuestPhone ? guestPhoneRaw : null,
+      guestPhoneDigits: hasGuestPhone ? guestPhoneDigits : null,
       guestImageUrl: null,
       visitorType: 'guest',
       visitorCompanyName: null,

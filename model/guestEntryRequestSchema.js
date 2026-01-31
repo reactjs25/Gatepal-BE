@@ -31,10 +31,10 @@ const guestEntryRequestSchema = new mongoose.Schema(
 
     guestName: { type: String, required: true, trim: true },
     guestCountryCode: { type: String, trim: true, default: '+91' },
-    guestPhoneNumber: { type: String, trim: true, required: true },
+    guestPhoneNumber: { type: String, trim: true, default: null },
     guestPhoneDigits: {
       type: String,
-      required: true,
+      default: null,
       index: true,
       validate: {
         validator: (v) => v == null || /^\d{10}$/.test(v),
