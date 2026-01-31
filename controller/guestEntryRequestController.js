@@ -2217,15 +2217,17 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
                     role: deniedByUser.role || 'member',
                   }
                 : null,
-            guest: {
-              name: doc.guestName,
-              countryCode: doc.guestCountryCode || '+91',
-              phoneNumber: doc.guestPhoneNumber,
-              imageUrl: doc.guestImageUrl || null,
-              companyName: doc.visitorCompanyName || null,
-              companyLogo,
-              workCategory: doc.visitorWorkCategory || null,
-            },
+            guest: [
+              {
+                name: doc.guestName,
+                countryCode: doc.guestCountryCode || '+91',
+                phoneNumber: doc.guestPhoneNumber,
+                imageUrl: doc.guestImageUrl || null,
+                companyName: doc.visitorCompanyName || null,
+                companyLogo,
+                workCategory: doc.visitorWorkCategory || null,
+              },
+            ],
             accompanyingCount: String(doc.accompanyingCount || 0),
             vehicleNumber: doc.vehicleNumber || null,
             
@@ -2340,16 +2342,18 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
                 phoneNumber: invitedByUser.phoneNumber || null,
               }
             : null,
-          guest: {
-            name: normalizeString(preDoc.visitorName) || null,
-            countryCode: null,
-            phoneNumber: null,
-            imageUrl: normalizeString(preDoc.companyImageUrl) || null,
-            companyId: normalizeString(preDoc.companyId) || null,
-            companyName: normalizeString(preDoc.companyName) || null,
-            companyLogo,
-            workCategory: normalizeString(preDoc.workCategory) || null,
-          },
+          guest: [
+            {
+              name: normalizeString(preDoc.visitorName) || null,
+              countryCode: null,
+              phoneNumber: null,
+              imageUrl: normalizeString(preDoc.companyImageUrl) || null,
+              companyId: normalizeString(preDoc.companyId) || null,
+              companyName: normalizeString(preDoc.companyName) || null,
+              companyLogo,
+              workCategory: normalizeString(preDoc.workCategory) || null,
+            },
+          ],
           accompanyingCount: '0',
           vehicleNumber: preDoc.vehicleNumber || null,
           isPreApproval: true,
