@@ -400,24 +400,22 @@ const computeFrequentInviteValidityWindow = ({
 };
 
 const buildGuestInviteQrPayload = ({ invite, guest }) => {
-  // Minimal payload - only essential identifiers; rest fetched from DB on scan
   const payload = {
-    t: 'gi', // type: gatepal_guest_invite (shortened)
-    v: 2,    // version
-    i: invite.inviteId,
-    g: guest.guestId,
+    type: 'gatepal_guest_invite',
+    version: 2,
+    inviteId: invite.inviteId,
+    guestId: guest.guestId,
   };
   return JSON.stringify(payload);
 };
 
-// For group invites - single shared QR for all guests
+
 const buildGroupInviteQrPayload = ({ invite }) => {
-  // Minimal payload - only essential identifiers
   const payload = {
-    t: 'gi', // type: gatepal_guest_invite (shortened)
-    v: 2,    // version
-    i: invite.inviteId,
-    g: 'group',
+    type: 'gatepal_guest_invite',
+    version: 2,
+    inviteId: invite.inviteId,
+    guestId: 'group',
   };
   return JSON.stringify(payload);
 };
@@ -1092,7 +1090,7 @@ const scanGuestInvite = async (req, res, next) => {
       payload.inviteId = payload.i;
       payload.guestId = payload.g;
     }
-    
+
     // If it's a visitor QR (delivery_executive, taxi_driver, other_visitor, guest already onboarded)
     if (qrType === 'gatepal_visitor') {
       const visitorType = (payload.visitorType || '').toString().trim().toLowerCase();
@@ -1293,7 +1291,7 @@ const scanGuestInvite = async (req, res, next) => {
     const tillTimeLabel = toISTTimeLabel(invite.validTill);
 
     const usedEntriesAfterScan = usedEntries + 1;
-    
+
     // Calculate remaining entries based on invite type
     let remainingEntries = null;
     if (invite.type === 'quick') {
@@ -1313,26 +1311,26 @@ const scanGuestInvite = async (req, res, next) => {
       unitId: String(invite.unitId),
       unit: unit
         ? {
-            wingName: unit.wingName,
-            unitNumber: unit.unitNumber,
-          }
+          wingName: unit.wingName,
+          unitNumber: unit.unitNumber,
+        }
         : null,
       invitedBy: member
         ? {
-            id: String(member._id),
-            name: member.fullName || null,
-            countryCode: member.countryCode || '+91',
-            phoneNumber: member.phoneNumber || null,
-          }
+          id: String(member._id),
+          name: member.fullName || null,
+          countryCode: member.countryCode || '+91',
+          phoneNumber: member.phoneNumber || null,
+        }
         : null,
       arrivingGuest: arrivingGuest
         ? {
-            guestId: arrivingGuest.guestId,
-            name: arrivingGuest.name,
-            countryCode: arrivingGuest.countryCode,
-            phoneNumber: arrivingGuest.phoneNumber,
-            arrivedAt: now,
-          }
+          guestId: arrivingGuest.guestId,
+          name: arrivingGuest.name,
+          countryCode: arrivingGuest.countryCode,
+          phoneNumber: arrivingGuest.phoneNumber,
+          arrivedAt: now,
+        }
         : null,
       guests: invite.guests.map((g) => ({
         guestId: g.guestId,
@@ -1594,27 +1592,27 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       unitId: String(invite.unitId),
       unit: unit
         ? {
-            wingName: unit.wingName,
-            unitNumber: unit.unitNumber,
-          }
+          wingName: unit.wingName,
+          unitNumber: unit.unitNumber,
+        }
         : null,
       invitedBy: member
         ? {
-            id: String(member._id),
-            name: member.fullName || null,
-            countryCode: member.countryCode || '+91',
-            phoneNumber: member.phoneNumber || null,
-          }
+          id: String(member._id),
+          name: member.fullName || null,
+          countryCode: member.countryCode || '+91',
+          phoneNumber: member.phoneNumber || null,
+        }
         : null,
       arrivingGuest: arrivingGuest
         ? {
-            guestId: arrivingGuest.guestId,
-            name: arrivingGuest.name,
-            countryCode: arrivingGuest.countryCode,
-            phoneNumber: arrivingGuest.phoneNumber,
-            arrivedAt: arrivingGuest.arrivedAt || null,
-            imageUrl: targetLog.imageUrl || null,
-          }
+          guestId: arrivingGuest.guestId,
+          name: arrivingGuest.name,
+          countryCode: arrivingGuest.countryCode,
+          phoneNumber: arrivingGuest.phoneNumber,
+          arrivedAt: arrivingGuest.arrivedAt || null,
+          imageUrl: targetLog.imageUrl || null,
+        }
         : null,
       guests: invite.guests.map((g) => ({
         guestId: g.guestId,

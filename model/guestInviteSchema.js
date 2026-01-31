@@ -96,6 +96,8 @@ const guestInviteSchema = new mongoose.Schema(
         message: 'At least one guest is required',
       },
     },
+    qrCodeImage: { type: String, default: null },
+    qrCodeGeneratedAt: { type: Date, default: null },
     validFrom: {
       type: Date,
       required: true,
