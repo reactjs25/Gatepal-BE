@@ -1428,7 +1428,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
     }
 
 
-    const statusRaw = normalizeString(req.body?.status || 'pending').toLowerCase();
+    const statusRaw = normalizeString(req.body?.status || 'all').toLowerCase();
     const dateFilter = normalizeOption(req.body?.dateFilter ?? req.body?.range ?? req.body?.period ?? '');
     let startAt = null;
     let endAt = null;
@@ -1580,7 +1580,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           ? ['expired', 'active']
           : status === 'cancelled'
             ? ['cancelled']
-            : status === 'all'
+            : status === 'all' || status === 'pending'
               ? ['active', 'expired', 'cancelled']
               : [];
 
