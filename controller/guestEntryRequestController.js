@@ -1438,7 +1438,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       if (dateFilter === 'today') {
         startAt = new Date(now);
         startAt.setHours(0, 0, 0, 0);
-        endAt = now;
+        endAt = new Date(now);
+        endAt.setHours(23, 59, 59, 999);
       } else if (dateFilter === 'this_month' || dateFilter === 'thismonth') {
         startAt = new Date(now.getFullYear(), now.getMonth(), 1);
         endAt = now;
