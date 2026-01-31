@@ -311,16 +311,30 @@ const computeUiBasedValidityWindow = ({
   });
 };
 
+const parseIstDateTime = (dateValue, timeOfDay, fieldLabel) => {
+  const raw = (dateValue || '').toString().trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    throw createHttpError(`Invalid ${fieldLabel} format`, 400);
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!year || !month || !day) {
+    throw createHttpError(`Invalid ${fieldLabel} format`, 400);
+  }
+  const istOffsetMs = 330 * 60 * 1000;
+  const utcMs = Date.UTC(year, month - 1, day, timeOfDay.hour, timeOfDay.minute) - istOffsetMs;
+  return new Date(utcMs);
+};
+
 const computeGroupInviteValidityWindow = ({
   selectedDate,
   startingFrom,
   validityHours,
 }) => {
-  const baseDate = parseDateOnly(selectedDate, 'selectedDate');
   const timeOfDay = parseTimeOfDay(startingFrom, 'startingFrom');
-
-  const start = new Date(baseDate);
-  start.setHours(timeOfDay.hour, timeOfDay.minute, 0, 0);
+  const start = parseIstDateTime(selectedDate, timeOfDay, 'selectedDate');
 
   const hours = Number(validityHours);
   if (!Number.isFinite(hours) || hours <= 0) {
