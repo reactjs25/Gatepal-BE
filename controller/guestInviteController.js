@@ -1382,8 +1382,9 @@ const getRecentGuests = async (req, res, next) => {
       {
         invitedByUserId: authUser._id,
         createdAt: { $gte: since },
+        type: { $ne: 'group' },
       },
-      { guests: 1, entryLogs: 1, createdAt: 1 }
+      { guests: 1, entryLogs: 1, createdAt: 1, type: 1 }
     )
       .sort({ createdAt: -1 })
       .limit(200)
