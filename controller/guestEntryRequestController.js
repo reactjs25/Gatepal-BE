@@ -3509,6 +3509,7 @@ module.exports = {
   allowGuestExitForMember,
   markWrongEntryForMember,
   updateGuestEntryRequestPhoto,
+  resolveExistingVisitorPhoto,
 };
 
 

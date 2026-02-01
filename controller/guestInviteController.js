@@ -21,6 +21,7 @@ const {
 const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
+const { resolveExistingVisitorPhoto } = require('./guestEntryRequestController');
 
 const escapeRegex = (value) => (value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -1262,6 +1263,11 @@ const scanGuestInvite = async (req, res, next) => {
     const guestPhoneDigits = normalizePhoneDigits(guestPhoneRaw);
     const hasGuestPhone = Boolean(guestPhoneDigits);
 
+    // Check if guest already has an existing photo in our database
+    const existingPhoto = hasGuestPhone
+      ? await resolveExistingVisitorPhoto({ phoneDigits: guestPhoneDigits, visitorType: 'guest' })
+      : null;
+
     const guestEntryRequest = await GuestEntryRequest.create({
       societyId: invite.societyId,
       wingName: unit?.wingName || '',
@@ -1275,7 +1281,7 @@ const scanGuestInvite = async (req, res, next) => {
       guestCountryCode: arrivingGuest?.countryCode || '+91',
       guestPhoneNumber: hasGuestPhone ? guestPhoneRaw : null,
       guestPhoneDigits: hasGuestPhone ? guestPhoneDigits : null,
-      guestImageUrl: null,
+      guestImageUrl: existingPhoto || null,
       visitorType: 'guest',
       visitorCompanyName: null,
       visitorWorkCategory: null,
@@ -1352,9 +1358,15 @@ const scanGuestInvite = async (req, res, next) => {
       maxEntries: invite.type === 'frequent' ? null : invite.maxEntries,
       usedEntries: usedEntriesAfterScan,
       remainingEntries,
-      message: arrivingGuest
-        ? `${arrivingGuest.name} verified successfully. Click a picture to continue.`
-        : 'QR validated successfully. Click a picture to continue.',
+      existingImageUrl: existingPhoto || null,
+      photoRequired: !existingPhoto,
+      message: existingPhoto
+        ? (arrivingGuest
+            ? `${arrivingGuest.name} verified successfully. Previous photo found.`
+            : 'QR validated successfully. Previous photo found.')
+        : (arrivingGuest
+            ? `${arrivingGuest.name} verified successfully. Click a picture to continue.`
+            : 'QR validated successfully. Click a picture to continue.'),
     };
 
     return sendSuccessResponse(res, 200, 'Guest invite validated successfully', {
