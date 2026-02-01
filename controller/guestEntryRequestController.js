@@ -639,9 +639,10 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
     const shouldGroupDelivery =
       ['awaiting_approval', 'pending', 'approved'].includes(statusKey) &&
       normalizedVisitorTypes.includes('delivery_executive');
+    // For delivery executives, we need to fetch both approved AND pending to detect partial approvals
     const deliveryStatusFilter =
       statusKey === 'approved'
-        ? ['approved']
+        ? ['approved', 'pending', 'entered']
         : statusKey === 'awaiting_approval' || statusKey === 'pending'
           ? ['pending', 'approved', 'entered']
           : statusFilter;
@@ -818,7 +819,58 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
       }
 
       for (const groupDocs of groups.values()) {
+        const approved = groupDocs.filter((d) => d.status === 'approved' || d.status === 'entered');
+        const notApproved = groupDocs.filter((d) => !(d.status === 'approved' || d.status === 'entered'));
+        const hasAnyApproved = approved.length > 0;
+        const hasAnyNotApproved = notApproved.length > 0;
+        const isPartialApproval = hasAnyApproved && hasAnyNotApproved;
+
+        // Helper to build approvedFor array with approver details
+        const buildApprovedFor = (docs) =>
+          docs.map((d) => ({
+            requestId: d.requestId,
+            wingName: d.wingName,
+            unitNumber: d.unitNumber,
+            approvedBy: d.approvedByGuardWithoutMemberResponse && d.approvedByGuardId
+              ? (() => {
+                  const guard = guardApproverById.get(String(d.approvedByGuardId));
+                  return guard
+                    ? {
+                        id: String(guard._id),
+                        name: guard.fullName ? `${guard.fullName} (Security Guard)` : 'Security Guard',
+                        countryCode: guard.countryCode || '+91',
+                        phoneNumber: guard.phoneNumber || null,
+                        isGuard: true,
+                      }
+                    : '';
+                })()
+              : d.approvedByUserId
+                ? (() => {
+                    const user = approverById.get(String(d.approvedByUserId));
+                    return user
+                      ? {
+                          id: String(user._id),
+                          name: user.fullName || null,
+                          countryCode: user.countryCode || '+91',
+                          phoneNumber: user.phoneNumber || null,
+                          isGuard: false,
+                        }
+                      : '';
+                  })()
+                : '',
+            approvedOn: d.approvedByGuardWithoutMemberResponse && d.approvedByGuardAt
+              ? toISTDateTimeLabel(d.approvedByGuardAt)
+              : d.approvedAt
+                ? toISTDateTimeLabel(d.approvedAt)
+                : '',
+          }));
+
         if (isApprovedList) {
+          // Include if at least one unit is approved (full or partial approval)
+          if (!hasAnyApproved) {
+            continue;
+          }
+
           const primaryDoc = groupDocs.reduce(
             (latest, d) => (!latest || new Date(d.createdAt).getTime() > new Date(latest.createdAt).getTime() ? d : latest),
             null
@@ -836,52 +888,24 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
             ? toGuardCardPayload({ reqDoc: primaryDoc, approvedByUser, approvedByGuard, companyLogo })
             : null;
           if (payload) {
+            // Partial approval: some approved, some not
+            const statusLabel = isPartialApproval ? 'Partial Approved' : 'Approved';
+            const statusKeyValue = isPartialApproval ? 'partial_approved' : 'approved';
+
             mappedDelivery.push({
               ...payload,
-              status: 'Approved',
-              statusKey: 'approved',
+              status: statusLabel,
+              statusKey: statusKeyValue,
               visitorTypeKey: primaryDoc.visitorType || 'guest',
               approvedBy: null,
               approvedOn: null,
               unit: null,
-              approvedFor: groupDocs.map((d) => ({
+              approvedFor: buildApprovedFor(approved),
+              notApprovedFor: notApproved.map((d) => ({
                 requestId: d.requestId,
                 wingName: d.wingName,
                 unitNumber: d.unitNumber,
-                approvedBy: d.approvedByGuardWithoutMemberResponse && d.approvedByGuardId
-                  ? (() => {
-                      const guard = guardApproverById.get(String(d.approvedByGuardId));
-                      return guard
-                        ? {
-                            id: String(guard._id),
-                            name: guard.fullName ? `${guard.fullName} (Security Guard)` : 'Security Guard',
-                            countryCode: guard.countryCode || '+91',
-                            phoneNumber: guard.phoneNumber || null,
-                            isGuard: true,
-                          }
-                        : '';
-                    })()
-                  : d.approvedByUserId
-                    ? (() => {
-                        const user = approverById.get(String(d.approvedByUserId));
-                        return user
-                          ? {
-                              id: String(user._id),
-                              name: user.fullName || null,
-                              countryCode: user.countryCode || '+91',
-                              phoneNumber: user.phoneNumber || null,
-                              isGuard: false,
-                            }
-                          : '';
-                      })()
-                    : '',
-                approvedOn: d.approvedByGuardWithoutMemberResponse && d.approvedByGuardAt
-                  ? toISTDateTimeLabel(d.approvedByGuardAt)
-                  : d.approvedAt
-                    ? toISTDateTimeLabel(d.approvedAt)
-                    : '',
               })),
-              notApprovedFor: [],
               _sortTime: primaryDoc.createdAt ? new Date(primaryDoc.createdAt).getTime() : 0,
             });
           }
@@ -889,6 +913,12 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
         }
 
         if (isAwaitingList) {
+          // Do NOT include if ANY unit is approved (partial approvals go to approved list)
+          if (hasAnyApproved) {
+            continue;
+          }
+
+          // Only pending/not-approved docs remain
           if (groupDocs.length === 1) {
             const doc = groupDocs[0];
             if (doc.status !== 'pending') {
@@ -913,17 +943,7 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
             continue;
           }
 
-          const approved = groupDocs.filter((d) => d.status === 'approved' || d.status === 'entered');
-          const notApproved = groupDocs.filter((d) => !(d.status === 'approved' || d.status === 'entered'));
-          if (notApproved.length === 0) {
-            continue;
-          }
-
-          const overallStatus =
-            approved.length === 0
-              ? 'Awaiting Approval'
-              : 'Partial Approved';
-
+          // Multiple units, all pending (no approved)
           const primaryDoc = groupDocs.reduce(
             (latest, d) => (!latest || new Date(d.createdAt).getTime() > new Date(latest.createdAt).getTime() ? d : latest),
             null
@@ -943,17 +963,13 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
           if (payload) {
             mappedDelivery.push({
               ...payload,
-              status: overallStatus,
+              status: 'Awaiting Approval',
               statusKey: 'pending',
               visitorTypeKey: primaryDoc.visitorType || 'guest',
               approvedBy: '',
               approvedOn: '',
               unit: null,
-              approvedFor: approved.map((d) => ({
-                requestId: d.requestId,
-                wingName: d.wingName,
-                unitNumber: d.unitNumber,
-              })),
+              approvedFor: [],
               notApprovedFor: notApproved.map((d) => ({
                 requestId: d.requestId,
                 wingName: d.wingName,
@@ -1524,25 +1540,31 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         .filter(([, imageUrl]) => Boolean(imageUrl))
     );
 
-    const toStatusLabel = (key) =>
-      key === 'approved'
-        ? 'Pre-Approved'
-        : key === 'rejected'
-          ? 'Entry Denied'
-          : key === 'entered'
-            ? 'Inside Society'
-            : key === 'left'
-              ? 'Left Society'
-              : key === 'expired'
-                ? 'Expired'
-                : key === 'cancelled'
-                  ? 'Cancelled'
-                  : key === 'wrong_entry'
-                    ? 'Wrong Entry'
-                    : 'Awaiting Approval';
+    const toStatusLabel = (key, doc) => {
+      if (key === 'approved') {
+        // Distinguish pre-approved (auto at creation) vs manually approved (later)
+        const createdMs = doc.createdAt ? new Date(doc.createdAt).getTime() : 0;
+        const approvedMs = doc.approvedAt ? new Date(doc.approvedAt).getTime() : 0;
+        const isAutoApproved = approvedMs > 0 && Math.abs(approvedMs - createdMs) < 5000;
+        return isAutoApproved ? 'Pre-Approved' : 'Approved';
+      }
+      return key === 'rejected'
+        ? 'Entry Denied'
+        : key === 'entered'
+          ? 'Inside Society'
+          : key === 'left'
+            ? 'Left Society'
+            : key === 'expired'
+              ? 'Expired'
+              : key === 'cancelled'
+                ? 'Cancelled'
+                : key === 'wrong_entry'
+                  ? 'Wrong Entry'
+                  : 'Awaiting Approval';
+    };
 
     const mapped = (items || []).map((d) => {
-      const statusLabel = toStatusLabel(d.status);
+      const statusLabel = toStatusLabel(d.status, d);
       const labels = toVisitorLabels(d.visitorType || 'guest');
       const companyLogo = resolveCompanyLogo({
         visitorType: d.visitorType,
@@ -2102,22 +2124,28 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       return next(e);
     }
 
-    const toMemberStatusLabel = (key) =>
-      key === 'approved'
-        ? 'Pre-Approved'
-        : key === 'rejected'
-          ? 'Entry Denied'
-          : key === 'entered'
-            ? 'Inside Society'
-            : key === 'left'
-              ? 'Left Society'
-              : key === 'expired'
-                ? 'Expired'
-                : key === 'cancelled'
-                  ? 'Cancelled'
-                  : key === 'wrong_entry'
-                    ? 'Wrong Entry'
-                    : 'Awaiting Approval';
+    const toMemberStatusLabel = (key, doc) => {
+      if (key === 'approved') {
+        // Distinguish pre-approved (auto at creation) vs manually approved (later)
+        const createdMs = doc?.createdAt ? new Date(doc.createdAt).getTime() : 0;
+        const approvedMs = doc?.approvedAt ? new Date(doc.approvedAt).getTime() : 0;
+        const isAutoApproved = approvedMs > 0 && Math.abs(approvedMs - createdMs) < 5000;
+        return isAutoApproved ? 'Pre-Approved' : 'Approved';
+      }
+      return key === 'rejected'
+        ? 'Entry Denied'
+        : key === 'entered'
+          ? 'Inside Society'
+          : key === 'left'
+            ? 'Left Society'
+            : key === 'expired'
+              ? 'Expired'
+              : key === 'cancelled'
+                ? 'Cancelled'
+                : key === 'wrong_entry'
+                  ? 'Wrong Entry'
+                  : 'Awaiting Approval';
+    };
 
     const preApprovalLabel = (status) =>
       status === 'active' ? 'Pre-Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
@@ -2186,7 +2214,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
           data: {
             requestId: doc.requestId,
-            status: toMemberStatusLabel(doc.status),
+            status: toMemberStatusLabel(doc.status, doc),
             statusKey: doc.status,
             category: labels.category,
             visitorType: labels.visitorType,
@@ -2433,7 +2461,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             countryCode: entry.guestCountryCode || '+91',
             phoneNumber: entry.guestPhoneNumber || null,
             imageUrl: entry.guestImageUrl || null,
-            status: toMemberStatusLabel(entry.status),
+            status: toMemberStatusLabel(entry.status, entry),
             statusKey: entry.status,
             entryAt: entry.entryAllowedAt ? toISTDateTimeLabel(entry.entryAllowedAt) : null,
             leftAt: entry.entryLeftAt ? toISTDateTimeLabel(entry.entryLeftAt) : null,

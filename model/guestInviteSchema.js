@@ -39,6 +39,8 @@ const entryLogSchema = new mongoose.Schema(
   {
     guestId: { type: String, required: true },
     guestName: { type: String, trim: true, default: null },
+    guestCountryCode: { type: String, trim: true, default: null },
+    guestPhoneNumber: { type: String, trim: true, default: null },
     scannedAt: { type: Date, required: true, default: Date.now },
     guardId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     gateId: { type: mongoose.Schema.Types.ObjectId, default: null },
