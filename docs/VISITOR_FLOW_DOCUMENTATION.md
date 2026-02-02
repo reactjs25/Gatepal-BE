@@ -148,10 +148,10 @@ GatePal handles different types of visitors entering a society. The system suppo
 │  ✓ For Group: Are entries remaining (maxEntries)?                                  │
 │                                                                                     │
 │  On Success:                                                                        │
-│  • Creates GuestEntryRequest with status = "entered"                                │
+│  • Creates GuestEntryRequest with status = "approved"                               │
 │  • Marks guest as hasArrived = true                                                 │
 │  • Logs entry in invite.entryLogs                                                   │
-│  • AUTO-APPROVED (no member approval needed for QR invites!)                        │
+│  • PRE-APPROVED via QR (guard must call allowEntry to mark as entered)              │
 │                                                                                     │
 └────────────────────────────────────────┬────────────────────────────────────────────┘
                                          │
@@ -161,7 +161,7 @@ GatePal handles different types of visitors entering a society. The system suppo
 ├─────────────────────────────────────────────────────────────────────────────────────┤
 │  {                                                                                  │
 │    "requestId": "...",                                                              │
-│    "status": "entered",              ← Guest is now inside!                         │
+│    "status": "approved",             ← Guest is pre-approved, guard must allow entry│
 │    "name": "Guest Name",                                                            │
 │    "phoneNumber": "+91...",                                                         │
 │    "photoRequired": true/false,      ← Guard should capture photo if true           │
@@ -197,6 +197,17 @@ GatePal handles different types of visitors entering a society. The system suppo
                            └──────────────┬───────────────┘
                                           │
                                           ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         GUARD ALLOWS ENTRY                                          │
+│              POST /guard/guestEntryRequests/allowEntry                              │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│  Request: { "requestId": "..." }                                                    │
+│                                                                                     │
+│  → status changes from "approved" to "entered"                                      │
+│  → Guest is now inside the society                                                  │
+└────────────────────────────────────────┬────────────────────────────────────────────┘
+                                         │
+                                         ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                            GUEST IS NOW INSIDE                                      │
 │                          status = "entered"                                         │

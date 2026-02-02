@@ -1239,6 +1239,7 @@ const scanGuestInvite = async (req, res, next) => {
     const unit = await MemberUnit.findById(invite.unitId).lean();
 
     // Create GuestEntryRequest so guard can see visitor in today's list
+    // Status is 'approved' (pre-approved via QR) - guard must call allowEntry to mark as 'entered'
     const guestEntryRequest = await GuestEntryRequest.create({
       societyId: invite.societyId,
       wingName: unit?.wingName || '',
@@ -1258,11 +1259,9 @@ const scanGuestInvite = async (req, res, next) => {
       visitorWorkCategory: null,
       accompanyingCount: safeCount,
       vehicleNumber: normalizedVehicleNumber,
-      status: 'entered',
+      status: 'approved',
       approvedByUserId: invite.invitedByUserId,
       approvedAt: now,
-      entryAllowedByGuardId: authUser._id,
-      entryAllowedAt: now,
       recipientUserIds: [invite.invitedByUserId],
       guestInviteId: invite._id,
     });
@@ -1286,6 +1285,7 @@ const scanGuestInvite = async (req, res, next) => {
     const responseData = {
       qrType: 'guest_invite',
       requestId: guestEntryRequest.requestId,
+      status: 'approved',
       inviteId: invite.inviteId,
       inviteType: invite.type,
       societyId: String(invite.societyId),
@@ -1330,8 +1330,8 @@ const scanGuestInvite = async (req, res, next) => {
       usedEntries: usedEntriesAfterScan,
       remainingEntries,
       message: arrivingGuest
-        ? `${arrivingGuest.name} verified successfully. Click a picture to continue.`
-        : 'QR validated successfully. Click a picture to continue.',
+        ? `${arrivingGuest.name} verified successfully. Use allowEntry to grant access.`
+        : 'QR validated successfully. Use allowEntry to grant access.',
     };
 
     // Remove qrType from responseData since it will be at root level
