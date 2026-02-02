@@ -2,6 +2,9 @@ const validator = require('validator');
 const Society = require('../../model/societySchema');
 const User = require('../../model/userSchema');
 const GuardDutyLog = require('../../model/guardDutyLogSchema');
+const DailyHelp = require('../../model/dailyHelpSchema');
+const DailyHelpAssignment = require('../../model/dailyHelpAssignmentSchema');
+const MemberUnit = require('../../model/memberUnitSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
@@ -455,6 +458,162 @@ const endDuty = async (req, res, next) => {
   }
 };
 
+const DAILY_HELP_CATEGORIES = [
+  { id: 'car_cleaner', name: 'Car Cleaner' },
+  { id: 'cook', name: 'Cook' },
+  { id: 'driver', name: 'Driver' },
+  { id: 'gardener', name: 'Gardener' },
+  { id: 'laundry', name: 'Laundry' },
+  { id: 'maid', name: 'Maid' },
+  { id: 'milkman', name: 'Milkman' },
+  { id: 'nanny_baby_sitter', name: 'Nanny/Baby Sitter' },
+  { id: 'others', name: 'Others' },
+];
+
+const getCategoryName = (categoryKey) => {
+  if (!categoryKey) return null;
+  const category = DAILY_HELP_CATEGORIES.find((c) => c.id === categoryKey);
+  return category ? category.name : categoryKey;
+};
+
+const formatStatusForClient = (value) => {
+  const v = normalizeString(value);
+  if (!v) return v;
+  const upper = v.toUpperCase();
+  if (upper === 'PENDING') return 'Pending';
+  if (upper === 'APPROVED') return 'Verified';
+  if (upper === 'REJECTED') return 'Rejected';
+  if (upper === 'REMOVED') return 'Removed';
+  return v;
+};
+
+const listSocietyDailyHelpForGuard = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      return next(createHttpError('Unauthorized', 401));
+    }
+
+    if (authUser.role !== 'guard') {
+      return next(createHttpError('Only guards can perform this action', 403));
+    }
+
+    const societyIdCandidate = normalizeString(
+      (req.body && req.body.societyId) || ''
+    );
+
+    if (!societyIdCandidate) {
+      return next(createHttpError('societyId is required', 400));
+    }
+
+    if (!validator.isMongoId(societyIdCandidate)) {
+      return next(createHttpError('Invalid societyId', 400));
+    }
+
+    // Verify guard is associated with this society
+    const guardSocieties = authUser.guardSocieties || [];
+    const isAssociatedWithSociety = guardSocieties.some(
+      (gs) => String(gs.societyId) === societyIdCandidate
+    );
+
+    if (!isAssociatedWithSociety) {
+      return next(createHttpError('Guard is not associated with this society', 403));
+    }
+
+    const society = await Society.findById(societyIdCandidate).lean();
+    if (!society) {
+      return next(createHttpError('Society not found', 404));
+    }
+
+    const categoryFilter = normalizeString((req.body || {}).category);
+
+    // Only fetch approved daily helpers for guards
+    const query = { societyId: society._id, status: 'APPROVED' };
+    if (categoryFilter) query.category = categoryFilter.toLowerCase().replace(/\s+/g, '_');
+
+    const items = await DailyHelp.find(query).sort({ createdAt: -1 }).lean();
+
+    const helpIds = items.map((d) => d._id);
+    const assignmentQuery = { dailyHelpId: { $in: helpIds }, status: 'APPROVED' };
+    const assignments = await DailyHelpAssignment.find(assignmentQuery).lean();
+
+    const parseUnit = (u) => {
+      const parts = String(u || '').split(':');
+      return { societyId: parts[0] || '', wingLower: parts[1] || '', unitLower: parts[2] || '' };
+    };
+
+    const memberIds = Array.from(new Set(assignments.map((a) => String(a.memberId))));
+    const users = await User.find({ _id: { $in: memberIds } }, { fullName: 1, phoneNumber: 1 }).lean();
+    const userMap = users.reduce((acc, u) => { acc[String(u._id)] = u; return acc; }, {});
+
+    const unitLookups = assignments.map((a) => {
+      const parsed = parseUnit(a.unitId);
+      return {
+        key: `${String(a.memberId)}:${parsed.wingLower}:${parsed.unitLower}`,
+        societyId: parsed.societyId,
+        wingLower: parsed.wingLower,
+        unitLower: parsed.unitLower,
+        memberId: a.memberId,
+      };
+    });
+
+    const uniqueUnitKeys = Array.from(new Set(unitLookups.map((x) => x.key)));
+    const unitQueryOr = uniqueUnitKeys.map((key) => {
+      const [memberId, wingLower, unitLower] = key.split(':');
+      return { memberId, wingNameLower: wingLower, unitNumberLower: unitLower };
+    });
+
+    let units = [];
+    if (unitQueryOr.length > 0) {
+      units = await MemberUnit.find({ $or: unitQueryOr }, { wingName: 1, wingNameLower: 1, unitNumber: 1, unitNumberLower: 1, memberId: 1 }).lean();
+    }
+    const unitMap = units.reduce((acc, u) => {
+      acc[`${String(u.memberId)}:${u.wingNameLower}:${u.unitNumberLower}`] = u;
+      return acc;
+    }, {});
+
+    const assignmentsByHelp = assignments.reduce((acc, a) => {
+      const parsed = parseUnit(a.unitId);
+      const key = `${String(a.memberId)}:${parsed.wingLower}:${parsed.unitLower}`;
+      const unitDoc = unitMap[key];
+      const userDoc = userMap[String(a.memberId)] || {};
+      const record = {
+        memberId: String(a.memberId),
+        memberName: userDoc.fullName || null,
+        memberPhone: userDoc.phoneNumber || null,
+        wingName: unitDoc ? unitDoc.wingName : null,
+        unitNumber: unitDoc ? unitDoc.unitNumber : null,
+        unitId: unitDoc ? String(unitDoc._id) : null,
+      };
+      const hId = String(a.dailyHelpId);
+      if (!acc[hId]) acc[hId] = [];
+      acc[hId].push(record);
+      return acc;
+    }, {});
+
+    const records = items.map((d) => ({
+      id: String(d._id),
+      societyId: String(d.societyId),
+      name: d.name,
+      category: getCategoryName(d.category),
+      countryCode: d.countryCode || '+91',
+      phoneNumber: d.phoneNumber || null,
+      imageUrl: d.imageUrl || null,
+      status: formatStatusForClient(d.status),
+      createdByRole: d.createdByRole,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      requests: assignmentsByHelp[String(d._id)] || [],
+    }));
+
+    return sendSuccessResponse(res, 200, 'Society daily help fetched successfully', {
+      data: records.length > 0 ? records : null,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch society daily help'));
+  }
+};
+
 module.exports = {
   getAllSociety,
   updateGuardProfile,
@@ -462,4 +621,5 @@ module.exports = {
   getGuardProfile,
   startDuty,
   endDuty,
+  listSocietyDailyHelpForGuard,
 };
