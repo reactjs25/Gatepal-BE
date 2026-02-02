@@ -42,7 +42,7 @@ router.post('/guestEntryRequests/allowEntry', userAuthMiddleware, allowGuestEntr
 router.post('/guestEntryRequests/allowEntryWithoutApproval', userAuthMiddleware, allowEntryWithoutApproval);
 router.post('/guestEntryRequests/allowExit', userAuthMiddleware, allowGuestExit);
 router.patch('/guestEntryRequests/photo', userAuthMiddleware, updateGuestEntryRequestPhoto);
-router.post('/dailyHelp/society', userAuthMiddleware, listSocietyDailyHelpForGuard);
+router.get('/dailyHelp/society', userAuthMiddleware, listSocietyDailyHelpForGuard);
 
 
 module.exports = router;
