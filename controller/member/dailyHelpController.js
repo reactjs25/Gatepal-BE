@@ -41,8 +41,8 @@ const getDailyHelpCategories = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'member' && authUser.role !== 'admin' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can view daily help', 403));
+    if (authUser.role !== 'member' && authUser.role !== 'admin' && authUser.role !== 'society_admin' && authUser.role !== 'guard') {
+      return next(createHttpError('Only members or guards can view daily help categories', 403));
     }
 
     return sendSuccessResponse(res, 200, 'Daily help categories fetched successfully', {
