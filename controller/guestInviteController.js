@@ -388,10 +388,10 @@ const computeFrequentInviteValidityWindow = ({
 const buildGuestInviteQrPayload = ({ invite, guest }) => {
   // Minimal payload - only essential identifiers; rest fetched from DB on scan
   const payload = {
-    t: 'gi', // type: gatepal_guest_invite (shortened)
-    v: 2,    // version
-    i: invite.inviteId,
-    g: guest.guestId,
+    type: 'gatepal_guest_invite',
+    version: 2,
+    inviteId: invite.inviteId,
+    guestId: guest.guestId,
   };
   return JSON.stringify(payload);
 };
@@ -400,10 +400,10 @@ const buildGuestInviteQrPayload = ({ invite, guest }) => {
 const buildGroupInviteQrPayload = ({ invite }) => {
   // Minimal payload - only essential identifiers
   const payload = {
-    t: 'gi', // type: gatepal_guest_invite (shortened)
-    v: 2,    // version
-    i: invite.inviteId,
-    g: 'group',
+    type: 'gatepal_guest_invite',
+    version: 2,
+    inviteId: invite.inviteId,
+    guestId: 'group',
   };
   return JSON.stringify(payload);
 };
