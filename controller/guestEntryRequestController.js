@@ -1546,7 +1546,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         const createdMs = doc.createdAt ? new Date(doc.createdAt).getTime() : 0;
         const approvedMs = doc.approvedAt ? new Date(doc.approvedAt).getTime() : 0;
         const isAutoApproved = approvedMs > 0 && Math.abs(approvedMs - createdMs) < 5000;
-        return isAutoApproved ? 'Pre-Approved' : 'Approved';
+        return isAutoApproved ? 'Pre Approved' : 'Approved';
       }
       return key === 'rejected'
         ? 'Entry Denied'
@@ -1735,7 +1735,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         const statusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
         const statusLabel =
           effectiveStatus === 'active'
-            ? 'Pre-Approved'
+            ? 'Pre Approved'
             : effectiveStatus === 'expired'
               ? 'Expired'
               : 'Cancelled';
@@ -1843,7 +1843,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         const statusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
         const statusLabel =
           effectiveStatus === 'active'
-            ? 'Pre-Approved'
+            ? 'Pre Approved'
             : effectiveStatus === 'expired'
               ? 'Expired'
               : 'Cancelled';
@@ -2130,7 +2130,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         const createdMs = doc?.createdAt ? new Date(doc.createdAt).getTime() : 0;
         const approvedMs = doc?.approvedAt ? new Date(doc.approvedAt).getTime() : 0;
         const isAutoApproved = approvedMs > 0 && Math.abs(approvedMs - createdMs) < 5000;
-        return isAutoApproved ? 'Pre-Approved' : 'Approved';
+        return isAutoApproved ? 'Pre Approved' : 'Approved';
       }
       return key === 'rejected'
         ? 'Entry Denied'
@@ -2148,7 +2148,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
     };
 
     const preApprovalLabel = (status) =>
-      status === 'active' ? 'Pre-Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
+      status === 'active' ? 'Pre Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
 
     if (!isPreApproval) {
       const doc = await GuestEntryRequest.findOne({ requestId }).lean();
@@ -2229,7 +2229,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
               ? {
                   name: approvedByUser.fullName
                     ? isPreApproved
-                      ? `${approvedByUser.fullName} (Pre-Approved)`
+                      ? `${approvedByUser.fullName} (Pre Approved)`
                       : approvedByUser.fullName
                     : null,
                   countryCode: approvedByUser.countryCode || '+91',
@@ -2409,7 +2409,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
     if (guestInvite) {
       const effectiveStatus = resolveActiveStatus(guestInvite.status, guestInvite.validTill, new Date());
       const inviteStatusLabel = (status) =>
-        status === 'active' ? 'Pre-Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
+        status === 'active' ? 'Pre Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
       const fromLabel = toISTDateTimeLabelNoComma(guestInvite.validFrom);
       const tillLabel = toISTDateTimeLabelNoComma(guestInvite.validTill);
       const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
