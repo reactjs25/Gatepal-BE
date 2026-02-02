@@ -21,7 +21,6 @@ const {
 const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
-const { resolveExistingVisitorPhoto } = require('./guestEntryRequestController');
 
 const escapeRegex = (value) => (value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -312,30 +311,16 @@ const computeUiBasedValidityWindow = ({
   });
 };
 
-const parseIstDateTime = (dateValue, timeOfDay, fieldLabel) => {
-  const raw = (dateValue || '').toString().trim();
-  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    throw createHttpError(`Invalid ${fieldLabel} format`, 400);
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (!year || !month || !day) {
-    throw createHttpError(`Invalid ${fieldLabel} format`, 400);
-  }
-  const istOffsetMs = 330 * 60 * 1000;
-  const utcMs = Date.UTC(year, month - 1, day, timeOfDay.hour, timeOfDay.minute) - istOffsetMs;
-  return new Date(utcMs);
-};
-
 const computeGroupInviteValidityWindow = ({
   selectedDate,
   startingFrom,
   validityHours,
 }) => {
+  const baseDate = parseDateOnly(selectedDate, 'selectedDate');
   const timeOfDay = parseTimeOfDay(startingFrom, 'startingFrom');
-  const start = parseIstDateTime(selectedDate, timeOfDay, 'selectedDate');
+
+  const start = new Date(baseDate);
+  start.setHours(timeOfDay.hour, timeOfDay.minute, 0, 0);
 
   const hours = Number(validityHours);
   if (!Number.isFinite(hours) || hours <= 0) {
@@ -401,22 +386,24 @@ const computeFrequentInviteValidityWindow = ({
 };
 
 const buildGuestInviteQrPayload = ({ invite, guest }) => {
+  // Minimal payload - only essential identifiers; rest fetched from DB on scan
   const payload = {
-    type: 'gatepal_guest_invite',
-    version: 2,
-    inviteId: invite.inviteId,
-    guestId: guest.guestId,
+    t: 'gi', // type: gatepal_guest_invite (shortened)
+    v: 2,    // version
+    i: invite.inviteId,
+    g: guest.guestId,
   };
   return JSON.stringify(payload);
 };
 
-
+// For group invites - single shared QR for all guests
 const buildGroupInviteQrPayload = ({ invite }) => {
+  // Minimal payload - only essential identifiers
   const payload = {
-    type: 'gatepal_guest_invite',
-    version: 2,
-    inviteId: invite.inviteId,
-    guestId: 'group',
+    t: 'gi', // type: gatepal_guest_invite (shortened)
+    v: 2,    // version
+    i: invite.inviteId,
+    g: 'group',
   };
   return JSON.stringify(payload);
 };
@@ -1091,23 +1078,17 @@ const scanGuestInvite = async (req, res, next) => {
       payload.inviteId = payload.i;
       payload.guestId = payload.g;
     }
-
+    
     // If it's a visitor QR (delivery_executive, taxi_driver, other_visitor, guest already onboarded)
     if (qrType === 'gatepal_visitor') {
       const visitorType = (payload.visitorType || '').toString().trim().toLowerCase();
       const isGuest = visitorType === 'guest';
       const companyLogo = isGuest ? null : await resolveVisitorCompanyLogo(payload.visitorType, payload.companyName);
-      // Fetch visitor's profile photo and vehicle number from database
+      // Fetch visitor's profile photo from database
       let imageUrl = null;
-      let vehicleNumber = '';
       if (payload.userId) {
-        const visitor = await User.findById(payload.userId)
-          .select('profilePhoto visitorVehicleNumber')
-          .lean();
+        const visitor = await User.findById(payload.userId).select('profilePhoto').lean();
         imageUrl = visitor?.profilePhoto || null;
-        vehicleNumber = normalizeString(payload.vehicleNumber || visitor?.visitorVehicleNumber) || '';
-      } else {
-        vehicleNumber = normalizeString(payload.vehicleNumber) || '';
       }
       return sendSuccessResponse(res, 200, 'Visitor QR code scanned successfully', {
         qrType: 'visitor',
@@ -1118,7 +1099,6 @@ const scanGuestInvite = async (req, res, next) => {
           fullName: payload.fullName || null,
           countryCode: payload.countryCode || '+91',
           phoneNumber: payload.phoneNumber || null,
-          vehicleNumber,
           companyName: isGuest ? null : (payload.companyName || null),
           companyLogo: isGuest ? null : companyLogo,
           workCategory: isGuest ? null : (payload.workCategory || null),
@@ -1259,15 +1239,6 @@ const scanGuestInvite = async (req, res, next) => {
     const unit = await MemberUnit.findById(invite.unitId).lean();
 
     // Create GuestEntryRequest so guard can see visitor in today's list
-    const guestPhoneRaw = arrivingGuest?.phoneNumber || '';
-    const guestPhoneDigits = normalizePhoneDigits(guestPhoneRaw);
-    const hasGuestPhone = Boolean(guestPhoneDigits);
-
-    // Check if guest already has an existing photo in our database
-    const existingPhoto = hasGuestPhone
-      ? await resolveExistingVisitorPhoto({ phoneDigits: guestPhoneDigits, visitorType: 'guest' })
-      : null;
-
     const guestEntryRequest = await GuestEntryRequest.create({
       societyId: invite.societyId,
       wingName: unit?.wingName || '',
@@ -1279,9 +1250,9 @@ const scanGuestInvite = async (req, res, next) => {
       gateName: activeDuty.dutyGateName || null,
       guestName: arrivingGuest?.name || 'Group Guest',
       guestCountryCode: arrivingGuest?.countryCode || '+91',
-      guestPhoneNumber: hasGuestPhone ? guestPhoneRaw : null,
-      guestPhoneDigits: hasGuestPhone ? guestPhoneDigits : null,
-      guestImageUrl: existingPhoto || null,
+      guestPhoneNumber: arrivingGuest?.phoneNumber || '',
+      guestPhoneDigits: normalizePhoneDigits(arrivingGuest?.phoneNumber || ''),
+      guestImageUrl: null,
       visitorType: 'guest',
       visitorCompanyName: null,
       visitorWorkCategory: null,
@@ -1301,7 +1272,7 @@ const scanGuestInvite = async (req, res, next) => {
     const tillTimeLabel = toISTTimeLabel(invite.validTill);
 
     const usedEntriesAfterScan = usedEntries + 1;
-
+    
     // Calculate remaining entries based on invite type
     let remainingEntries = null;
     if (invite.type === 'quick') {
@@ -1321,26 +1292,26 @@ const scanGuestInvite = async (req, res, next) => {
       unitId: String(invite.unitId),
       unit: unit
         ? {
-          wingName: unit.wingName,
-          unitNumber: unit.unitNumber,
-        }
+            wingName: unit.wingName,
+            unitNumber: unit.unitNumber,
+          }
         : null,
       invitedBy: member
         ? {
-          id: String(member._id),
-          name: member.fullName || null,
-          countryCode: member.countryCode || '+91',
-          phoneNumber: member.phoneNumber || null,
-        }
+            id: String(member._id),
+            name: member.fullName || null,
+            countryCode: member.countryCode || '+91',
+            phoneNumber: member.phoneNumber || null,
+          }
         : null,
       arrivingGuest: arrivingGuest
         ? {
-          guestId: arrivingGuest.guestId,
-          name: arrivingGuest.name,
-          countryCode: arrivingGuest.countryCode,
-          phoneNumber: arrivingGuest.phoneNumber,
-          arrivedAt: now,
-        }
+            guestId: arrivingGuest.guestId,
+            name: arrivingGuest.name,
+            countryCode: arrivingGuest.countryCode,
+            phoneNumber: arrivingGuest.phoneNumber,
+            arrivedAt: now,
+          }
         : null,
       guests: invite.guests.map((g) => ({
         guestId: g.guestId,
@@ -1358,19 +1329,17 @@ const scanGuestInvite = async (req, res, next) => {
       maxEntries: invite.type === 'frequent' ? null : invite.maxEntries,
       usedEntries: usedEntriesAfterScan,
       remainingEntries,
-      existingImageUrl: existingPhoto || null,
-      photoRequired: !existingPhoto,
-      message: existingPhoto
-        ? (arrivingGuest
-            ? `${arrivingGuest.name} verified successfully. Previous photo found.`
-            : 'QR validated successfully. Previous photo found.')
-        : (arrivingGuest
-            ? `${arrivingGuest.name} verified successfully. Click a picture to continue.`
-            : 'QR validated successfully. Click a picture to continue.'),
+      message: arrivingGuest
+        ? `${arrivingGuest.name} verified successfully. Click a picture to continue.`
+        : 'QR validated successfully. Click a picture to continue.',
     };
 
+    // Remove qrType from responseData since it will be at root level
+    const { qrType: responseQrType, ...restResponseData } = responseData;
+    
     return sendSuccessResponse(res, 200, 'Guest invite validated successfully', {
-      data: responseData,
+      qrType: responseQrType,
+      data: restResponseData,
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to validate guest invite'));
@@ -1384,7 +1353,7 @@ const getRecentGuests = async (req, res, next) => {
       return next(createHttpError('Unauthorized', 401));
     }
 
-    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
+    if (authUser.role !== 'member') {
       return next(createHttpError('Only members can view recent guests', 403));
     }
 
@@ -1398,9 +1367,8 @@ const getRecentGuests = async (req, res, next) => {
       {
         invitedByUserId: authUser._id,
         createdAt: { $gte: since },
-        type: { $ne: 'group' },
       },
-      { guests: 1, entryLogs: 1, createdAt: 1, type: 1 }
+      { guests: 1, createdAt: 1 }
     )
       .sort({ createdAt: -1 })
       .limit(200)
@@ -1417,31 +1385,16 @@ const getRecentGuests = async (req, res, next) => {
     };
 
     for (const invite of invites) {
-      const entryLogImageByGuestId = new Map();
-      for (const log of invite.entryLogs || []) {
-        if (!log?.guestId || !log.imageUrl) continue;
-        const key = String(log.guestId);
-        const scannedAt = log.scannedAt || invite.createdAt;
-        const existing = entryLogImageByGuestId.get(key);
-        if (!existing || new Date(scannedAt).getTime() > new Date(existing.scannedAt).getTime()) {
-          entryLogImageByGuestId.set(key, { imageUrl: log.imageUrl, scannedAt });
-        }
-      }
-
       const guests = Array.isArray(invite.guests) ? invite.guests : [];
       for (const g of guests) {
         if (!g) continue;
         const name = normalizeString(g.name);
         const phoneDigits = g.phoneDigits || (g.phoneNumber ? normalizeDigits(g.phoneNumber) : null);
         const key = phoneDigits || `${name.toLowerCase()}|${String(g.guestId || '')}`;
-        const entryLogImage = g.guestId
-          ? entryLogImageByGuestId.get(String(g.guestId))?.imageUrl || null
-          : null;
         upsert(key, {
           name: name || null,
           countryCode: g.countryCode || null,
           phoneNumber: g.phoneNumber || null,
-          imageUrl: entryLogImage,
           source: g.source || 'recent',
           lastInvitedAt: invite.createdAt,
         });
@@ -1452,43 +1405,6 @@ const getRecentGuests = async (req, res, next) => {
       .filter((g) => g.name || g.phoneNumber)
       .sort((a, b) => new Date(b.lastInvitedAt).getTime() - new Date(a.lastInvitedAt).getTime())
       .slice(0, limit);
-
-    const guestsNeedingImages = recentGuests.filter((g) => !g.imageUrl);
-    if (guestsNeedingImages.length > 0) {
-      const phoneDigitsList = Array.from(
-        new Set(
-          guestsNeedingImages
-            .map((g) => normalizeDigits(g.phoneNumber || ''))
-            .filter(Boolean)
-        )
-      );
-
-      if (phoneDigitsList.length > 0) {
-        const entryImages = await GuestEntryRequest.find(
-          {
-            guestPhoneDigits: { $in: phoneDigitsList },
-            guestImageUrl: { $nin: [null, ''] },
-          },
-          { guestPhoneDigits: 1, guestImageUrl: 1, createdAt: 1 }
-        )
-          .sort({ createdAt: -1 })
-          .lean();
-
-        const imageByDigits = new Map();
-        for (const entry of entryImages) {
-          const digits = entry?.guestPhoneDigits;
-          if (!digits || imageByDigits.has(digits)) continue;
-          imageByDigits.set(digits, entry.guestImageUrl || null);
-        }
-
-        for (const guest of guestsNeedingImages) {
-          const digits = normalizeDigits(guest.phoneNumber || '');
-          if (digits && imageByDigits.has(digits)) {
-            guest.imageUrl = imageByDigits.get(digits);
-          }
-        }
-      }
-    }
 
     return sendSuccessResponse(res, 200, 'Recent guests fetched successfully', {
       data: { guests: recentGuests },
@@ -1516,16 +1432,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       return next(createHttpError('You must be on duty to update entry details', 400));
     }
 
-    const {
-      inviteId,
-      guestId,
-      vehicleNumber,
-      accompanyingCount,
-      imageUrl,
-      fullName,
-      phoneNumber,
-      countryCode,
-    } = req.body || {};
+    const { inviteId, guestId, vehicleNumber, accompanyingCount, imageUrl } = req.body || {};
 
     const normalizedInviteId = normalizeString(inviteId);
     if (!normalizedInviteId) {
@@ -1585,35 +1492,6 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       invite.entryLogs[targetLogIndex].imageUrl = normalizedImageUrl;
     }
 
-    const normalizedFullName =
-      fullName === undefined ? undefined : (normalizeString(fullName) ? normalizeString(fullName) : null);
-    if (normalizedFullName !== undefined) {
-      if (normalizedFullName === null) {
-        return next(createHttpError('fullName cannot be empty', 400));
-      }
-      invite.entryLogs[targetLogIndex].guestName = normalizedFullName;
-    }
-
-    let normalizedPhoneNumber = undefined;
-    if (phoneNumber !== undefined) {
-      const phoneDigits = normalizePhoneDigits(normalizeString(phoneNumber) || '');
-      if (phoneDigits && !isTenDigitPhone(phoneDigits)) {
-        return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
-      }
-      normalizedPhoneNumber = phoneDigits || null;
-      invite.entryLogs[targetLogIndex].guestPhoneNumber = normalizedPhoneNumber;
-    }
-
-    let normalizedCountryCode = undefined;
-    if (countryCode !== undefined) {
-      const codeRaw = normalizeString(countryCode);
-      normalizedCountryCode = codeRaw ? normalizeCountryCode(codeRaw) : null;
-      invite.entryLogs[targetLogIndex].guestCountryCode = normalizedCountryCode;
-    } else if (normalizedPhoneNumber !== undefined) {
-      invite.entryLogs[targetLogIndex].guestCountryCode =
-        invite.entryLogs[targetLogIndex].guestCountryCode || '+91';
-    }
-
     await invite.save();
 
     // Build full response matching scan response
@@ -1628,55 +1506,6 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
     const targetLog = invite.entryLogs[targetLogIndex];
     const arrivingGuest = invite.guests.find((g) => g.guestId === targetLog.guestId) || null;
 
-    // Sync extra details onto the corresponding GuestEntryRequest record (used by guard lists)
-    let entryRequestDoc = null;
-    try {
-      const scannedAt = targetLog?.scannedAt ? new Date(targetLog.scannedAt) : null;
-      const windowMs = 10 * 60 * 1000;
-      const entryAllowedAtQuery =
-        scannedAt && Number.isFinite(scannedAt.getTime())
-          ? { $gte: new Date(scannedAt.getTime() - windowMs), $lte: new Date(scannedAt.getTime() + windowMs) }
-          : undefined;
-
-      const findQuery = {
-        guestInviteId: invite._id,
-        createdByGuardId: authUser._id,
-        status: 'entered',
-        ...(entryAllowedAtQuery ? { entryAllowedAt: entryAllowedAtQuery } : {}),
-      };
-
-      entryRequestDoc = await GuestEntryRequest.findOne(findQuery).sort({ entryAllowedAt: -1, createdAt: -1 });
-
-      if (entryRequestDoc) {
-        if (normalizedVehicleNumber !== undefined) {
-          entryRequestDoc.vehicleNumber = normalizedVehicleNumber;
-        }
-        if (safeCount !== undefined) {
-          entryRequestDoc.accompanyingCount = safeCount;
-        }
-        if (normalizedImageUrl !== undefined) {
-          entryRequestDoc.guestImageUrl = normalizedImageUrl;
-        }
-        if (normalizedFullName !== undefined) {
-          // `guestName` is required on GuestEntryRequest; only set when non-empty
-          entryRequestDoc.guestName = normalizedFullName;
-        }
-        if (normalizedPhoneNumber !== undefined) {
-          entryRequestDoc.guestPhoneNumber = normalizedPhoneNumber;
-          entryRequestDoc.guestPhoneDigits = normalizedPhoneNumber;
-        }
-        if (normalizedCountryCode !== undefined) {
-          entryRequestDoc.guestCountryCode = normalizedCountryCode;
-        } else if (normalizedPhoneNumber !== undefined) {
-          entryRequestDoc.guestCountryCode = entryRequestDoc.guestCountryCode || '+91';
-        }
-
-        await entryRequestDoc.save();
-      }
-    } catch (syncError) {
-      // Non-fatal: do not block response if list-sync fails
-    }
-
     // Calculate used entries
     const usedEntries = invite.entryLogs.length;
 
@@ -1690,33 +1519,33 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
 
     const responseData = {
       qrType: 'guest_invite',
-      requestId: entryRequestDoc?.requestId || null,
       inviteId: invite.inviteId,
       inviteType: invite.type,
       societyId: String(invite.societyId),
       unitId: String(invite.unitId),
       unit: unit
         ? {
-          wingName: unit.wingName,
-          unitNumber: unit.unitNumber,
-        }
+            wingName: unit.wingName,
+            unitNumber: unit.unitNumber,
+          }
         : null,
       invitedBy: member
         ? {
-          id: String(member._id),
-          name: member.fullName || null,
-          countryCode: member.countryCode || '+91',
-          phoneNumber: member.phoneNumber || null,
-        }
+            id: String(member._id),
+            name: member.fullName || null,
+            countryCode: member.countryCode || '+91',
+            phoneNumber: member.phoneNumber || null,
+          }
         : null,
       arrivingGuest: arrivingGuest
         ? {
-          guestId: arrivingGuest.guestId,
-          name: arrivingGuest.name || targetLog.guestName || null,
-          countryCode: arrivingGuest.countryCode || targetLog.guestCountryCode || null,
-          phoneNumber: arrivingGuest.phoneNumber || targetLog.guestPhoneNumber || null,
-          arrivedAt: arrivingGuest.arrivedAt || targetLog.scannedAt || null,
-        }
+            guestId: arrivingGuest.guestId,
+            name: arrivingGuest.name,
+            countryCode: arrivingGuest.countryCode,
+            phoneNumber: arrivingGuest.phoneNumber,
+            arrivedAt: arrivingGuest.arrivedAt || null,
+            imageUrl: targetLog.imageUrl || null,
+          }
         : null,
       guests: invite.guests.map((g) => ({
         guestId: g.guestId,
@@ -1726,16 +1555,12 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
         hasArrived: g.hasArrived || false,
         arrivedAt: g.arrivedAt || null,
       })),
-      validFrom: invite.validFrom,
-      validTill: invite.validTill,
       validityLabel: `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`,
       vehicleNumber: targetLog.vehicleNumber || null,
       accompanyingCount: targetLog.accompanyingCount || 0,
       maxEntries: invite.type === 'frequent' ? null : invite.maxEntries,
       usedEntries,
       remainingEntries,
-      photoRequired: !(targetLog.imageUrl || entryRequestDoc?.guestImageUrl),
-      message: 'Entry details updated successfully.',
     };
 
     return sendSuccessResponse(res, 200, 'Entry details updated successfully', {

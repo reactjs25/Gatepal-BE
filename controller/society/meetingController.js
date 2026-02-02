@@ -315,6 +315,7 @@ const getMeetings = async (req, res, next) => {
     );
     const viewAs = viewAsRaw.toLowerCase();
     const isMemberView = authUser.role === 'member' || viewAs === 'member';
+    const isGuardView = authUser.role === 'guard';
 
     let societyId = null;
 
@@ -324,6 +325,30 @@ const getMeetings = async (req, res, next) => {
     ) {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
+    } else if (isGuardView) {
+      // Guard access: get societyId from request body
+      const societyIdCandidate = normalizeString(
+        (req.body && req.body.societyId) ||
+        (req.params && req.params.societyId) ||
+        (req.query && req.query.societyId) ||
+        ''
+      );
+
+      if (!societyIdCandidate) {
+        return next(createHttpError('societyId is required for guards to view meetings', 400));
+      }
+
+      // Verify guard is associated with this society
+      const guardSocieties = authUser.guardSocieties || [];
+      const isAssociatedWithSociety = guardSocieties.some(
+        (gs) => String(gs.societyId) === societyIdCandidate
+      );
+
+      if (!isAssociatedWithSociety) {
+        return next(createHttpError('Guard is not associated with this society', 403));
+      }
+
+      societyId = societyIdCandidate;
     } else if (isMemberView) {
       const unitIdCandidate = normalizeString(
         (req.body && req.body.unitId) ||
@@ -345,7 +370,7 @@ const getMeetings = async (req, res, next) => {
 
       societyId = unitDoc.societyId;
     } else {
-      return next(createHttpError('Only members or society admins can perform this action', 403));
+      return next(createHttpError('Only members, guards, or society admins can perform this action', 403));
     }
 
     const items = await Meeting.find({ societyId, deletedAt: null }).lean();
@@ -398,6 +423,7 @@ const getMeetingById = async (req, res, next) => {
     );
     const viewAs = viewAsRaw.toLowerCase();
     const isMemberView = authUser.role === 'member' || viewAs === 'member';
+    const isGuardView = authUser.role === 'guard';
 
     let societyId = null;
 
@@ -407,6 +433,30 @@ const getMeetingById = async (req, res, next) => {
     ) {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
+    } else if (isGuardView) {
+      // Guard access: get societyId from request body
+      const societyIdCandidate = normalizeString(
+        (req.body && req.body.societyId) ||
+        (req.params && req.params.societyId) ||
+        (req.query && req.query.societyId) ||
+        ''
+      );
+
+      if (!societyIdCandidate) {
+        return next(createHttpError('societyId is required for guards to view meetings', 400));
+      }
+
+      // Verify guard is associated with this society
+      const guardSocieties = authUser.guardSocieties || [];
+      const isAssociatedWithSociety = guardSocieties.some(
+        (gs) => String(gs.societyId) === societyIdCandidate
+      );
+
+      if (!isAssociatedWithSociety) {
+        return next(createHttpError('Guard is not associated with this society', 403));
+      }
+
+      societyId = societyIdCandidate;
     } else if (isMemberView) {
       const unitIdCandidate = normalizeString(
         (req.body && req.body.unitId) ||
@@ -428,7 +478,7 @@ const getMeetingById = async (req, res, next) => {
 
       societyId = unitDoc.societyId;
     } else {
-      return next(createHttpError('Only members or society admins can perform this action', 403));
+      return next(createHttpError('Only members, guards, or society admins can perform this action', 403));
     }
 
     const meetingId = normalizeString(
