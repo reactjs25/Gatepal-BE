@@ -316,11 +316,30 @@ const computeGroupInviteValidityWindow = ({
   startingFrom,
   validityHours,
 }) => {
-  const baseDate = parseDateOnly(selectedDate, 'selectedDate');
+  // Parse selectedDate directly as a string to avoid timezone issues
+  // Expected format: "YYYY-MM-DD"
+  const dateStr = (selectedDate || '').toString().trim();
+  const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dateMatch) {
+    throw createHttpError('selectedDate must be in YYYY-MM-DD format', 400);
+  }
+  
   const timeOfDay = parseTimeOfDay(startingFrom, 'startingFrom');
 
-  const start = new Date(baseDate);
-  start.setHours(timeOfDay.hour, timeOfDay.minute, 0, 0);
+  // Build the date-time string in IST and convert to UTC
+  const year = dateMatch[1];
+  const month = dateMatch[2];
+  const day = dateMatch[3];
+  const hour = String(timeOfDay.hour).padStart(2, '0');
+  const minute = String(timeOfDay.minute).padStart(2, '0');
+  
+  // Create date string with IST offset (+05:30)
+  const istDateTimeStr = `${year}-${month}-${day}T${hour}:${minute}:00+05:30`;
+  const start = new Date(istDateTimeStr);
+
+  if (Number.isNaN(start.getTime())) {
+    throw createHttpError('Invalid selectedDate or startingFrom value', 400);
+  }
 
   const hours = Number(validityHours);
   if (!Number.isFinite(hours) || hours <= 0) {
@@ -1215,7 +1234,6 @@ const scanGuestInvite = async (req, res, next) => {
     const countNumber = Number(accompanyingCount);
     const safeCount = Number.isFinite(countNumber) && countNumber > 0 ? countNumber : 0;
 
-    // Add entry log with guest information
     invite.entryLogs.push({
       guestId: guestId || 'group',
       guestName: arrivingGuest ? arrivingGuest.name : 'Group Guest',
@@ -1227,7 +1245,7 @@ const scanGuestInvite = async (req, res, next) => {
       accompanyingCount: safeCount,
     });
 
-    // Mark the specific guest as arrived (for quick/frequent invites)
+ 
     if (arrivingGuestIndex !== -1) {
       invite.guests[arrivingGuestIndex].hasArrived = true;
       invite.guests[arrivingGuestIndex].arrivedAt = now;
@@ -1238,8 +1256,7 @@ const scanGuestInvite = async (req, res, next) => {
     const member = await User.findById(invite.invitedByUserId).lean();
     const unit = await MemberUnit.findById(invite.unitId).lean();
 
-    // Create GuestEntryRequest so guard can see visitor in today's list
-    // Status is 'approved' (pre-approved via QR) - guard must call allowEntry to mark as 'entered'
+
     const guestEntryRequest = await GuestEntryRequest.create({
       societyId: invite.societyId,
       wingName: unit?.wingName || '',
