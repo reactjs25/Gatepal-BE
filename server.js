@@ -5,6 +5,7 @@ const connectToDb = require('./connectToDb/connectToDb');
 const MemberUnit = require('./model/memberUnitSchema');
 const { initializeFirebase } = require('./config/firebaseConfig');
 const { expireVisitorStatuses } = require('./utils/expireVisitorStatuses');
+const { initializeScheduledJobs } = require('./jobs');
 
 const startServer = async () => {
   try {
@@ -17,6 +18,9 @@ const startServer = async () => {
     
     
     initializeFirebase();
+    
+
+    initializeScheduledJobs();
     
     const EXPIRY_INTERVAL_MS = 5 * 60 * 1000;
     const runExpiryJob = async () => {

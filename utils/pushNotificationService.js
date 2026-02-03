@@ -4,9 +4,7 @@ const Society = require('../model/societySchema');
 const Notification = require('../model/notificationSchema');
 
 
-/**
- * Save notification to database for a single user or society admin
- */
+
 const saveNotification = async (userId, title, body, data = {}, fcmResult = {}, options = {}) => {
   try {
     const notification = new Notification({
@@ -19,7 +17,6 @@ const saveNotification = async (userId, title, body, data = {}, fcmResult = {}, 
       fcmStatus: fcmResult.success ? 'sent' : (fcmResult.error === 'Firebase not initialized' ? 'skipped' : 'failed'),
       fcmMessageId: fcmResult.messageId || null,
       fcmError: fcmResult.error || null,
-      // Track if this is for a society admin
       isSocietyAdmin: options.isSocietyAdmin || false,
       societyAdminId: options.societyAdminId || null,
     });
@@ -31,9 +28,6 @@ const saveNotification = async (userId, title, body, data = {}, fcmResult = {}, 
   }
 };
 
-/**
- * Save notifications for multiple users
- */
 const saveNotificationsForUsers = async (userIds, title, body, data = {}, fcmResult = {}) => {
   try {
     const notifications = userIds.map((userId) => ({
@@ -55,9 +49,7 @@ const saveNotificationsForUsers = async (userIds, title, body, data = {}, fcmRes
   }
 };
 
-/**
- * Get FCM tokens for a society admin by admin ID
- */
+
 const getSocietyAdminTokens = async (societyAdminId) => {
   try {
     const society = await Society.findOne(
@@ -78,9 +70,7 @@ const getSocietyAdminTokens = async (societyAdminId) => {
   }
 };
 
-/**
- * Send notification to a society admin
- */
+
 const sendToSocietyAdmin = async (societyAdminId, title, body, data = {}, options = {}) => {
   const { saveToDb = true } = options;
 
@@ -178,7 +168,7 @@ const sendToDevice = async (token, title, body, data = {}) => {
 };
 
 
-const sendToMultipleDevices = async (tokens, title, body, data = {}) => {
+const sendToMultipleDevices = async (tokens, title, body, data = {}, options = {}) => {
   const messaging = getMessaging();
   if (!messaging) {
     console.warn('[PushNotification] Firebase not initialized, skipping notification');
@@ -195,12 +185,20 @@ const sendToMultipleDevices = async (tokens, title, body, data = {}) => {
     return { success: false, error: 'No valid tokens provided' };
   }
 
+  const { iconUrl, imageUrl } = options;
+
   try {
+    const notification = {
+      title,
+      body,
+    };
+
+    if (imageUrl) {
+      notification.imageUrl = imageUrl;
+    }
+
     const message = {
-      notification: {
-        title,
-        body,
-      },
+      notification,
       data: Object.keys(data).reduce((acc, key) => {
         acc[key] = String(data[key]);
         return acc;
@@ -210,6 +208,8 @@ const sendToMultipleDevices = async (tokens, title, body, data = {}) => {
         notification: {
           sound: 'default',
           channelId: 'gatepal_notifications',
+          ...(iconUrl && { icon: iconUrl }),
+          ...(imageUrl && { imageUrl }),
         },
       },
       apns: {
@@ -217,7 +217,11 @@ const sendToMultipleDevices = async (tokens, title, body, data = {}) => {
           aps: {
             sound: 'default',
             badge: 1,
+            'mutable-content': 1,
           },
+        },
+        fcmOptions: {
+          ...(imageUrl && { image: imageUrl }),
         },
       },
     };
@@ -474,6 +478,125 @@ const removeInvalidTokens = async (tokens) => {
   }
 };
 
+
+const sendScheduledNotification = async (params) => {
+  const {
+    userIds,
+    title,
+    body,
+    type,
+    data = {},
+    societyId,
+    societyName,
+    iconUrl = '/assets/Logo.png',
+    imageUrl,
+  } = params;
+
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return { success: false, error: 'No userIds provided' };
+  }
+
+  const enrichedData = {
+    ...data,
+    type,
+    societyId: societyId ? String(societyId) : '',
+    societyName: societyName || '',
+  };
+
+  try {
+    const users = await User.find({ _id: { $in: userIds } })
+      .select('fcmTokens')
+      .lean();
+
+    const tokens = [];
+    users.forEach((user) => {
+      if (user.fcmTokens && Array.isArray(user.fcmTokens)) {
+        user.fcmTokens.forEach((t) => {
+          if (t.token) {
+            tokens.push(t.token);
+          }
+        });
+      }
+    });
+
+    let result;
+    if (tokens.length === 0) {
+      console.log('[PushNotification] No FCM tokens found for scheduled notification');
+      result = { success: false, error: 'No FCM tokens found' };
+    } else {
+      result = await sendToMultipleDevices(tokens, title, body, enrichedData, { iconUrl, imageUrl });
+    }
+
+    // Save notifications for all users
+    await saveNotificationsForUsers(userIds, title, body, {
+      ...enrichedData,
+      societyName,
+      iconUrl,
+      imageUrl,
+    }, result);
+
+    return result;
+  } catch (error) {
+    console.error('[PushNotification] Failed to send scheduled notification:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+
+const sendScheduledAdminNotification = async (params) => {
+  const {
+    societyAdminId,
+    title,
+    body,
+    type,
+    data = {},
+    societyId,
+    societyName,
+    iconUrl = '/assets/Logo.png',
+    imageUrl,
+  } = params;
+
+  if (!societyAdminId) {
+    return { success: false, error: 'No societyAdminId provided' };
+  }
+
+  const enrichedData = {
+    ...data,
+    type,
+    societyId: societyId ? String(societyId) : '',
+    societyName: societyName || '',
+  };
+
+  try {
+    const { tokens } = await getSocietyAdminTokens(societyAdminId);
+
+    let result;
+    if (tokens.length === 0) {
+      console.log(`[PushNotification] Society admin ${societyAdminId} has no FCM tokens for scheduled notification`);
+      result = { success: false, error: 'No FCM tokens found' };
+    } else {
+      result = await sendToMultipleDevices(tokens, title, body, enrichedData, { iconUrl, imageUrl });
+    }
+
+   
+    await saveNotification(societyAdminId, title, body, {
+      ...enrichedData,
+      societyName,
+      iconUrl,
+      imageUrl,
+    }, result, {
+      isSocietyAdmin: true,
+      societyAdminId,
+      societyId,
+    });
+
+    return result;
+  } catch (error) {
+    console.error('[PushNotification] Failed to send scheduled admin notification:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendToDevice,
   sendToMultipleDevices,
@@ -483,6 +606,8 @@ module.exports = {
   sendToSocietyMembers,
   sendToSocietyAdmin,
   getSocietyAdminTokens,
+  sendScheduledNotification,
+  sendScheduledAdminNotification,
   removeInvalidToken,
   removeInvalidTokens,
 };

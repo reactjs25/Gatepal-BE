@@ -1,19 +1,17 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const notificationSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: false, // Not required if it's a society admin notification
-      index: true,
+      ref: "User",
+      required: false,
     },
     societyId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Society',
+      ref: "Society",
       index: true,
     },
-    // For society admin notifications
     isSocietyAdmin: {
       type: Boolean,
       default: false,
@@ -34,20 +32,39 @@ const notificationSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: [
-        'announcement',
-        'meeting',
-        'maintenance',
-        'visitor',
-        'guest_entry',
-        'daily_help',
-        'society_rule',
-        'general',
+        "announcement",
+        "meeting",
+        "maintenance",
+        "maintenance_reminder",
+        "maintenance_overdue",
+        "contract_expiring",
+        "app_inactive",
+        "visitor",
+        "guest_entry",
+        "daily_help",
+        "society_rule",
+        "general",
       ],
-      default: 'general',
+      default: "general",
     },
     data: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
+    },
+    // Society information for rich notifications
+    societyName: {
+      type: String,
+      default: null,
+    },
+    // Icon URL for notification (GatePal logo)
+    iconUrl: {
+      type: String,
+      default: null,
+    },
+    // Large image URL for notification
+    imageUrl: {
+      type: String,
+      default: null,
     },
     isRead: {
       type: Boolean,
@@ -60,8 +77,8 @@ const notificationSchema = new mongoose.Schema(
     },
     fcmStatus: {
       type: String,
-      enum: ['pending', 'sent', 'failed', 'skipped'],
-      default: 'pending',
+      enum: ["pending", "sent", "failed", "skipped"],
+      default: "pending",
     },
     fcmMessageId: {
       type: String,
@@ -74,15 +91,16 @@ const notificationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
-
 
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ societyAdminId: 1, createdAt: -1 });
 
+notificationSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: 90 * 24 * 60 * 60 },
+);
 
-notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
-
-module.exports = mongoose.model('Notification', notificationSchema);
+module.exports = mongoose.model("Notification", notificationSchema);
