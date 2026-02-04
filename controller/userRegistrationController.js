@@ -214,7 +214,7 @@ const completeOnboarding = async (req, res, next) => {
     user.onboardedAt = new Date();
     user.onboardingStatus = 'completed';
 
-    // Handle FCM token registration during onboarding
+    
     if (fcmToken) {
       const normalizedDeviceType = (deviceType || 'android').toLowerCase();
 
@@ -223,12 +223,12 @@ const completeOnboarding = async (req, res, next) => {
         : -1;
 
       if (existingTokenIndex !== -1) {
-        // Update existing token
+        
         user.fcmTokens[existingTokenIndex].deviceType = normalizedDeviceType;
         user.fcmTokens[existingTokenIndex].deviceId = deviceId || null;
         user.fcmTokens[existingTokenIndex].createdAt = new Date();
       } else {
-        // Remove this token from any other user
+        
         await User.updateMany(
           { _id: { $ne: user._id }, 'fcmTokens.token': fcmToken },
           { $pull: { fcmTokens: { token: fcmToken } } }
@@ -238,7 +238,7 @@ const completeOnboarding = async (req, res, next) => {
           user.fcmTokens = [];
         }
 
-        // Add new token
+        
         user.fcmTokens.push({
           token: fcmToken,
           deviceType: normalizedDeviceType,
@@ -246,7 +246,7 @@ const completeOnboarding = async (req, res, next) => {
           createdAt: new Date(),
         });
 
-        // Keep only the 5 most recent tokens
+        
         if (user.fcmTokens.length > 5) {
           user.fcmTokens = user.fcmTokens
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))

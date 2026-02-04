@@ -3,38 +3,38 @@ const { sendSuccessResponse } = require('../utils/response');
 const createHttpError = require('../utils/httpError');
 const { sendToUser, sendToSocietyAdmin } = require('../utils/pushNotificationService');
 
-/**
- * Helper to determine if the authenticated user is a society admin
- */
+
+
+
 const isSocietyAdmin = (req) => {
-  // Check if the user has linkedSocietyAdminId (set by middleware for society admins)
+  
   return !!req.appUser?.linkedSocietyAdminId;
 };
 
-/**
- * Get the society admin ID from the request
- */
+
+
+
 const getSocietyAdminId = (req) => {
   return req.appUser?.linkedSocietyAdminId;
 };
 
-/**
- * Get the appropriate query for notifications based on user type
- */
+
+
+
 const getNotificationQuery = (req) => {
   if (isSocietyAdmin(req)) {
-    // For society admins, query by societyAdminId
+    
     return { societyAdminId: getSocietyAdminId(req) };
   }
-  // For regular users, query by userId
+  
   return { userId: req.appUser._id };
 };
 
-/**
- * Send a test notification to the authenticated user
- * POST /api/notifications/test
- * Body: { title, body, type }
- */
+
+
+
+
+
 const sendTestNotification = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -48,7 +48,7 @@ const sendTestNotification = async (req, res, next) => {
     let targetId;
     
     if (isSocietyAdmin(req)) {
-      // Send to society admin using the actual admin ID (not linked user ID)
+      
       targetId = getSocietyAdminId(req);
       result = await sendToSocietyAdmin(
         targetId,
@@ -61,7 +61,7 @@ const sendTestNotification = async (req, res, next) => {
         }
       );
     } else {
-      // Send to regular user
+      
       targetId = authUser._id;
       result = await sendToUser(
         targetId,
@@ -89,15 +89,15 @@ const sendTestNotification = async (req, res, next) => {
   }
 };
 
-/**
- * Get all notifications for the authenticated user
- * GET /api/notifications
- * Query params:
- *   - page (default: 1)
- *   - limit (default: 20, max: 50)
- *   - isRead (optional: 'true' or 'false')
- *   - type (optional: notification type filter)
- */
+
+
+
+
+
+
+
+
+
 const getNotifications = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -111,14 +111,14 @@ const getNotifications = async (req, res, next) => {
 
     const query = getNotificationQuery(req);
 
-    // Filter by read status
+    
     if (req.query.isRead === 'true') {
       query.isRead = true;
     } else if (req.query.isRead === 'false') {
       query.isRead = false;
     }
 
-    // Filter by type
+    
     if (req.query.type) {
       query.type = req.query.type;
     }
@@ -152,10 +152,10 @@ const getNotifications = async (req, res, next) => {
   }
 };
 
-/**
- * Get unread notification count
- * GET /api/notifications/unread-count
- */
+
+
+
+
 const getUnreadCount = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -176,10 +176,10 @@ const getUnreadCount = async (req, res, next) => {
   }
 };
 
-/**
- * Mark a single notification as read
- * PATCH /api/notifications/:id/read
- */
+
+
+
+
 const markAsRead = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -210,11 +210,11 @@ const markAsRead = async (req, res, next) => {
   }
 };
 
-/**
- * Mark multiple notifications as read
- * PATCH /api/notifications/read-multiple
- * Body: { notificationIds: ['id1', 'id2', ...] }
- */
+
+
+
+
+
 const markMultipleAsRead = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -245,10 +245,10 @@ const markMultipleAsRead = async (req, res, next) => {
   }
 };
 
-/**
- * Mark all notifications as read
- * PATCH /api/notifications/read-all
- */
+
+
+
+
 const markAllAsRead = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -272,10 +272,10 @@ const markAllAsRead = async (req, res, next) => {
   }
 };
 
-/**
- * Delete a single notification
- * DELETE /api/notifications/:id
- */
+
+
+
+
 const deleteNotification = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -300,10 +300,10 @@ const deleteNotification = async (req, res, next) => {
   }
 };
 
-/**
- * Delete all read notifications
- * DELETE /api/notifications/clear-read
- */
+
+
+
+
 const clearReadNotifications = async (req, res, next) => {
   try {
     const authUser = req.appUser;

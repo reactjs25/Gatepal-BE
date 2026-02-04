@@ -543,7 +543,7 @@ const deleteFamilyMember = async (req, res, next) => {
         return next(createHttpError('Forbidden: you do not own this unit', 403));
       }
 
-      // Keep unit access for active GatePal users; only remove from family list if applicable.
+      
       return sendSuccessResponse(res, 200, 'Family member deleted successfully');
     }
 

@@ -30,7 +30,7 @@ const societyAdminSchema = new mongoose.Schema(
         otpCode: { type: String, default: null },
         otpExpiresAt: { type: Date, default: null },
         otpVerifiedAt: { type: Date, default: null },
-        // Unit ownership info for maintenance reminders
+        
         wingName: { type: String, trim: true, default: null },
         unitNumber: { type: String, trim: true, default: null },
         fcmTokens: {
@@ -98,7 +98,7 @@ const societySchema = new mongoose.Schema(
         exitGates: [gateSchema],
         societyAdmins: [societyAdminSchema],
         engagement: engagementSchema,
-        // Notification tracking for scheduled jobs
+        
         lastContractExpiryNotificationAt: { type: Date, default: null },
         lastAppInactiveNotificationAt: { type: Date, default: null },
         contractExpiryNotificationCount: { type: Number, default: 0 },

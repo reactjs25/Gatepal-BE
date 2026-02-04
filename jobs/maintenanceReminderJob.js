@@ -1,9 +1,9 @@
-/**
- * Maintenance Reminder Job
- * Sends reminders to unit members starting 5 days before maintenance due date
- * Runs daily at 9 AM IST
- * Sends until maintenance is paid or due date passes
- */
+
+
+
+
+
+
 
 const Society = require('../model/societySchema');
 const User = require('../model/userSchema');
@@ -16,9 +16,9 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-/**
- * Get current month and year
- */
+
+
+
 const getCurrentMonthYear = () => {
   const now = new Date();
   return {
@@ -28,16 +28,16 @@ const getCurrentMonthYear = () => {
   };
 };
 
-/**
- * Calculate days until maintenance due date
- */
+
+
+
 const getDaysUntilDue = (dueDate, currentDay) => {
   return dueDate - currentDay;
 };
 
-/**
- * Get all units from a society structure
- */
+
+
+
 const getAllUnits = (structure) => {
   const units = [];
   if (!structure || !Array.isArray(structure)) return units;
@@ -57,9 +57,9 @@ const getAllUnits = (structure) => {
   return units;
 };
 
-/**
- * Check if a unit has paid maintenance for a given month/year
- */
+
+
+
 const hasUnitPaidMaintenance = async (unitId, month, year) => {
   const payment = await Maintenance.findOne({
     unitId,
@@ -72,9 +72,9 @@ const hasUnitPaidMaintenance = async (unitId, month, year) => {
   return !!payment;
 };
 
-/**
- * Check if reminder was already sent today
- */
+
+
+
 const wasReminderSentToday = async (societyId, unitId, month, year) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -91,9 +91,9 @@ const wasReminderSentToday = async (societyId, unitId, month, year) => {
   return !!tracking;
 };
 
-/**
- * Get users for a unit
- */
+
+
+
 const getUsersForUnit = async (societyId, wingName, unitNumber) => {
   const users = await User.find({
     societyId,
@@ -107,15 +107,15 @@ const getUsersForUnit = async (societyId, wingName, unitNumber) => {
   return users.map((u) => u._id);
 };
 
-/**
- * Get society admins who own the specified unit
- */
+
+
+
 const getSocietyAdminsForUnit = (societyAdmins, wingName, unitNumber) => {
   if (!societyAdmins || !Array.isArray(societyAdmins)) return [];
   
   return societyAdmins.filter(admin => {
     if (admin.status !== 'Active') return false;
-    // Check if admin's unit matches (format: wingName-unitNumber like "A-A-5" or just "A-5")
+    
     const adminUnit = admin.wingName && admin.unitNumber 
       ? `${admin.wingName}-${admin.unitNumber}`
       : null;
@@ -124,9 +124,9 @@ const getSocietyAdminsForUnit = (societyAdmins, wingName, unitNumber) => {
   });
 };
 
-/**
- * Update or create reminder tracking record
- */
+
+
+
 const updateReminderTracking = async (societyId, unitId, month, year) => {
   const now = new Date();
 
@@ -147,16 +147,16 @@ const updateReminderTracking = async (societyId, unitId, month, year) => {
   );
 };
 
-/**
- * Main job function - run maintenance reminder checks
- */
+
+
+
 const runMaintenanceReminderJob = async () => {
   console.log('[MaintenanceReminderJob] Starting...');
 
   const { month, year, day } = getCurrentMonthYear();
 
   try {
-    // Get all active societies
+    
     const societies = await Society.find({
       status: 'Active',
     }).select('_id societyName maintenanceDueDate structure societyAdmins').lean();
@@ -168,7 +168,7 @@ const runMaintenanceReminderJob = async () => {
     for (const society of societies) {
       const daysUntilDue = getDaysUntilDue(society.maintenanceDueDate, day);
 
-      // Only send reminders 5 days before to due date (not after)
+      
       if (daysUntilDue > 5 || daysUntilDue < 0) {
         continue;
       }
@@ -178,36 +178,36 @@ const runMaintenanceReminderJob = async () => {
 
       for (const unit of units) {
         try {
-          // Check if already paid
+          
           const isPaid = await hasUnitPaidMaintenance(unit.unitId, month, year);
           if (isPaid) {
             continue;
           }
 
-          // Check if reminder already sent today
+          
           const alreadySent = await wasReminderSentToday(society._id, unit.unitId, month, year);
           if (alreadySent) {
             continue;
           }
 
-          // Get users for this unit
+          
           const userIds = await getUsersForUnit(society._id, unit.wingName, unit.unitNumber);
           
-          // Get society admins who own this unit
+          
           const adminsForUnit = getSocietyAdminsForUnit(society.societyAdmins, unit.wingName, unit.unitNumber);
           
-          // Skip if no users AND no admins for this unit
+          
           if (userIds.length === 0 && adminsForUnit.length === 0) {
             continue;
           }
 
-          // Send reminder notification
+          
           const title = `Maintenance Due - ${society.societyName}`;
           const body = daysUntilDue === 0
             ? `Today is the last day to pay maintenance for ${month} ${year}. Upload maintenance proof now.`
             : `${daysUntilDue} days left to pay maintenance for ${month} ${year}. Upload maintenance proof on or before ${society.maintenanceDueDate}th.`;
 
-          // Send to regular members
+          
           if (userIds.length > 0) {
             await sendScheduledNotification({
               userIds,
@@ -226,7 +226,7 @@ const runMaintenanceReminderJob = async () => {
             });
           }
 
-          // Send to society admins who own this unit
+          
           for (const admin of adminsForUnit) {
             await sendScheduledAdminNotification({
               societyAdminId: admin._id,
@@ -245,7 +245,7 @@ const runMaintenanceReminderJob = async () => {
             });
           }
 
-          // Update tracking
+          
           await updateReminderTracking(society._id, unit.unitId, month, year);
 
           totalReminders++;

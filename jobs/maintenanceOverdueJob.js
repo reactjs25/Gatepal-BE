@@ -159,7 +159,7 @@ const runMaintenanceOverdueJob = async () => {
          
           const userIds = await getUsersForUnit(society._id, unit.wingName, unit.unitNumber);
           
-          // Get society admins who own this unit
+          
           const adminsForUnit = getSocietyAdminsForUnit(society.societyAdmins, unit.wingName, unit.unitNumber);
           
           if (userIds.length === 0 && adminsForUnit.length === 0) {
@@ -170,7 +170,7 @@ const runMaintenanceOverdueJob = async () => {
           const title = `Maintenance Overdue - ${society.societyName}`;
           const body = `Maintenance proof upload for ${month} ${year} is overdue. Upload maintenance proof.`;
 
-          // Send to regular members
+          
           if (userIds.length > 0) {
             await sendScheduledNotification({
               userIds,
@@ -188,7 +188,7 @@ const runMaintenanceOverdueJob = async () => {
             });
           }
 
-          // Send to society admins who own this unit
+          
           for (const admin of adminsForUnit) {
             await sendScheduledAdminNotification({
               societyAdminId: admin._id,

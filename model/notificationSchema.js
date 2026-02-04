@@ -55,17 +55,17 @@ const notificationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
-    // Society information for rich notifications
+    
     societyName: {
       type: String,
       default: null,
     },
-    // Icon URL for notification (GatePal logo)
+    
     iconUrl: {
       type: String,
       default: null,
     },
-    // Large image URL for notification
+    
     imageUrl: {
       type: String,
       default: null,

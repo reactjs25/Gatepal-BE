@@ -28,7 +28,7 @@ const VISITOR_TYPE_LABELS = {
   other_visitor: { category: 'Visitor', visitorType: 'Other Visitor' },
 };
 
-// Helper function to generate notification content based on visitor type
+
 const getNotificationContent = (doc, action) => {
   const visitorType = doc.visitorType || 'guest';
   const guestName = doc.guestName;
@@ -36,7 +36,7 @@ const getNotificationContent = (doc, action) => {
   const wingUnit = `${doc.wingName} ${doc.unitNumber}`;
   const gateName = doc.gateName || 'the gate';
 
-  // Determine title prefix based on visitor type
+  
   const titlePrefix = {
     guest: 'Guest',
     delivery_executive: 'Delivery',
@@ -44,7 +44,7 @@ const getNotificationContent = (doc, action) => {
     other_visitor: 'Visitor',
   }[visitorType] || 'Guest';
 
-  // Determine visitor label for body
+  
   let visitorLabel;
   if (companyName) {
     visitorLabel = `${guestName} from ${companyName}`;
@@ -58,7 +58,7 @@ const getNotificationContent = (doc, action) => {
     visitorLabel = guestName;
   }
 
-  // Generate title and body based on action
+  
   switch (action) {
     case 'approval':
       return {
@@ -84,6 +84,11 @@ const getNotificationContent = (doc, action) => {
       return {
         title: `${titlePrefix} Denied, ${doc.wingName}${doc.unitNumber}`,
         body: `Unit member has denied entry from the ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}'.`,
+      };
+    case 'member_exit':
+      return {
+        title: `${titlePrefix} Left, ${doc.wingName}${doc.unitNumber}`,
+        body: `Unit member has marked ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}' as left the society.`,
       };
     default:
       return { title: '', body: '' };
@@ -701,7 +706,7 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
     const shouldGroupDelivery =
       ['awaiting_approval', 'pending', 'approved'].includes(statusKey) &&
       normalizedVisitorTypes.includes('delivery_executive');
-    // For delivery executives, we need to fetch both approved AND pending to detect partial approvals
+    
     const deliveryStatusFilter =
       statusKey === 'approved'
         ? ['approved', 'pending', 'entered']
@@ -887,7 +892,7 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
         const hasAnyNotApproved = notApproved.length > 0;
         const isPartialApproval = hasAnyApproved && hasAnyNotApproved;
 
-        // Helper to build approvedFor array with approver details
+        
         const buildApprovedFor = (docs) =>
           docs.map((d) => ({
             requestId: d.requestId,
@@ -975,12 +980,12 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
         }
 
         if (isAwaitingList) {
-          // Do NOT include if ANY unit is approved (partial approvals go to approved list)
+          
           if (hasAnyApproved) {
             continue;
           }
 
-          // Only pending/not-approved docs remain
+          
           if (groupDocs.length === 1) {
             const doc = groupDocs[0];
             if (doc.status !== 'pending') {
@@ -1005,7 +1010,7 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
             continue;
           }
 
-          // Multiple units, all pending (no approved)
+          
           const primaryDoc = groupDocs.reduce(
             (latest, d) => (!latest || new Date(d.createdAt).getTime() > new Date(latest.createdAt).getTime() ? d : latest),
             null
@@ -1601,7 +1606,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
     const toStatusLabel = (key, doc) => {
       if (key === 'approved') {
-        // Distinguish pre-approved (auto at creation) vs manually approved (later)
+        
         const createdMs = doc.createdAt ? new Date(doc.createdAt).getTime() : 0;
         const approvedMs = doc.approvedAt ? new Date(doc.approvedAt).getTime() : 0;
         const isAutoApproved = approvedMs > 0 && Math.abs(approvedMs - createdMs) < 5000;
@@ -2185,7 +2190,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
 
     const toMemberStatusLabel = (key, doc) => {
       if (key === 'approved') {
-        // Distinguish pre-approved (auto at creation) vs manually approved (later)
+        
         const createdMs = doc?.createdAt ? new Date(doc.createdAt).getTime() : 0;
         const approvedMs = doc?.approvedAt ? new Date(doc.approvedAt).getTime() : 0;
         const isAutoApproved = approvedMs > 0 && Math.abs(approvedMs - createdMs) < 5000;
@@ -2649,7 +2654,7 @@ const decideGuestEntryRequest = async (req, res, next) => {
 
     await doc.save();
 
-    // Send notification to guard about member's decision
+    
     if (doc.createdByGuardId) {
       console.log(`[GuestEntryRequest] Sending ${decision} notification to guard:`, doc.createdByGuardId);
       const notification = getNotificationContent(doc, decision === 'approve' ? 'approved' : 'denied');
@@ -2739,7 +2744,7 @@ const allowGuestEntry = async (req, res, next) => {
 
       await Promise.all(sameSociety.map((d) => d.save()));
 
-      // Send notifications to members for batch entry
+      
       for (const d of sameSociety) {
         if (d.status === 'entered' && d.recipientUserIds && d.recipientUserIds.length > 0) {
           const notification = getNotificationContent(d, 'entry');
@@ -2803,7 +2808,7 @@ const allowGuestEntry = async (req, res, next) => {
 
     await doc.save();
 
-    // Send notification to members about guest entry
+    
     if (doc.recipientUserIds && doc.recipientUserIds.length > 0) {
       const notification = getNotificationContent(doc, 'entry');
       sendToUsers(
@@ -3002,7 +3007,7 @@ const allowGuestExit = async (req, res, next) => {
 
       await Promise.all(sameSociety.map((d) => d.save()));
 
-      // Send notifications to members for batch exit
+      
       for (const d of sameSociety) {
         if (d.status === 'left' && d.recipientUserIds && d.recipientUserIds.length > 0) {
           const notification = getNotificationContent(d, 'exit');
@@ -3057,7 +3062,7 @@ const allowGuestExit = async (req, res, next) => {
 
     await doc.save();
 
-    // Send notification to members about guest exit
+    
     if (doc.recipientUserIds && doc.recipientUserIds.length > 0) {
       const notification = getNotificationContent(doc, 'exit');
       sendToUsers(
@@ -3279,6 +3284,29 @@ const allowGuestExitForMember = async (req, res, next) => {
     doc.entryLeftByMemberId = authUser._id;
     doc.entryLeftAt = new Date();
     await doc.save();
+
+    
+    const guardOnDuty = await findGuardOnDuty(doc.societyId);
+    if (guardOnDuty) {
+      const { title, body } = getNotificationContent(doc, 'member_exit');
+      sendToUser(
+        guardOnDuty._id,
+        title,
+        body,
+        {
+          type: 'guest_exit',
+          requestId: doc.requestId,
+          visitorType: doc.visitorType,
+          guestName: doc.guestName,
+          wingName: doc.wingName,
+          unitNumber: doc.unitNumber,
+          status: 'left',
+          markedByMember: 'true',
+        }
+      ).catch((err) => {
+        console.error('[MemberExit] Failed to send exit notification to guard:', err.message);
+      });
+    }
 
     const payload = await buildExitResponse(doc);
     return sendSuccessResponse(res, 200, 'Visitor marked as left successfully', { data: payload });

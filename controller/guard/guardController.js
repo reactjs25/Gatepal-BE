@@ -510,7 +510,7 @@ const listSocietyDailyHelpForGuard = async (req, res, next) => {
       return next(createHttpError('Invalid societyId', 400));
     }
 
-    // Verify guard is associated with this society
+    
     const guardSocieties = authUser.guardSocieties || [];
     const isAssociatedWithSociety = guardSocieties.some(
       (gs) => String(gs.societyId) === societyIdCandidate
@@ -527,7 +527,7 @@ const listSocietyDailyHelpForGuard = async (req, res, next) => {
 
     const categoryFilter = normalizeString((req.body || {}).category);
 
-    // Only fetch approved daily helpers for guards
+    
     const query = { societyId: society._id, status: 'APPROVED' };
     if (categoryFilter) query.category = categoryFilter.toLowerCase().replace(/\s+/g, '_');
 

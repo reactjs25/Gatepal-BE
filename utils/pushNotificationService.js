@@ -323,7 +323,7 @@ const sendToUser = async (userId, title, body, data = {}, options = {}) => {
     const user = await User.findById(userId).select('fcmTokens').lean();
     if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
       console.log(`[PushNotification] User ${userId} has no FCM tokens`);
-      // Still save notification even if no FCM tokens
+      
       if (saveToDb) {
         await saveNotification(userId, title, body, data, { success: false, error: 'No FCM tokens' });
       }
@@ -340,7 +340,7 @@ const sendToUser = async (userId, title, body, data = {}, options = {}) => {
 
     const result = await sendToMultipleDevices(tokens, title, body, data);
     
-    // Save notification to database
+    
     if (saveToDb) {
       await saveNotification(userId, title, body, data, result);
     }
@@ -377,7 +377,7 @@ const sendToUsers = async (userIds, title, body, data = {}, options = {}) => {
 
     if (tokens.length === 0) {
       console.log('[PushNotification] No FCM tokens found for users');
-      // Still save notifications even if no FCM tokens
+      
       if (saveToDb) {
         await saveNotificationsForUsers(userIds, title, body, data, { success: false, error: 'No FCM tokens' });
       }
@@ -386,7 +386,7 @@ const sendToUsers = async (userIds, title, body, data = {}, options = {}) => {
 
     const result = await sendToMultipleDevices(tokens, title, body, data);
     
-    // Save notifications for all users
+    
     if (saveToDb) {
       await saveNotificationsForUsers(userIds, title, body, data, result);
     }
@@ -406,7 +406,7 @@ const sendToSocietyMembers = async (societyId, title, body, data = {}, options =
   const { excludeUserIds = [], roles = ['member'], saveToDb = true } = options;
 
   try {
-    // Query all members (not just those with tokens) if we need to save notifications
+    
     const baseQuery = {
       societyId,
       role: { $in: roles },
@@ -432,7 +432,7 @@ const sendToSocietyMembers = async (societyId, title, body, data = {}, options =
 
     if (tokens.length === 0) {
       console.log(`[PushNotification] No FCM tokens found for society ${societyId}`);
-      // Still save notifications for all members even if no FCM tokens
+      
       if (saveToDb && userIds.length > 0) {
         await saveNotificationsForUsers(userIds, title, body, { ...data, societyId }, { success: false, error: 'No FCM tokens' });
       }
@@ -442,7 +442,7 @@ const sendToSocietyMembers = async (societyId, title, body, data = {}, options =
     console.log(`[PushNotification] Sending to ${tokens.length} tokens for society ${societyId}`);
     const result = await sendToMultipleDevices(tokens, title, body, data);
     
-    // Save notifications for all society members
+    
     if (saveToDb && userIds.length > 0) {
       await saveNotificationsForUsers(userIds, title, body, { ...data, societyId }, result);
     }
@@ -527,7 +527,7 @@ const sendScheduledNotification = async (params) => {
       result = await sendToMultipleDevices(tokens, title, body, enrichedData, { iconUrl, imageUrl });
     }
 
-    // Save notifications for all users
+    
     await saveNotificationsForUsers(userIds, title, body, {
       ...enrichedData,
       societyName,

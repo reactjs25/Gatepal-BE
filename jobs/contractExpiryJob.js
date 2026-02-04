@@ -1,16 +1,16 @@
-/**
- * Contract Expiry Job
- * Sends notifications to society admins when contract is expiring within 3 months
- * Runs daily at 9 AM IST
- * Sends weekly reminders to society admin
- */
+
+
+
+
+
+
 
 const Society = require('../model/societySchema');
 const { sendScheduledAdminNotification } = require('../utils/pushNotificationService');
 
-/**
- * Calculate months until contract expiry
- */
+
+
+
 const getMonthsUntilExpiry = (endDate) => {
   const now = new Date();
   const end = new Date(endDate);
@@ -22,9 +22,9 @@ const getMonthsUntilExpiry = (endDate) => {
   return { diffMonths, diffDays };
 };
 
-/**
- * Check if a week has passed since last notification
- */
+
+
+
 const shouldSendWeeklyNotification = (lastNotificationAt) => {
   if (!lastNotificationAt) return true;
   
@@ -36,14 +36,14 @@ const shouldSendWeeklyNotification = (lastNotificationAt) => {
   return diffDays >= 7;
 };
 
-/**
- * Main job function - check for expiring contracts
- */
+
+
+
 const runContractExpiryJob = async () => {
   console.log('[ContractExpiryJob] Starting...');
 
   try {
-    // Get all active societies with engagement data
+    
     const societies = await Society.find({
       status: 'Active',
       'engagement.endDate': { $exists: true },
@@ -61,22 +61,22 @@ const runContractExpiryJob = async () => {
 
         const { diffMonths, diffDays } = getMonthsUntilExpiry(society.engagement.endDate);
 
-        // Only notify if contract expires within 3 months (90 days) and not already expired
+        
         if (diffDays > 90 || diffDays <= 0) {
           continue;
         }
 
-        // Check if we should send weekly notification
+        
         if (!shouldSendWeeklyNotification(society.lastContractExpiryNotificationAt)) {
           continue;
         }
 
-        // Get society admins
+        
         if (!society.societyAdmins || society.societyAdmins.length === 0) {
           continue;
         }
 
-        // Send notification to each admin
+        
         for (const admin of society.societyAdmins) {
           if (admin.status !== 'Active') continue;
 
@@ -108,7 +108,7 @@ const runContractExpiryJob = async () => {
           totalNotifications++;
         }
 
-        // Update society tracking fields
+        
         society.lastContractExpiryNotificationAt = new Date();
         society.contractExpiryNotificationCount = (society.contractExpiryNotificationCount || 0) + 1;
         await society.save();

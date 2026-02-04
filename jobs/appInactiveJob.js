@@ -34,7 +34,7 @@ const runAppInactiveJob = async () => {
   console.log('[AppInactiveJob] Starting...');
 
   try {
-    // Get all societies with engagement data (including inactive)
+    
     const societies = await Society.find({
       'engagement.endDate': { $exists: true },
     }).select('_id societyName status engagement societyAdmins lastAppInactiveNotificationAt appInactiveNotificationCount');
@@ -50,35 +50,35 @@ const runAppInactiveJob = async () => {
           continue;
         }
 
-        // Check if contract has expired
+        
         if (!isContractExpired(society.engagement.endDate)) {
           continue;
         }
 
         const daysSinceExpiry = getDaysSinceExpiry(society.engagement.endDate);
 
-        // Mark society as inactive if not already
+        
         if (society.status !== 'Inactive') {
           society.status = 'Inactive';
           societiesMarkedInactive++;
           console.log(`[AppInactiveJob] Marked ${society.societyName} as Inactive`);
         }
 
-        // Check if we should send weekly notification
+        
         if (!shouldSendWeeklyNotification(society.lastAppInactiveNotificationAt)) {
           await society.save();
           continue;
         }
 
-        // Get society admins
+        
         if (!society.societyAdmins || society.societyAdmins.length === 0) {
           await society.save();
           continue;
         }
 
-        // Send notification to each admin
+        
         for (const admin of society.societyAdmins) {
-          // Send even to inactive admins for payment notifications
+          
 
           const title = `App Inactive - ${society.societyName}`;
           const body = `There is a payment overdue from your society and hence the app is inactive. Please renew your contract to restore access.`;
@@ -100,7 +100,7 @@ const runAppInactiveJob = async () => {
           totalNotifications++;
         }
 
-        // Update society tracking fields
+        
         society.lastAppInactiveNotificationAt = new Date();
         society.appInactiveNotificationCount = (society.appInactiveNotificationCount || 0) + 1;
         await society.save();

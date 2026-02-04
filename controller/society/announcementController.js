@@ -242,7 +242,7 @@ const getAnnouncements = async (req, res, next) => {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
     } else if (isGuardView) {
-      // Guard access: get societyId from request body
+      
       const societyIdCandidate = normalizeString(
         (req.body && req.body.societyId) ||
         (req.params && req.params.societyId) ||
@@ -254,7 +254,7 @@ const getAnnouncements = async (req, res, next) => {
         return next(createHttpError('societyId is required for guards to view announcements', 400));
       }
 
-      // Verify guard is associated with this society
+      
       const guardSocieties = authUser.guardSocieties || [];
       const isAssociatedWithSociety = guardSocieties.some(
         (gs) => String(gs.societyId) === societyIdCandidate
@@ -398,7 +398,7 @@ const getAnnouncementById = async (req, res, next) => {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
     } else if (isGuardView) {
-      // Guard access: get societyId from request body
+      
       const societyIdCandidate = normalizeString(
         (req.body && req.body.societyId) ||
         (req.params && req.params.societyId) ||
@@ -410,7 +410,7 @@ const getAnnouncementById = async (req, res, next) => {
         return next(createHttpError('societyId is required for guards to view announcements', 400));
       }
 
-      // Verify guard is associated with this society
+      
       const guardSocieties = authUser.guardSocieties || [];
       const isAssociatedWithSociety = guardSocieties.some(
         (gs) => String(gs.societyId) === societyIdCandidate
