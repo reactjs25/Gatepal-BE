@@ -320,8 +320,30 @@ const sendToUser = async (userId, title, body, data = {}, options = {}) => {
   }
 
   try {
-    const user = await User.findById(userId).select('fcmTokens').lean();
-    if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
+    const user = await User.findById(userId).select('fcmTokens linkedSocietyAdminId').lean();
+    
+    const tokens = [];
+    
+    // Get tokens from User record
+    if (user && user.fcmTokens && Array.isArray(user.fcmTokens)) {
+      user.fcmTokens.forEach((t) => {
+        if (t.token) {
+          tokens.push(t.token);
+        }
+      });
+    }
+    
+    // If user is also a society admin, get tokens from Society collection
+    if (user && user.linkedSocietyAdminId) {
+      const { tokens: adminTokens } = await getSocietyAdminTokens(user.linkedSocietyAdminId);
+      adminTokens.forEach((token) => {
+        if (token && !tokens.includes(token)) {
+          tokens.push(token);
+        }
+      });
+    }
+
+    if (tokens.length === 0) {
       console.log(`[PushNotification] User ${userId} has no FCM tokens`);
       
       if (saveToDb) {
@@ -330,16 +352,7 @@ const sendToUser = async (userId, title, body, data = {}, options = {}) => {
       return { success: false, error: 'User has no FCM tokens' };
     }
 
-    const tokens = user.fcmTokens.map((t) => t.token).filter(Boolean);
-    if (tokens.length === 0) {
-      if (saveToDb) {
-        await saveNotification(userId, title, body, data, { success: false, error: 'No valid FCM tokens' });
-      }
-      return { success: false, error: 'User has no valid FCM tokens' };
-    }
-
     const result = await sendToMultipleDevices(tokens, title, body, data);
-    
     
     if (saveToDb) {
       await saveNotification(userId, title, body, data, result);
@@ -359,12 +372,25 @@ const sendToUsers = async (userIds, title, body, data = {}, options = {}) => {
     return { success: false, error: 'No userIds provided' };
   }
 
+  console.log(`[PushNotification] sendToUsers called with userIds:`, userIds);
+  console.log(`[PushNotification] Title: "${title}", Body: "${body}"`);
+
   try {
     const users = await User.find({ _id: { $in: userIds } })
-      .select('fcmTokens')
+      .select('fcmTokens fullName role linkedSocietyAdminId')
       .lean();
 
+    console.log(`[PushNotification] Found ${users.length} users:`, users.map(u => ({
+      id: u._id,
+      name: u.fullName,
+      role: u.role,
+      linkedSocietyAdminId: u.linkedSocietyAdminId,
+      fcmTokenCount: u.fcmTokens?.length || 0,
+    })));
+
     const tokens = [];
+    
+   
     users.forEach((user) => {
       if (user.fcmTokens && Array.isArray(user.fcmTokens)) {
         user.fcmTokens.forEach((t) => {
@@ -374,6 +400,37 @@ const sendToUsers = async (userIds, title, body, data = {}, options = {}) => {
         });
       }
     });
+
+   
+    const societyAdminIds = users
+      .filter((u) => u.linkedSocietyAdminId)
+      .map((u) => u.linkedSocietyAdminId);
+
+    if (societyAdminIds.length > 0) {
+      console.log(`[PushNotification] Found ${societyAdminIds.length} linked society admin(s), fetching their tokens...`);
+      
+      const societies = await Society.find(
+        { 'societyAdmins._id': { $in: societyAdminIds } },
+        { 'societyAdmins.$': 1 }
+      ).lean();
+
+      societies.forEach((society) => {
+        if (society.societyAdmins && society.societyAdmins.length > 0) {
+          const admin = society.societyAdmins[0];
+          if (admin.fcmTokens && Array.isArray(admin.fcmTokens)) {
+            admin.fcmTokens.forEach((t) => {
+              if (t.token && !tokens.includes(t.token)) {
+                tokens.push(t.token);
+              }
+            });
+          }
+        }
+      });
+      
+      console.log(`[PushNotification] After adding society admin tokens: ${tokens.length} total tokens`);
+    }
+
+    console.log(`[PushNotification] Collected ${tokens.length} FCM tokens`);
 
     if (tokens.length === 0) {
       console.log('[PushNotification] No FCM tokens found for users');

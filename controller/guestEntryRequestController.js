@@ -469,11 +469,21 @@ const resolveUnitResidents = async ({ societyId, wingNameLower, unitNumberLower 
         { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
       ],
     },
-    { memberId: 1 }
+    { memberId: 1, wingName: 1, unitNumber: 1, occupancyStatus: 1 }
   ).lean();
+
+  console.log(`[resolveUnitResidents] Looking for unit: ${wingNameLower} ${unitNumberLower}`);
+  console.log(`[resolveUnitResidents] Found ${unitDocs.length} unit docs:`, unitDocs.map(u => ({
+    memberId: u.memberId,
+    wing: u.wingName,
+    unit: u.unitNumber,
+    status: u.occupancyStatus,
+  })));
 
   const memberIds = unitDocs.map((u) => u.memberId).filter(Boolean);
   const unique = Array.from(new Set(memberIds.map((id) => String(id)))).map((id) => id);
+  
+  console.log(`[resolveUnitResidents] Returning memberIds:`, unique);
   return unique;
 };
 
