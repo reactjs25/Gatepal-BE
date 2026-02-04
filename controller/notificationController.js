@@ -22,12 +22,14 @@ const getSocietyAdminId = (req) => {
 
 
 const getNotificationQuery = (req) => {
-  if (isSocietyAdmin(req)) {
-    
-    return { societyAdminId: getSocietyAdminId(req) };
+  const userId = req.appUser._id;
+  const societyAdminId = getSocietyAdminId(req);
+  
+  if (societyAdminId) {
+    return { $or: [{ userId }, { societyAdminId }] };
   }
   
-  return { userId: req.appUser._id };
+  return { userId };
 };
 
 
@@ -105,20 +107,14 @@ const getNotifications = async (req, res, next) => {
       throw createHttpError('Unauthorized', 401);
     }
 
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const skip = (page - 1) * limit;
-
     const query = getNotificationQuery(req);
 
-    
     if (req.query.isRead === 'true') {
       query.isRead = true;
     } else if (req.query.isRead === 'false') {
       query.isRead = false;
     }
 
-    
     if (req.query.type) {
       query.type = req.query.type;
     }
@@ -126,25 +122,25 @@ const getNotifications = async (req, res, next) => {
     const unreadQuery = getNotificationQuery(req);
     unreadQuery.isRead = false;
 
-    const [notifications, total, unreadCount] = await Promise.all([
+    const [notifications, unreadCount] = await Promise.all([
       Notification.find(query)
         .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
         .lean(),
-      Notification.countDocuments(query),
       Notification.countDocuments(unreadQuery),
     ]);
 
+    const formattedNotifications = notifications.map((n) => ({
+      id: String(n._id),
+      title: n.title,
+      body: n.body,
+      type: n.type,
+      isRead: n.isRead,
+      createdAt: n.createdAt,
+      data: n.data || {},
+    }));
+
     return sendSuccessResponse(res, 200, 'Notifications fetched successfully', {
-      data: notifications,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-        hasMore: skip + notifications.length < total,
-      },
+      data: formattedNotifications,
       unreadCount,
     });
   } catch (error) {

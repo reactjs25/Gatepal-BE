@@ -8,6 +8,7 @@ const Announcement = require('../../model/announcementSchema');
 const Meeting = require('../../model/meetingSchema');
 const SocietyRule = require('../../model/societyRuleSchema');
 const Maintenance = require('../../model/maintenanceSchema');
+const Notification = require('../../model/notificationSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
@@ -349,7 +350,9 @@ const getUnitDashboard = async (req, res, next) => {
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
     const societyId = unitDoc.societyId;
 
-    const [familyCount, vehicleCount, petCount, announcementDocs, meetingDocs, ruleDocs, maintenanceDocs] = await Promise.all([
+    const societyAdminId = authUser.linkedSocietyAdminId || null;
+    
+    const [familyCount, vehicleCount, petCount, announcementDocs, meetingDocs, ruleDocs, maintenanceDocs, userNotificationCount, adminNotificationCount] = await Promise.all([
       FamilyMember.countDocuments({ unitId: unitDoc._id }),
       Vehicle.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
       Pet.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
@@ -357,7 +360,11 @@ const getUnitDashboard = async (req, res, next) => {
       Meeting.find({ societyId, deletedAt: null }).sort({ createdAt: -1 }).lean(),
       SocietyRule.find({ societyId, deletedAt: null }).lean(),
       Maintenance.find({ unitId: canonicalUnitId, deletedAt: null }).lean(),
+      Notification.countDocuments({ userId: authUser._id, isRead: false }),
+      societyAdminId ? Notification.countDocuments({ societyAdminId, isRead: false }) : Promise.resolve(0),
     ]);
+
+    const unreadNotificationCount = userNotificationCount + adminNotificationCount;
 
     const addedItems = [familyCount > 0, vehicleCount > 0, petCount > 0].filter(Boolean).length;
     const progressPercent = Math.round((addedItems / 3) * 100);
@@ -589,6 +596,7 @@ const getUnitDashboard = async (req, res, next) => {
       announcementCount,
       meetingCount,
       society_rules,
+      notificationCount: unreadNotificationCount,
     };
 
     const cards = [
