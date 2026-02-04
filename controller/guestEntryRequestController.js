@@ -19,13 +19,75 @@ const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const { normalizeCountryCode, normalizeDigits, normalizePhoneDigits, isTenDigitPhone } = require('../utils/phoneNumber');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { toISTDateLabel, toISTDateTimeLabel, toISTDateTimeLabelNoComma, toISTTimeLabel } = require('../utils/dateTime');
-const { sendToUsers } = require('../utils/pushNotificationService');
+const { sendToUsers, sendToUser } = require('../utils/pushNotificationService');
 
 const VISITOR_TYPE_LABELS = {
   guest: { category: 'Guest', visitorType: 'Guest' },
   delivery_executive: { category: 'Delivery', visitorType: 'Delivery Executive' },
   taxi_vehicle_driver: { category: 'Taxi', visitorType: 'Taxi' },
   other_visitor: { category: 'Visitor', visitorType: 'Other Visitor' },
+};
+
+// Helper function to generate notification content based on visitor type
+const getNotificationContent = (doc, action) => {
+  const visitorType = doc.visitorType || 'guest';
+  const guestName = doc.guestName;
+  const companyName = doc.visitorCompanyName;
+  const wingUnit = `${doc.wingName} ${doc.unitNumber}`;
+  const gateName = doc.gateName || 'the gate';
+
+  // Determine title prefix based on visitor type
+  const titlePrefix = {
+    guest: 'Guest',
+    delivery_executive: 'Delivery',
+    taxi_vehicle_driver: 'Taxi',
+    other_visitor: 'Visitor',
+  }[visitorType] || 'Guest';
+
+  // Determine visitor label for body
+  let visitorLabel;
+  if (companyName) {
+    visitorLabel = `${guestName} from ${companyName}`;
+  } else if (visitorType === 'delivery_executive') {
+    visitorLabel = `Delivery executive ${guestName}`;
+  } else if (visitorType === 'taxi_vehicle_driver') {
+    visitorLabel = `Taxi driver ${guestName}`;
+  } else if (visitorType === 'other_visitor') {
+    visitorLabel = `Visitor ${guestName}`;
+  } else {
+    visitorLabel = guestName;
+  }
+
+  // Generate title and body based on action
+  switch (action) {
+    case 'approval':
+      return {
+        title: `${titlePrefix} Approval - ${wingUnit}`,
+        body: `${visitorLabel} is waiting for your approval to enter the society.`,
+      };
+    case 'entry':
+      return {
+        title: `${titlePrefix} Entry - ${wingUnit}`,
+        body: `${visitorLabel} has entered society through ${gateName}.`,
+      };
+    case 'exit':
+      return {
+        title: `${titlePrefix} Left - ${wingUnit}`,
+        body: `${visitorLabel} has left your society through ${gateName}.`,
+      };
+    case 'approved':
+      return {
+        title: `${titlePrefix} Approved, ${doc.wingName}${doc.unitNumber}`,
+        body: `You may allow ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}' to enter the society.`,
+      };
+    case 'denied':
+      return {
+        title: `${titlePrefix} Denied, ${doc.wingName}${doc.unitNumber}`,
+        body: `Unit member has denied entry from the ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}'.`,
+      };
+    default:
+      return { title: '', body: '' };
+  }
 };
 
 const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
@@ -1259,14 +1321,11 @@ const createGuestEntryRequest = async (req, res, next) => {
     
     for (const doc of createdDocs) {
       if (doc.status === 'pending' && doc.recipientUserIds && doc.recipientUserIds.length > 0) {
-        const visitorLabel = doc.visitorCompanyName
-          ? `${doc.guestName} (${doc.visitorCompanyName})`
-          : doc.guestName;
-        
+        const notification = getNotificationContent(doc, 'approval');
         sendToUsers(
           doc.recipientUserIds,
-          'Visitor at Gate',
-          `${visitorLabel} is waiting for your approval at the gate.`,
+          notification.title,
+          notification.body,
           {
             type: 'guest_entry_request',
             requestId: doc.requestId,
@@ -2590,6 +2649,29 @@ const decideGuestEntryRequest = async (req, res, next) => {
 
     await doc.save();
 
+    // Send notification to guard about member's decision
+    if (doc.createdByGuardId) {
+      console.log(`[GuestEntryRequest] Sending ${decision} notification to guard:`, doc.createdByGuardId);
+      const notification = getNotificationContent(doc, decision === 'approve' ? 'approved' : 'denied');
+      sendToUser(
+        doc.createdByGuardId,
+        notification.title,
+        notification.body,
+        {
+          type: decision === 'approve' ? 'guest_entry_approved' : 'guest_entry_rejected',
+          requestId: doc.requestId,
+          visitorType: doc.visitorType || 'guest',
+          status: decision === 'approve' ? 'approved' : 'rejected',
+        }
+      ).then((result) => {
+        console.log(`[GuestEntryRequest] ${decision} notification result:`, result);
+      }).catch((err) => {
+        console.error(`[GuestEntryRequest] Failed to send ${decision} notification to guard:`, err.message);
+      });
+    } else {
+      console.log('[GuestEntryRequest] No createdByGuardId found, skipping notification');
+    }
+
     return sendSuccessResponse(res, 200, 'Guest entry request updated successfully', {
       data: {
         requestId: doc.requestId,
@@ -2657,6 +2739,26 @@ const allowGuestEntry = async (req, res, next) => {
 
       await Promise.all(sameSociety.map((d) => d.save()));
 
+      // Send notifications to members for batch entry
+      for (const d of sameSociety) {
+        if (d.status === 'entered' && d.recipientUserIds && d.recipientUserIds.length > 0) {
+          const notification = getNotificationContent(d, 'entry');
+          sendToUsers(
+            d.recipientUserIds,
+            notification.title,
+            notification.body,
+            {
+              type: 'guest_entry',
+              requestId: d.requestId,
+              visitorType: d.visitorType || 'guest',
+              status: 'entered',
+            }
+          ).catch((err) => {
+            console.error('[GuestEntryRequest] Failed to send batch entry notification:', err.message);
+          });
+        }
+      }
+
       
       req.query.requestIds = requestIds.join(',');
       req.query.requestId = undefined;
@@ -2700,6 +2802,24 @@ const allowGuestEntry = async (req, res, next) => {
     doc.gateName = activeDuty.dutyGateName || doc.gateName;
 
     await doc.save();
+
+    // Send notification to members about guest entry
+    if (doc.recipientUserIds && doc.recipientUserIds.length > 0) {
+      const notification = getNotificationContent(doc, 'entry');
+      sendToUsers(
+        doc.recipientUserIds,
+        notification.title,
+        notification.body,
+        {
+          type: 'guest_entry',
+          requestId: doc.requestId,
+          visitorType: doc.visitorType || 'guest',
+          status: 'entered',
+        }
+      ).catch((err) => {
+        console.error('[GuestEntryRequest] Failed to send entry notification to members:', err.message);
+      });
+    }
 
     const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
     const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
@@ -2882,6 +3002,26 @@ const allowGuestExit = async (req, res, next) => {
 
       await Promise.all(sameSociety.map((d) => d.save()));
 
+      // Send notifications to members for batch exit
+      for (const d of sameSociety) {
+        if (d.status === 'left' && d.recipientUserIds && d.recipientUserIds.length > 0) {
+          const notification = getNotificationContent(d, 'exit');
+          sendToUsers(
+            d.recipientUserIds,
+            notification.title,
+            notification.body,
+            {
+              type: 'guest_exit',
+              requestId: d.requestId,
+              visitorType: d.visitorType || 'guest',
+              status: 'left',
+            }
+          ).catch((err) => {
+            console.error('[GuestEntryRequest] Failed to send batch exit notification:', err.message);
+          });
+        }
+      }
+
       req.query.requestIds = requestIds.join(',');
       req.query.requestId = undefined;
       return getGuestEntryRequestForGuard(req, res, next);
@@ -2916,6 +3056,24 @@ const allowGuestExit = async (req, res, next) => {
     doc.entryLeftAt = new Date();
 
     await doc.save();
+
+    // Send notification to members about guest exit
+    if (doc.recipientUserIds && doc.recipientUserIds.length > 0) {
+      const notification = getNotificationContent(doc, 'exit');
+      sendToUsers(
+        doc.recipientUserIds,
+        notification.title,
+        notification.body,
+        {
+          type: 'guest_exit',
+          requestId: doc.requestId,
+          visitorType: doc.visitorType || 'guest',
+          status: 'left',
+        }
+      ).catch((err) => {
+        console.error('[GuestEntryRequest] Failed to send exit notification to members:', err.message);
+      });
+    }
 
     const approvedByUser = doc.approvedByUserId ? await User.findById(doc.approvedByUserId).lean() : null;
     const approvedByGuard = doc.approvedByGuardWithoutMemberResponse && doc.approvedByGuardId
@@ -3432,11 +3590,11 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     
     for (const doc of createdDocs) {
       if (doc.status === 'pending' && doc.recipientUserIds && doc.recipientUserIds.length > 0) {
-        const visitorLabel = companyName ? `${guestName} (${companyName})` : guestName;
+        const notification = getNotificationContent(doc, 'approval');
         sendToUsers(
           doc.recipientUserIds,
-          'Visitor at Gate',
-          `${visitorLabel} is waiting for your approval at the gate.`,
+          notification.title,
+          notification.body,
           {
             type: 'guest_entry_request',
             requestId: doc.requestId,
