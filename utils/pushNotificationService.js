@@ -52,16 +52,28 @@ const saveNotificationsForUsers = async (userIds, title, body, data = {}, fcmRes
 
 const getSocietyAdminTokens = async (societyAdminId) => {
   try {
+    console.log(`[getSocietyAdminTokens] Looking for admin with _id: ${societyAdminId}`);
+    
     const society = await Society.findOne(
       { 'societyAdmins._id': societyAdminId },
       { 'societyAdmins.$': 1, _id: 1 }
     ).lean();
 
+    console.log(`[getSocietyAdminTokens] Society found:`, society ? 'yes' : 'no');
+
     if (!society || !society.societyAdmins || society.societyAdmins.length === 0) {
+      console.log(`[getSocietyAdminTokens] No society or admin found`);
       return { tokens: [], societyId: null };
     }
 
     const admin = society.societyAdmins[0];
+    console.log(`[getSocietyAdminTokens] Admin found:`, {
+      _id: admin._id,
+      name: admin.name,
+      fcmTokensCount: admin.fcmTokens?.length || 0,
+      fcmTokens: admin.fcmTokens,
+    });
+    
     const tokens = (admin.fcmTokens || []).map((t) => t.token).filter(Boolean);
     return { tokens, societyId: society._id };
   } catch (error) {
@@ -407,25 +419,18 @@ const sendToUsers = async (userIds, title, body, data = {}, options = {}) => {
       .map((u) => u.linkedSocietyAdminId);
 
     if (societyAdminIds.length > 0) {
-      console.log(`[PushNotification] Found ${societyAdminIds.length} linked society admin(s), fetching their tokens...`);
+      console.log(`[PushNotification] Found ${societyAdminIds.length} linked society admin(s):`, societyAdminIds);
       
-      const societies = await Society.find(
-        { 'societyAdmins._id': { $in: societyAdminIds } },
-        { 'societyAdmins.$': 1 }
-      ).lean();
-
-      societies.forEach((society) => {
-        if (society.societyAdmins && society.societyAdmins.length > 0) {
-          const admin = society.societyAdmins[0];
-          if (admin.fcmTokens && Array.isArray(admin.fcmTokens)) {
-            admin.fcmTokens.forEach((t) => {
-              if (t.token && !tokens.includes(t.token)) {
-                tokens.push(t.token);
-              }
-            });
+      for (const adminId of societyAdminIds) {
+        const { tokens: adminTokens } = await getSocietyAdminTokens(adminId);
+        console.log(`[PushNotification] Society admin ${adminId} has ${adminTokens.length} tokens`);
+        
+        adminTokens.forEach((token) => {
+          if (token && !tokens.includes(token)) {
+            tokens.push(token);
           }
-        }
-      });
+        });
+      }
       
       console.log(`[PushNotification] After adding society admin tokens: ${tokens.length} total tokens`);
     }
