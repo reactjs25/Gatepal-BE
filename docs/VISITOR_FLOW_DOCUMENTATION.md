@@ -141,11 +141,11 @@ GatePal handles different types of visitors entering a society. The system suppo
 │  }                                                                                  │
 │                                                                                     │
 │  System Validations:                                                                │
-│  ✓ Is invite active? (not cancelled/expired)                                       │
-│  ✓ Is current time within validity window?                                         │
-│  ✓ For Quick: Has this specific guest already arrived?                             │
-│  ✓ For Frequent: Is guest already inside society?                                  │
-│  ✓ For Group: Are entries remaining (maxEntries)?                                  │
+│  ✓ Is invite active? (not cancelled/expired)                                        │
+│  ✓ Is current time within validity window?                                          │
+│  ✓ For Quick: Has this specific guest already arrived?                              │
+│  ✓ For Frequent: Is guest already inside society?                                   │
+│  ✓ For Group: Are entries remaining (maxEntries)?                                   │
 │                                                                                     │
 │  On Success:                                                                        │
 │  • Creates GuestEntryRequest with status = "approved"                               │

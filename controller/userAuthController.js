@@ -155,6 +155,28 @@ const login = async (req, res, next) => {
       throw createHttpError('Account not found for the provided details', 404);
     }
 
+
+   
+    const normalizedRequestedRole = normalizeRole(role);
+    const allowedMemberAppRoles = new Set([ROLE_TYPES.MEMBER, ROLE_TYPES.SOCIETY_ADMIN]);
+    const allowedGuardAppRoles = new Set([ROLE_TYPES.GUARD]);
+    const allowedVisitorAppRoles = new Set([ROLE_TYPES.VISITOR]);
+    
+
+    if (normalizedRequestedRole === ROLE_TYPES.MEMBER && !allowedMemberAppRoles.has(principal.role)) {
+      throw createHttpError('Invalid credentials', 401);
+    }
+    
+    
+    if (normalizedRequestedRole === ROLE_TYPES.GUARD && !allowedGuardAppRoles.has(principal.role)) {
+      throw createHttpError('Invalid credentials', 401);
+    }
+    
+    
+    if (normalizedRequestedRole === ROLE_TYPES.VISITOR && !allowedVisitorAppRoles.has(principal.role)) {
+      throw createHttpError('Invalid credentials', 401);
+    }
+
     ensureAccountIsActive(principal);
 
     let isPasswordValid = false;

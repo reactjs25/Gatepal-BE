@@ -1,5 +1,5 @@
 const express = require('express');
-const { createSociety, getAllSociety, getSocietyById, updateSocietyById, toggleSocietyStatus } = require('../controller/societyController');
+const { createSociety, getAllSociety, getSocietyById, updateSocietyById, toggleSocietyStatus, suspendSociety } = require('../controller/societyController');
 const { getCountryCityOptions, getRegistrationHierarchy } = require('../controller/societyHierarchy');
 const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
@@ -12,5 +12,6 @@ router.get('/locations/registrationHierarchy', getRegistrationHierarchy);
 router.get('/:id', authMiddleware, getSocietyById);
 router.put('/:id', authMiddleware, updateSocietyById);
 router.patch('/:id/toggle-status', authMiddleware, toggleSocietyStatus);
+router.patch('/:id/suspend', authMiddleware, suspendSociety);
 
 module.exports = router;

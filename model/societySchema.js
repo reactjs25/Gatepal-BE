@@ -90,7 +90,7 @@ const societySchema = new mongoose.Schema(
         country: { type: String, required: true },
         latitude: { type: Number, default: null },
         longitude: { type: Number, default: null },
-        status: { type: String, enum: ['Active', 'Inactive', 'Trial'], default: 'Active' },
+        status: { type: String, enum: ['Active', 'Inactive', 'Trial', 'Suspended'], default: 'Active' },
         maintenanceDueDate: { type: Number, required: true },
         notes: { type: String },
         structure: [wingSchema],

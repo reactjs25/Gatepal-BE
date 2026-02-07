@@ -128,6 +128,16 @@ const createSociety = async (req, res, next) => {
 
 const getAllSociety = async (req, res, next) => {
   try {
+    // Auto-expire societies whose engagement has ended
+    const now = new Date();
+    await Society.updateMany(
+      {
+        status: { $in: ['Active', 'Trial'] },
+        'engagement.endDate': { $lt: now },
+      },
+      { $set: { status: 'Inactive' } }
+    );
+
     const societies = await Society.find().lean();
     return sendSuccessResponse(res, 200, 'Societies fetched successfully', { data: societies });
   } catch (error) {
@@ -142,6 +152,19 @@ const getSocietyById = async (req, res, next) => {
 
     if (!society) {
       return next(createHttpError('Society not found', 404));
+    }
+
+    // Auto-expire society if engagement has ended
+    if (
+      society.engagement &&
+      society.engagement.endDate &&
+      (society.status === 'Active' || society.status === 'Trial')
+    ) {
+      const now = new Date();
+      if (new Date(society.engagement.endDate) < now) {
+        society.status = 'Inactive';
+        await society.save();
+      }
     }
 
     return sendSuccessResponse(res, 200, 'Society fetched successfully', { data: society });
@@ -236,6 +259,30 @@ const toggleSocietyStatus = async (req, res, next) => {
   }
 };
 
+const suspendSociety = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const society = await Society.findById(id);
+
+    if (!society) {
+      return next(createHttpError('Society not found', 404));
+    }
+
+    if (society.status === 'Suspended') {
+      return next(createHttpError('Society is already suspended', 400));
+    }
+
+    society.status = 'Suspended';
+    await society.save();
+
+    return sendSuccessResponse(res, 200, 'Society suspended successfully', {
+      data: society,
+    });
+  } catch (error) {
+    next(setErrorDefaults(error, 'Failed to suspend society'));
+  }
+};
+
 
 module.exports = {
   createSociety,
@@ -243,4 +290,5 @@ module.exports = {
   getSocietyById,
   updateSocietyById,
   toggleSocietyStatus,
+  suspendSociety,
 };

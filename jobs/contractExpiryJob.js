@@ -47,11 +47,12 @@ const runContractExpiryJob = async () => {
     const societies = await Society.find({
       status: 'Active',
       'engagement.endDate': { $exists: true },
-    }).select('_id societyName engagement societyAdmins lastContractExpiryNotificationAt contractExpiryNotificationCount');
+    }).select('_id societyName engagement societyAdmins lastContractExpiryNotificationAt contractExpiryNotificationCount status');
 
     console.log(`[ContractExpiryJob] Found ${societies.length} active societies to check`);
 
     let totalNotifications = 0;
+    let totalExpired = 0;
 
     for (const society of societies) {
       try {
@@ -61,8 +62,16 @@ const runContractExpiryJob = async () => {
 
         const { diffMonths, diffDays } = getMonthsUntilExpiry(society.engagement.endDate);
 
+        // If engagement has expired, set society to Inactive
+        if (diffDays <= 0) {
+          society.status = 'Inactive';
+          await society.save();
+          totalExpired++;
+          console.log(`[ContractExpiryJob] Society "${society.societyName}" marked as Inactive (engagement expired)`);
+          continue;
+        }
         
-        if (diffDays > 90 || diffDays <= 0) {
+        if (diffDays > 90) {
           continue;
         }
 
@@ -118,8 +127,8 @@ const runContractExpiryJob = async () => {
       }
     }
 
-    console.log(`[ContractExpiryJob] Completed. Sent ${totalNotifications} expiry notifications.`);
-    return { success: true, notificationsSent: totalNotifications };
+    console.log(`[ContractExpiryJob] Completed. Sent ${totalNotifications} expiry notifications. Marked ${totalExpired} societies as Inactive.`);
+    return { success: true, notificationsSent: totalNotifications, expiredSocieties: totalExpired };
   } catch (error) {
     console.error('[ContractExpiryJob] Failed:', error.message);
     return { success: false, error: error.message };

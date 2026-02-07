@@ -84,13 +84,13 @@ const registerUser = async (req, res, next) => {
     }
 
     if (user && user.onboardingStatus === 'completed') {
-      throw createHttpError('This phone number already exists in the system', 409);
+      throw createHttpError('A user already exists with this phone number', 409);
     }
 
   
     const saExists = await SuperAdmin.exists({ phoneNumber: normalizedPhone });
     if (saExists) {
-      throw createHttpError('This phone number already exists in the system', 409);
+      throw createHttpError('A user already exists with this phone number', 409);
     }
 
     
