@@ -19,7 +19,7 @@ const handleGuardOnboarding = async ({ user, payload }) => {
 
   const sanitizedFullName = toTitleCaseName(fullName);
   if (!sanitizedFullName) {
-    throw createHttpError('Full name is required for guard onboarding', 400);
+    throw createHttpError('Full name is required for guard onboarding.', 400);
   }
 
   let sanitizedPhoto = null;
@@ -38,7 +38,7 @@ const handleGuardOnboarding = async ({ user, payload }) => {
     const nameRegex = new RegExp(`^${escapeRegex(normalizedSocietyName)}$`, 'i');
     society = await Society.findOne({ societyName: nameRegex, societyPin: normalizedSocietyPin });
     if (!society) {
-      throw createHttpError('Society not found for provided name and PIN', 404);
+      throw createHttpError('Society not found for provided name and PIN.', 404);
     }
   }
 

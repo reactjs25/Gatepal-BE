@@ -35,18 +35,18 @@ const validateAddFamilyInput = (input = {}) => {
   const incomingImage = input.imageUrl !== undefined ? input.imageUrl : input.image;
   const imageUrl = incomingImage !== undefined ? ensureImageMaybe({ value: incomingImage, fieldLabel: 'Image' }) : null;
 
-  if (!unitId) throw createHttpError('unitId path parameter is required', 400);
-  if (!mongoose.Types.ObjectId.isValid(unitId)) throw createHttpError('Invalid unit ID format', 400);
-  if (!category || !ALLOWED_CATEGORIES.has(category)) throw createHttpError('category must be one of adult, child', 400);
-  if (!name) throw createHttpError('name is required', 400);
+  if (!unitId) throw createHttpError('unitId path parameter is required.', 400);
+  if (!mongoose.Types.ObjectId.isValid(unitId)) throw createHttpError('Invalid unit ID format.', 400);
+  if (!category || !ALLOWED_CATEGORIES.has(category)) throw createHttpError('category must be one of adult, child.', 400);
+  if (!name) throw createHttpError('name is required.', 400);
   if (category === 'adult') {
     if (!phoneDigits) {
-      throw createHttpError('phoneNumber is required for adult', 400);
+      throw createHttpError('phoneNumber is required for adult.', 400);
     }
   }
 
   if (phoneDigits && phoneDigits.length !== 10) {
-    throw createHttpError('phoneNumber must contain exactly 10 digits', 400);
+    throw createHttpError('phoneNumber must contain exactly 10 digits.', 400);
   }
 
   return { unitId, category, name, countryCode, phoneDigits, imageUrl, rawPhone: input.phoneNumber };
@@ -55,7 +55,7 @@ const validateAddFamilyInput = (input = {}) => {
 const addFamilyMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     let validated;
     try {
       const unitIdCandidate = normalizeString(
@@ -67,9 +67,9 @@ const addFamilyMember = async (req, res, next) => {
     }
 
     const unitDoc = await MemberUnit.findById(validated.unitId);
-    if (!unitDoc) return next(createHttpError('Unit not found', 404));
+    if (!unitDoc) return next(createHttpError('Unit not found.', 404));
     if (String(unitDoc.memberId) !== String(authUser._id)) {
-      return next(createHttpError('Forbidden: you do not own this unit', 403));
+      return next(createHttpError('Forbidden: you do not own this unit.', 403));
     }
 
     const comparablePhone = validated.phoneDigits
@@ -78,12 +78,12 @@ const addFamilyMember = async (req, res, next) => {
 
     if (validated.phoneDigits) {
       const existsUser = await User.exists({ phoneNumber: validated.phoneDigits });
-      if (existsUser) return next(createHttpError('This phone number already exists in the system', 409));
+      if (existsUser) return next(createHttpError('This phone number already exists in the system.', 409));
     }
 
     if (comparablePhone) {
       const duplicate = await FamilyMember.exists({ comparablePhone });
-      if (duplicate) return next(createHttpError('This phone number already exists in the system', 409));
+      if (duplicate) return next(createHttpError('This phone number already exists in the system.', 409));
     }
 
     const payload = {
@@ -110,7 +110,7 @@ const addFamilyMember = async (req, res, next) => {
       }
     }
 
-    return sendSuccessResponse(res, 201, 'Family member details saved successfully', {
+    return sendSuccessResponse(res, 201, 'Family member details saved successfully.', {
       data: {
         id: String(doc._id),
         unitId: String(doc.unitId),
@@ -132,24 +132,24 @@ const addFamilyMember = async (req, res, next) => {
 const getFamilyMembersByUnit = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
 
     const unitId = normalizeString((req.params && (req.params.unitId || req.params.id)) || '');
-    if (!unitId) return next(createHttpError('unitId path parameter is required', 400));
+    if (!unitId) return next(createHttpError('unitId path parameter is required.', 400));
     if (!mongoose.Types.ObjectId.isValid(unitId)) {
-      return next(createHttpError('Invalid unit ID format', 400));
+      return next(createHttpError('Invalid unit ID format.', 400));
     }
 
     const unitDoc = await MemberUnit.findById(unitId);
-    if (!unitDoc) return next(createHttpError('Unit not found', 404));
+    if (!unitDoc) return next(createHttpError('Unit not found.', 404));
     if (String(unitDoc.memberId) !== String(authUser._id)) {
-      return next(createHttpError('Forbidden: you do not own this unit', 403));
+      return next(createHttpError('Forbidden: you do not own this unit.', 403));
     }
 
     const cacheKey = `${String(authUser._id)}:${String(unitDoc._id)}:${String((req.query && req.query.scope) || '')}`;
     const cached = familyListCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      return sendSuccessResponse(res, 200, 'Family members fetched successfully', { data: cached.data });
+      return sendSuccessResponse(res, 200, 'Family members fetched successfully.', { data: cached.data });
     }
 
     const peers = await MemberUnit.find({
@@ -251,7 +251,7 @@ const getFamilyMembersByUnit = async (req, res, next) => {
     const filtered = data.filter((item) => normalizeDigits(item.phoneNumber || '') !== authPhone && String(item.id) !== String(authUser._id));
 
     familyListCache.set(cacheKey, { data: filtered, expiresAt: Date.now() + FAMILY_LIST_CACHE_TTL_MS });
-    return sendSuccessResponse(res, 200, 'Family members fetched successfully', { data: filtered });
+    return sendSuccessResponse(res, 200, 'Family members fetched successfully.', { data: filtered });
 
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch family members'));
@@ -261,18 +261,18 @@ const getFamilyMembersByUnit = async (req, res, next) => {
 const updateFamilyMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
 
     const memberId = normalizeString((req.params && req.params.memberId) || '');
-    if (!memberId) return next(createHttpError('memberId path parameter is required', 400));
+    if (!memberId) return next(createHttpError('memberId path parameter is required.', 400));
     if (!mongoose.Types.ObjectId.isValid(memberId)) {
-      return next(createHttpError('Invalid member ID format', 400));
+      return next(createHttpError('Invalid member ID format.', 400));
     }
 
     let doc = await FamilyMember.findById(memberId);
     if (!doc) {
       const targetUser = await User.findById(memberId);
-      if (!targetUser) return next(createHttpError('Family member not found', 404));
+      if (!targetUser) return next(createHttpError('Family member not found.', 404));
 
       const authUnits = await MemberUnit.find({ memberId: authUser._id }).lean();
       const userUnits = await MemberUnit.find({ memberId: targetUser._id }).lean();
@@ -286,7 +286,7 @@ const updateFamilyMember = async (req, res, next) => {
         )
       );
 
-      if (!matchingUnit) return next(createHttpError('Forbidden: you do not own this unit', 403));
+      if (!matchingUnit) return next(createHttpError('Forbidden: you do not own this unit.', 403));
 
       const { imageUrl, phone, phoneNumber, name, countryCode } = req.body || {};
       const phoneRaw = phoneNumber !== undefined ? phoneNumber : phone;
@@ -299,7 +299,7 @@ const updateFamilyMember = async (req, res, next) => {
 
       if (name !== undefined) {
         const nm = toTitleCaseName(name);
-        if (!nm) return next(createHttpError('name cannot be empty', 400));
+        if (!nm) return next(createHttpError('name cannot be empty.', 400));
         updates.fullName = nm;
       }
 
@@ -312,33 +312,33 @@ const updateFamilyMember = async (req, res, next) => {
       if (phoneRaw !== undefined) {
         const digits = normalizeDigits(phoneRaw || '');
         if (digits && digits.length !== 10) {
-          return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+          return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
         }
 
         if (!digits) {
-          return next(createHttpError('phoneNumber is required for adult', 400));
+          return next(createHttpError('phoneNumber is required for adult.', 400));
         }
 
         const SuperAdmin = require('../../model/superAdminSchema');
         const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 
         const existingUser = await User.exists({ phoneNumber: digits, _id: { $ne: targetUser._id } });
-        if (existingUser) return next(createHttpError('This phone number already exists in the system', 409));
+        if (existingUser) return next(createHttpError('This phone number already exists in the system.', 409));
 
         const fmExists = await FamilyMember.exists({ phoneDigits: digits });
-        if (fmExists) return next(createHttpError('This phone number already exists in the system', 409));
+        if (fmExists) return next(createHttpError('This phone number already exists in the system.', 409));
 
         const saExists = await SuperAdmin.exists({ phoneNumber: digits });
-        if (saExists) return next(createHttpError('This phone number already exists in the system', 409));
+        if (saExists) return next(createHttpError('This phone number already exists in the system.', 409));
 
         const adminExists = await lookupSocietyAdminByMobile(digits);
-        if (adminExists) return next(createHttpError('This phone number already exists in the system', 409));
+        if (adminExists) return next(createHttpError('This phone number already exists in the system.', 409));
 
         updates.phoneNumber = digits;
       }
 
       if (Object.keys(updates).length === 0) {
-        return sendSuccessResponse(res, 200, 'No changes provided', {
+        return sendSuccessResponse(res, 200, 'No changes provided.', {
           data: {
             id: String(targetUser._id),
             unitId: String(matchingUnit._id),
@@ -357,7 +357,7 @@ const updateFamilyMember = async (req, res, next) => {
       Object.assign(targetUser, updates);
       await targetUser.save();
 
-      return sendSuccessResponse(res, 200, 'Family member details update successfully', {
+      return sendSuccessResponse(res, 200, 'Family member details update successfully.', {
         data: {
           id: String(targetUser._id),
           unitId: String(matchingUnit._id),
@@ -374,7 +374,7 @@ const updateFamilyMember = async (req, res, next) => {
     }
 
     const unitDoc = await MemberUnit.findById(doc.unitId);
-    if (!unitDoc) return next(createHttpError('Unit not found', 404));
+    if (!unitDoc) return next(createHttpError('Unit not found.', 404));
     const hasAccess = await MemberUnit.exists({
       societyId: unitDoc.societyId,
       wingNameLower: unitDoc.wingNameLower,
@@ -382,7 +382,7 @@ const updateFamilyMember = async (req, res, next) => {
       memberId: authUser._id,
     });
     if (!hasAccess) {
-      return next(createHttpError('Forbidden: member is not part of your unit', 403));
+      return next(createHttpError('Forbidden: member is not part of your unit.', 403));
     }
 
     const { imageUrl, phone, phoneNumber, category, name, countryCode } = req.body || {};
@@ -397,14 +397,14 @@ const updateFamilyMember = async (req, res, next) => {
     if (category !== undefined) {
       const normalizedCategory = normalizeString(category).toLowerCase();
       if (!ALLOWED_CATEGORIES.has(normalizedCategory)) {
-        return next(createHttpError('category must be one of adult, child', 400));
+        return next(createHttpError('category must be one of adult, child.', 400));
       }
       updates.category = normalizedCategory;
     }
 
     if (name !== undefined) {
       const nm = toTitleCaseName(name);
-      if (!nm) return next(createHttpError('name cannot be empty', 400));
+      if (!nm) return next(createHttpError('name cannot be empty.', 400));
       updates.name = nm;
     }
 
@@ -416,7 +416,7 @@ const updateFamilyMember = async (req, res, next) => {
     if (phoneRaw !== undefined) {
       const digits = normalizeDigits(phoneRaw || '');
       if (digits && digits.length !== 10) {
-        return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+        return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
       }
 
       const effectiveCode = updates.countryCode || doc.countryCode || '+91';
@@ -424,29 +424,29 @@ const updateFamilyMember = async (req, res, next) => {
 
       const effectiveCategory = updates.category || doc.category;
       if (effectiveCategory === 'adult' && !digits) {
-        return next(createHttpError('phoneNumber is required for adult', 400));
+        return next(createHttpError('phoneNumber is required for adult.', 400));
       }
 
       if (digits) {
         const existingUser = await User.exists({ phoneNumber: digits });
-        if (existingUser) return next(createHttpError('This phone number already exists in the system', 409));
+        if (existingUser) return next(createHttpError('This phone number already exists in the system.', 409));
 
         const SuperAdmin = require('../../model/superAdminSchema');
         const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 
         const fmExists = await FamilyMember.exists({ phoneDigits: digits, _id: { $ne: doc._id } });
-        if (fmExists) return next(createHttpError('This phone number already exists in the system', 409));
+        if (fmExists) return next(createHttpError('This phone number already exists in the system.', 409));
 
         const saExists = await SuperAdmin.exists({ phoneNumber: digits });
-        if (saExists) return next(createHttpError('This phone number already exists in the system', 409));
+        if (saExists) return next(createHttpError('This phone number already exists in the system.', 409));
 
         const adminExists = await lookupSocietyAdminByMobile(digits);
-        if (adminExists) return next(createHttpError('This phone number already exists in the system', 409));
+        if (adminExists) return next(createHttpError('This phone number already exists in the system.', 409));
       }
 
       if (comparable) {
         const dupComparable = await FamilyMember.exists({ comparablePhone: comparable, _id: { $ne: doc._id } });
-        if (dupComparable) return next(createHttpError('This phone number already exists in the system', 409));
+        if (dupComparable) return next(createHttpError('This phone number already exists in the system.', 409));
       }
 
       updates.phoneNumber = digits ? phoneRaw : null;
@@ -455,7 +455,7 @@ const updateFamilyMember = async (req, res, next) => {
     }
 
     if (Object.keys(updates).length === 0) {
-      return sendSuccessResponse(res, 200, 'No changes provided', {
+      return sendSuccessResponse(res, 200, 'No changes provided.', {
         data: {
           id: String(doc._id),
           unitId: String(doc.unitId),
@@ -490,7 +490,7 @@ const updateFamilyMember = async (req, res, next) => {
 
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Family member updated successfully', {
+    return sendSuccessResponse(res, 200, 'Family member updated successfully.', {
       data: {
         id: String(doc._id),
         unitId: String(doc.unitId),
@@ -512,18 +512,18 @@ const updateFamilyMember = async (req, res, next) => {
 const deleteFamilyMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
 
     const memberId = normalizeString((req.params && req.params.memberId) || '');
-    if (!memberId) return next(createHttpError('memberId path parameter is required', 400));
+    if (!memberId) return next(createHttpError('memberId path parameter is required.', 400));
     if (!mongoose.Types.ObjectId.isValid(memberId)) {
-      return next(createHttpError('Invalid member ID format', 400));
+      return next(createHttpError('Invalid member ID format.', 400));
     }
 
     const doc = await FamilyMember.findById(memberId);
     if (!doc) {
       const targetUser = await User.findById(memberId);
-      if (!targetUser) return next(createHttpError('Family member not found', 404));
+      if (!targetUser) return next(createHttpError('Family member not found.', 404));
 
       const authUnits = await MemberUnit.find({ memberId: authUser._id }).lean();
       const userUnits = await MemberUnit.find({ memberId: targetUser._id }).lean();
@@ -540,22 +540,22 @@ const deleteFamilyMember = async (req, res, next) => {
       );
 
       if (overlapping.length === 0) {
-        return next(createHttpError('Forbidden: you do not own this unit', 403));
+        return next(createHttpError('Forbidden: you do not own this unit.', 403));
       }
 
       
-      return sendSuccessResponse(res, 200, 'Family member deleted successfully');
+      return sendSuccessResponse(res, 200, 'Family member deleted successfully.');
     }
 
     const unitDoc = await MemberUnit.findById(doc.unitId);
-    if (!unitDoc) return next(createHttpError('Unit not found', 404));
+    if (!unitDoc) return next(createHttpError('Unit not found.', 404));
     if (String(unitDoc.memberId) !== String(authUser._id)) {
-      return next(createHttpError('Forbidden: you do not own this unit', 403));
+      return next(createHttpError('Forbidden: you do not own this unit.', 403));
     }
 
     await doc.deleteOne();
 
-    return sendSuccessResponse(res, 200, 'Family member deleted successfully');
+    return sendSuccessResponse(res, 200, 'Family member deleted successfully.');
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to delete family member'));
   }
@@ -564,18 +564,18 @@ const deleteFamilyMember = async (req, res, next) => {
 const getFamilyMemberById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
 
     const memberId = normalizeString((req.params && req.params.memberId) || '');
-    if (!memberId) return next(createHttpError('memberId path parameter is required', 400));
+    if (!memberId) return next(createHttpError('memberId path parameter is required.', 400));
     if (!mongoose.Types.ObjectId.isValid(memberId)) {
-      return next(createHttpError('Invalid member ID format', 400));
+      return next(createHttpError('Invalid member ID format.', 400));
     }
 
     const fm = await FamilyMember.findById(memberId).lean();
     if (fm) {
       const unitDoc = await MemberUnit.findById(fm.unitId).lean();
-      if (!unitDoc) return next(createHttpError('Unit not found', 404));
+      if (!unitDoc) return next(createHttpError('Unit not found.', 404));
       const hasAccess = await MemberUnit.exists({
         societyId: unitDoc.societyId,
         wingNameLower: unitDoc.wingNameLower,
@@ -583,10 +583,10 @@ const getFamilyMemberById = async (req, res, next) => {
         memberId: authUser._id,
       });
       if (!hasAccess) {
-        return next(createHttpError('Forbidden: member is not part of your unit', 403));
+        return next(createHttpError('Forbidden: member is not part of your unit.', 403));
       }
 
-      return sendSuccessResponse(res, 200, 'Family member fetched successfully', {
+      return sendSuccessResponse(res, 200, 'Family member fetched successfully.', {
         data: {
           id: String(fm._id),
           unitId: String(fm.unitId),
@@ -605,7 +605,7 @@ const getFamilyMemberById = async (req, res, next) => {
 
     const targetUser = await User.findById(memberId).lean();
     if (!targetUser) {
-      return next(createHttpError('Family member not found', 404));
+      return next(createHttpError('Family member not found.', 404));
     }
 
     const authUnits = await MemberUnit.find({ memberId: authUser._id }).lean();
@@ -621,10 +621,10 @@ const getFamilyMemberById = async (req, res, next) => {
     );
 
     if (!matchingUnit) {
-      return next(createHttpError('Forbidden: member is not part of your unit', 403));
+      return next(createHttpError('Forbidden: member is not part of your unit.', 403));
     }
 
-    return sendSuccessResponse(res, 200, 'Family member fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Family member fetched successfully.', {
       data: {
         id: String(targetUser._id),
         unitId: String(matchingUnit._id),

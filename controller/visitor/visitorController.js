@@ -20,16 +20,16 @@ const getDeliveryCompanies = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
     if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
-      return next(createHttpError('Only visitors, members, or guards can access delivery companies', 403));
+      return next(createHttpError('Only visitors, members, or guards can access delivery companies.', 403));
     }
 
     const existing = await DeliveryCompany.find().lean();
 
     if (existing && existing.length > 0) {
-      return sendSuccessResponse(res, 200, 'Delivery companies fetched successfully', {
+      return sendSuccessResponse(res, 200, 'Delivery companies fetched successfully.', {
         data: existing.map((c) => ({ id: c.id, name: c.name, imageUrl: c.imageUrl })),
       });
     }
@@ -72,11 +72,11 @@ const getDeliveryCompanies = async (req, res, next) => {
       } catch (seedErr) {}
     }
 
-    return sendSuccessResponse(res, 200, 'Delivery companies fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Delivery companies fetched successfully.', {
       data: companies,
     });
   } catch (error) {
-    next(setErrorDefaults(error, 'Failed to fetch delivery companies'));
+    next(setErrorDefaults(error, 'Failed to fetch delivery companies.'));
   }
 };
 
@@ -84,21 +84,21 @@ const getWorkCategories = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
     if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
-      return next(createHttpError('Only visitors, members, or guards can access work categories', 403));
+      return next(createHttpError('Only visitors, members, or guards can access work categories.', 403));
     }
     const categories = WORK_CATEGORIES.map((name) => ({
       id: name.toLowerCase().replace(/\s+/g, '_'),
       name,
     }));
 
-    return sendSuccessResponse(res, 200, 'Work categories fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Work categories fetched successfully.', {
       data: categories,
     });
   } catch (error) {
-    next(setErrorDefaults(error, 'Failed to fetch work categories'));
+    next(setErrorDefaults(error, 'Failed to fetch work categories.'));
   }
 };
 
@@ -106,15 +106,15 @@ const getTaxiDriverCompanies = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
     if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
-      return next(createHttpError('Only visitors, members, or guards can access taxi driver companies', 403));
+      return next(createHttpError('Only visitors, members, or guards can access taxi driver companies.', 403));
     }
     const existing = await TaxiDriverCompany.find().lean();
 
     if (existing && existing.length > 0) {
-      return sendSuccessResponse(res, 200, 'Taxi driver companies fetched successfully', {
+      return sendSuccessResponse(res, 200, 'Taxi driver companies fetched successfully.', {
         data: existing.map((c) => ({ id: c.id, name: c.name, imageUrl: c.imageUrl })),
       });
     }
@@ -127,11 +127,11 @@ const getTaxiDriverCompanies = async (req, res, next) => {
       } catch (seedErr) {}
     }
 
-    return sendSuccessResponse(res, 200, 'Taxi driver companies fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Taxi driver companies fetched successfully.', {
       data: TAXI_DRIVER_COMPANIES,
     });
   } catch (error) {
-    next(setErrorDefaults(error, 'Failed to fetch taxi driver companies'));
+    next(setErrorDefaults(error, 'Failed to fetch taxi driver companies.'));
   }
 };
 
@@ -139,15 +139,15 @@ const getOtherVisitorCompanies = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
     if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
-      return next(createHttpError('Only visitors, members, or guards can access other visitor companies', 403));
+      return next(createHttpError('Only visitors, members, or guards can access other visitor companies.', 403));
     }
     const existing = await OtherVisitorCompany.find().lean();
 
     if (existing && existing.length > 0) {
-      return sendSuccessResponse(res, 200, 'Other visitor companies fetched successfully', {
+      return sendSuccessResponse(res, 200, 'Other visitor companies fetched successfully.', {
         data: existing.map((c) => ({ id: c.id, name: c.name, imageUrl: c.imageUrl })),
       });
     }
@@ -160,11 +160,11 @@ const getOtherVisitorCompanies = async (req, res, next) => {
       } catch (seedErr) {}
     }
 
-    return sendSuccessResponse(res, 200, 'Other visitor companies fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Other visitor companies fetched successfully.', {
       data: OTHER_VISITOR_COMPANIES,
     });
   } catch (error) {
-    next(setErrorDefaults(error, 'Failed to fetch other visitor companies'));
+    next(setErrorDefaults(error, 'Failed to fetch other visitor companies.'));
   }
 };
 
@@ -172,28 +172,28 @@ const addDeliveryCompany = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
     if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
-      return next(createHttpError('Only visitors, members, or guards can add delivery companies', 403));
+      return next(createHttpError('Only visitors, members, or guards can add delivery companies.', 403));
     }
 
     const { companyName } = req.body || {};
 
     if (!companyName || typeof companyName !== 'string') {
-      return next(createHttpError('companyName is required', 400));
+      return next(createHttpError('companyName is required.', 400));
     }
 
     const trimmed = companyName.trim();
     const base = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
 
     if (!base) {
-      return next(createHttpError('Company name is invalid', 400));
+      return next(createHttpError('Company name is invalid.', 400));
     }
 
     const existing = await DeliveryCompany.findOne({ id: base });
     if (existing) {
-      return next(createHttpError('Company already exists', 409));
+      return next(createHttpError('Company already exists.', 409));
     }
 
     const record = await DeliveryCompany.create({
@@ -202,11 +202,11 @@ const addDeliveryCompany = async (req, res, next) => {
       imageUrl: `/assets/Default.png`,
     });
 
-    return sendSuccessResponse(res, 201, 'Delivery company added successfully', {
+    return sendSuccessResponse(res, 201, 'Delivery company added successfully.', {
       data: { id: record.id, name: record.name, imageUrl: record.imageUrl },
     });
   } catch (error) {
-    next(setErrorDefaults(error, 'Failed to add delivery company'));
+    next(setErrorDefaults(error, 'Failed to add delivery company.'));
   }
 };
 
@@ -214,28 +214,28 @@ const addTaxiDriverCompany = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
     if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
-      return next(createHttpError('Only visitors, members, or guards can add taxi driver companies', 403));
+      return next(createHttpError('Only visitors, members, or guards can add taxi driver companies.', 403));
     }
 
     const { companyName } = req.body || {};
 
     if (!companyName || typeof companyName !== 'string') {
-      return next(createHttpError('companyName is required', 400));
+      return next(createHttpError('companyName is required.', 400));
     }
 
     const trimmed = companyName.trim();
     const base = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
 
     if (!base) {
-      return next(createHttpError('Company name is invalid', 400));
+      return next(createHttpError('Company name is invalid.', 400));
     }
 
     const existing = await TaxiDriverCompany.findOne({ id: base });
     if (existing) {
-      return next(createHttpError('Company already exists', 409));
+      return next(createHttpError('Company already exists.', 409));
     }
 
     const record = await TaxiDriverCompany.create({
@@ -244,11 +244,11 @@ const addTaxiDriverCompany = async (req, res, next) => {
       imageUrl: `/assets/Default.png`,
     });
 
-    return sendSuccessResponse(res, 201, 'Taxi driver company added successfully', {
+    return sendSuccessResponse(res, 201, 'Taxi driver company added successfully.', {
       data: { id: record.id, name: record.name, imageUrl: record.imageUrl },
     });
   } catch (error) {
-    next(setErrorDefaults(error, 'Failed to add taxi driver company'));
+    next(setErrorDefaults(error, 'Failed to add taxi driver company.'));
   }
 };
 
@@ -256,28 +256,28 @@ const addOtherVisitorCompany = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
     if (!['visitor', 'member', 'guard', 'society_admin'].includes(user.role)) {
-      return next(createHttpError('Only visitors, members, or guards can add other visitor companies', 403));
+      return next(createHttpError('Only visitors, members, or guards can add other visitor companies.', 403));
     }
 
     const { companyName } = req.body || {};
 
     if (!companyName || typeof companyName !== 'string') {
-      return next(createHttpError('companyName is required', 400));
+      return next(createHttpError('companyName is required.', 400));
     }
 
     const trimmed = companyName.trim();
     const base = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
 
     if (!base) {
-      return next(createHttpError('Company name is invalid', 400));
+      return next(createHttpError('Company name is invalid.', 400));
     }
 
     const existing = await OtherVisitorCompany.findOne({ id: base });
     if (existing) {
-      return next(createHttpError('Company already exists', 409));
+      return next(createHttpError('Company already exists.', 409));
     }
 
     const record = await OtherVisitorCompany.create({
@@ -286,11 +286,11 @@ const addOtherVisitorCompany = async (req, res, next) => {
       imageUrl: `/assets/Default.png`,
     });
 
-    return sendSuccessResponse(res, 201, 'Other visitor company added successfully', {
+    return sendSuccessResponse(res, 201, 'Other visitor company added successfully.', {
       data: { id: record.id, name: record.name, imageUrl: record.imageUrl },
     });
   } catch (error) {
-    next(setErrorDefaults(error, 'Failed to add other visitor company'));
+    next(setErrorDefaults(error, 'Failed to add other visitor company.'));
   }
 };
 

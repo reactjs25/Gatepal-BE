@@ -27,22 +27,22 @@ const MONTH_LABELS = [
 ];
 
 const resolveAdminSociety = async (authUser) => {
-  if (!authUser) throw createHttpError('Unauthorized', 401);
+  if (!authUser) throw createHttpError('Unauthorized.', 401);
   if (authUser.adminSocietyId) {
     const society = await Society.findById(authUser.adminSocietyId).lean();
-    if (!society) throw createHttpError('Society not found', 404);
+    if (!society) throw createHttpError('Society not found.', 404);
     return society;
   }
   const linkedId = authUser.linkedSocietyAdminId || null;
   if (linkedId) {
     const society = await Society.findOne({ 'societyAdmins._id': linkedId }).lean();
-    if (!society) throw createHttpError('Society not found', 404);
+    if (!society) throw createHttpError('Society not found.', 404);
     return society;
   }
   const match = await lookupSocietyAdminByMobile(authUser.phoneNumber || '');
-  if (!match) throw createHttpError('Society not found', 404);
+  if (!match) throw createHttpError('Society not found.', 404);
   const society = await Society.findById(match.societyId).lean();
-  if (!society) throw createHttpError('Society not found', 404);
+  if (!society) throw createHttpError('Society not found.', 404);
   return society;
 };
 
@@ -60,10 +60,10 @@ const validateAnnouncementPayload = (payload = {}, options = {}) => {
   if (!isPartial || titleRaw !== undefined) {
     const title = normalizeString(titleRaw);
     if (!title) {
-      throw createHttpError('Announcement title is required', 400);
+      throw createHttpError('Announcement title is required.', 400);
     }
     if (title.length < 3 || title.length > 200) {
-      throw createHttpError('Announcement title must be between 3 and 200 characters', 400);
+      throw createHttpError('Announcement title must be between 3 and 200 characters.', 400);
     }
     validated.title = titleRaw.toString();
   }
@@ -74,7 +74,7 @@ const validateAnnouncementPayload = (payload = {}, options = {}) => {
         ? descriptionRaw.toString()
         : '';
     if (!desc && !isPartial) {
-      throw createHttpError('Announcement description is required', 400);
+      throw createHttpError('Announcement description is required.', 400);
     }
     if (desc) {
       validated.contentHtml = desc;
@@ -113,7 +113,7 @@ const validateAnnouncementPayload = (payload = {}, options = {}) => {
     if (attachmentsRaw == null) {
       validated.attachments = [];
     } else if (!Array.isArray(attachmentsRaw)) {
-      throw createHttpError('attachments must be an array of base64 strings', 400);
+      throw createHttpError('attachments must be an array of base64 strings.', 400);
     } else {
       const cleaned = attachmentsRaw
         .map((entry) => (entry == null ? '' : entry.toString().trim()))
@@ -155,11 +155,11 @@ const createAnnouncement = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+      return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
     const society = await resolveAdminSociety(authUser);
@@ -220,7 +220,7 @@ const getAnnouncements = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const viewAsRaw = normalizeString(
@@ -251,7 +251,7 @@ const getAnnouncements = async (req, res, next) => {
       );
 
       if (!societyIdCandidate) {
-        return next(createHttpError('societyId is required for guards to view announcements', 400));
+        return next(createHttpError('societyId is required for guards to view announcements.', 400));
       }
 
       
@@ -261,7 +261,7 @@ const getAnnouncements = async (req, res, next) => {
       );
 
       if (!isAssociatedWithSociety) {
-        return next(createHttpError('Guard is not associated with this society', 403));
+        return next(createHttpError('Guard is not associated with this society.', 403));
       }
 
       societyId = societyIdCandidate;
@@ -274,7 +274,7 @@ const getAnnouncements = async (req, res, next) => {
       );
 
       if (!unitIdCandidate) {
-        return next(createHttpError('unitId is required to view announcements', 400));
+        return next(createHttpError('unitId is required to view announcements.', 400));
       }
 
       let unitDoc;
@@ -286,7 +286,7 @@ const getAnnouncements = async (req, res, next) => {
 
       societyId = unitDoc.societyId;
     } else {
-      return next(createHttpError('Only members, guards, or society admins can perform this action', 403));
+      return next(createHttpError('Only members, guards, or society admins can perform this action.', 403));
     }
 
     const items = await Announcement.find({ societyId, deletedAt: null })
@@ -355,7 +355,7 @@ const getAnnouncements = async (req, res, next) => {
 
 
 
-    return sendSuccessResponse(res, 200, 'Announcements fetched successfully', { data });
+    return sendSuccessResponse(res, 200, 'Announcements fetched successfully.', { data });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch announcements'));
   }
@@ -365,7 +365,7 @@ const getAnnouncementById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const viewAsRaw = normalizeString(
@@ -385,7 +385,7 @@ const getAnnouncementById = async (req, res, next) => {
       ''
     );
     if (!announcementId) {
-      return next(createHttpError('announcementId path parameter is required', 400));
+      return next(createHttpError('announcementId path parameter is required.', 400));
     }
 
     let societyId = null;
@@ -407,7 +407,7 @@ const getAnnouncementById = async (req, res, next) => {
       );
 
       if (!societyIdCandidate) {
-        return next(createHttpError('societyId is required for guards to view announcements', 400));
+        return next(createHttpError('societyId is required for guards to view announcements.', 400));
       }
 
       
@@ -417,7 +417,7 @@ const getAnnouncementById = async (req, res, next) => {
       );
 
       if (!isAssociatedWithSociety) {
-        return next(createHttpError('Guard is not associated with this society', 403));
+        return next(createHttpError('Guard is not associated with this society.', 403));
       }
 
       societyId = societyIdCandidate;
@@ -430,7 +430,7 @@ const getAnnouncementById = async (req, res, next) => {
       );
 
       if (!unitIdCandidate) {
-        return next(createHttpError('unitId is required to view announcements', 400));
+        return next(createHttpError('unitId is required to view announcements.', 400));
       }
 
       let unitDoc;
@@ -442,7 +442,7 @@ const getAnnouncementById = async (req, res, next) => {
 
       societyId = unitDoc.societyId;
     } else {
-      return next(createHttpError('Only members, guards, or society admins can perform this action', 403));
+      return next(createHttpError('Only members, guards, or society admins can perform this action.', 403));
     }
 
     doc = await Announcement.findOne({
@@ -452,7 +452,7 @@ const getAnnouncementById = async (req, res, next) => {
     }).lean();
 
     if (!doc) {
-      return next(createHttpError('Announcement not found', 404));
+      return next(createHttpError('Announcement not found.', 404));
     }
 
     if (isMemberView) {
@@ -463,7 +463,7 @@ const getAnnouncementById = async (req, res, next) => {
 
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
-    return sendSuccessResponse(res, 200, 'Announcement fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Announcement fetched successfully.', {
       data: {
         announcementId: doc.announcementId,
         societyId: String(doc.societyId),
@@ -486,11 +486,11 @@ const updateAnnouncementById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+      return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
     const society = await resolveAdminSociety(authUser);
@@ -500,7 +500,7 @@ const updateAnnouncementById = async (req, res, next) => {
       ((req.params && req.params.announcementId) || '')
     );
     if (!announcementId) {
-      return next(createHttpError('announcementId path parameter is required', 400));
+      return next(createHttpError('announcementId path parameter is required.', 400));
     }
 
     const doc = await Announcement.findOne({
@@ -510,7 +510,7 @@ const updateAnnouncementById = async (req, res, next) => {
     });
 
     if (!doc) {
-      return next(createHttpError('Announcement not found', 404));
+      return next(createHttpError('Announcement not found.', 404));
     }
 
     let validated;
@@ -560,11 +560,11 @@ const deleteAnnouncementById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+      return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
     const society = await resolveAdminSociety(authUser);
@@ -574,7 +574,7 @@ const deleteAnnouncementById = async (req, res, next) => {
       ((req.params && req.params.announcementId) || '')
     );
     if (!announcementId) {
-      return next(createHttpError('announcementId path parameter is required', 400));
+      return next(createHttpError('announcementId path parameter is required.', 400));
     }
 
     const doc = await Announcement.findOne({
@@ -584,7 +584,7 @@ const deleteAnnouncementById = async (req, res, next) => {
     });
 
     if (!doc) {
-      return next(createHttpError('Announcement not found', 404));
+      return next(createHttpError('Announcement not found.', 404));
     }
 
     const deletedAt = new Date();
@@ -609,3 +609,11 @@ module.exports = {
   updateAnnouncementById,
   deleteAnnouncementById,
 };
+
+
+
+
+
+
+
+

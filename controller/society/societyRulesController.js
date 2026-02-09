@@ -32,22 +32,22 @@ const findCategoryByKey = (key) => {
 };
 
 const resolveAdminSociety = async (authUser) => {
-  if (!authUser) throw createHttpError('Unauthorized', 401);
+  if (!authUser) throw createHttpError('Unauthorized.', 401);
   if (authUser.adminSocietyId) {
     const society = await Society.findById(authUser.adminSocietyId).lean();
-    if (!society) throw createHttpError('Society not found', 404);
+    if (!society) throw createHttpError('Society not found.', 404);
     return society;
   }
   const linkedId = authUser.linkedSocietyAdminId || null;
   if (linkedId) {
     const society = await Society.findOne({ 'societyAdmins._id': linkedId }).lean();
-    if (!society) throw createHttpError('Society not found', 404);
+    if (!society) throw createHttpError('Society not found.', 404);
     return society;
   }
   const match = await lookupSocietyAdminByMobile(authUser.phoneNumber || '');
-  if (!match) throw createHttpError('Society not found', 404);
+  if (!match) throw createHttpError('Society not found.', 404);
   const society = await Society.findById(match.societyId).lean();
-  if (!society) throw createHttpError('Society not found', 404);
+  if (!society) throw createHttpError('Society not found.', 404);
   return society;
 };
 
@@ -65,10 +65,10 @@ const validateSocietyRulePayload = (payload = {}, options = {}) => {
   if (!isPartial || categoryKeyRaw !== undefined) {
     const categoryKey = normalizeString(categoryKeyRaw || '').toLowerCase();
     if (!categoryKey) {
-      throw createHttpError('categoryKey is required', 400);
+      throw createHttpError('categoryKey is required.', 400);
     }
     if (!CATEGORY_KEY_SET.has(categoryKey)) {
-      throw createHttpError('Invalid categoryKey for society rule', 400);
+      throw createHttpError('Invalid categoryKey for society rule.', 400);
     }
     validated.categoryKey = categoryKey;
   }
@@ -77,7 +77,7 @@ const validateSocietyRulePayload = (payload = {}, options = {}) => {
     const content =
       contentRaw !== undefined && contentRaw !== null ? contentRaw.toString() : '';
     if (!content && !isPartial) {
-      throw createHttpError('Rule contentHtml is required', 400);
+      throw createHttpError('Rule contentHtml is required.', 400);
     }
     if (content) {
       validated.contentHtml = content;
@@ -116,7 +116,7 @@ const validateSocietyRulePayload = (payload = {}, options = {}) => {
     if (attachmentsRaw == null) {
       validated.attachments = [];
     } else if (!Array.isArray(attachmentsRaw)) {
-      throw createHttpError('attachments must be an array of base64 strings', 400);
+      throw createHttpError('attachments must be an array of base64 strings.', 400);
     } else {
       const cleaned = attachmentsRaw
         .map((entry) => (entry == null ? '' : entry.toString().trim()))
@@ -158,11 +158,11 @@ const createSocietyRule = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+      return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
     const society = await resolveAdminSociety(authUser);
@@ -201,7 +201,7 @@ const createSocietyRule = async (req, res, next) => {
     const category = findCategoryByKey(doc.categoryKey);
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
-    return sendSuccessResponse(res, 201, 'Society rule created successfully', {
+    return sendSuccessResponse(res, 201, 'Society rule created successfully.', {
       data: {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
@@ -226,7 +226,7 @@ const getSocietyRules = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const viewAsRaw = normalizeString(
@@ -255,7 +255,7 @@ const getSocietyRules = async (req, res, next) => {
       );
 
       if (!unitIdCandidate) {
-        return next(createHttpError('unitId is required to view society rules', 400));
+        return next(createHttpError('unitId is required to view society rules.', 400));
       }
 
       let unitDoc;
@@ -267,7 +267,7 @@ const getSocietyRules = async (req, res, next) => {
 
       societyId = unitDoc.societyId;
     } else {
-      return next(createHttpError('Only members or society admins can perform this action', 403));
+      return next(createHttpError('Only members or society admins can perform this action.', 403));
     }
 
     const categoryKeyRaw =
@@ -277,7 +277,7 @@ const getSocietyRules = async (req, res, next) => {
     if (categoryKeyRaw !== undefined && categoryKeyRaw !== null && categoryKeyRaw !== '') {
       const categoryKey = normalizeString(categoryKeyRaw || '').toLowerCase();
       if (!CATEGORY_KEY_SET.has(categoryKey)) {
-        return next(createHttpError('Invalid categoryKey for society rule', 400));
+        return next(createHttpError('Invalid categoryKey for society rule.', 400));
       }
       filter.categoryKey = categoryKey;
     }
@@ -357,7 +357,7 @@ const getSocietyRules = async (req, res, next) => {
       }
     }
 
-    return sendSuccessResponse(res, 200, 'Society rules fetched successfully', { data });
+    return sendSuccessResponse(res, 200, 'Society rules fetched successfully.', { data });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch society rules'));
   }
@@ -367,7 +367,7 @@ const getSocietyRuleById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const viewAsRaw = normalizeString(
@@ -396,7 +396,7 @@ const getSocietyRuleById = async (req, res, next) => {
       );
 
       if (!unitIdCandidate) {
-        return next(createHttpError('unitId is required to view society rules', 400));
+        return next(createHttpError('unitId is required to view society rules.', 400));
       }
 
       let unitDoc;
@@ -408,14 +408,14 @@ const getSocietyRuleById = async (req, res, next) => {
 
       societyId = unitDoc.societyId;
     } else {
-      return next(createHttpError('Only members or society admins can perform this action', 403));
+      return next(createHttpError('Only members or society admins can perform this action.', 403));
     }
 
     const ruleId = normalizeString(
       ((req.body || {}).ruleId) || ((req.params && req.params.ruleId) || '')
     );
     if (!ruleId) {
-      return next(createHttpError('ruleId path parameter is required', 400));
+      return next(createHttpError('ruleId path parameter is required.', 400));
     }
 
     const doc = await SocietyRule.findOne({
@@ -425,7 +425,7 @@ const getSocietyRuleById = async (req, res, next) => {
     }).lean();
 
     if (!doc) {
-      return next(createHttpError('Society rule not found', 404));
+      return next(createHttpError('Society rule not found.', 404));
     }
 
     if (isMemberView) {
@@ -454,7 +454,7 @@ const getSocietyRuleById = async (req, res, next) => {
     const category = findCategoryByKey(doc.categoryKey);
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
-    return sendSuccessResponse(res, 200, 'Society rule fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Society rule fetched successfully.', {
       data: {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
@@ -478,11 +478,11 @@ const updateSocietyRuleById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+      return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
     const society = await resolveAdminSociety(authUser);
@@ -491,7 +491,7 @@ const updateSocietyRuleById = async (req, res, next) => {
       ((req.body || {}).ruleId) || ((req.params && req.params.ruleId) || '')
     );
     if (!ruleId) {
-      return next(createHttpError('ruleId path parameter is required', 400));
+      return next(createHttpError('ruleId path parameter is required.', 400));
     }
 
     const doc = await SocietyRule.findOne({
@@ -501,7 +501,7 @@ const updateSocietyRuleById = async (req, res, next) => {
     });
 
     if (!doc) {
-      return next(createHttpError('Society rule not found', 404));
+      return next(createHttpError('Society rule not found.', 404));
     }
 
     const rawBody = req.body || {};
@@ -529,7 +529,7 @@ const updateSocietyRuleById = async (req, res, next) => {
     const category = findCategoryByKey(doc.categoryKey);
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
-    return sendSuccessResponse(res, 200, 'Society rule updated successfully', {
+    return sendSuccessResponse(res, 200, 'Society rule updated successfully.', {
       data: {
         ruleId: doc.ruleId,
         societyId: String(doc.societyId),
@@ -554,11 +554,11 @@ const deleteSocietyRuleById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+      return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
     const society = await resolveAdminSociety(authUser);
@@ -567,7 +567,7 @@ const deleteSocietyRuleById = async (req, res, next) => {
       ((req.body || {}).ruleId) || ((req.params && req.params.ruleId) || '')
     );
     if (!ruleId) {
-      return next(createHttpError('ruleId path parameter is required', 400));
+      return next(createHttpError('ruleId path parameter is required.', 400));
     }
 
     const doc = await SocietyRule.findOne({
@@ -577,14 +577,14 @@ const deleteSocietyRuleById = async (req, res, next) => {
     });
 
     if (!doc) {
-      return next(createHttpError('Society rule not found', 404));
+      return next(createHttpError('Society rule not found.', 404));
     }
 
     const deletedAt = new Date();
     doc.deletedAt = deletedAt;
     await doc.save();
 
-    return sendSuccessResponse(res, 200, 'Society rule deleted successfully', {
+    return sendSuccessResponse(res, 200, 'Society rule deleted successfully.', {
       data: {
         ruleId: doc.ruleId,
         deletedAt,
@@ -599,11 +599,11 @@ const getSocietyRuleCategories = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+      return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
     const society = await resolveAdminSociety(authUser);
@@ -640,7 +640,7 @@ const getSocietyRuleCategories = async (req, res, next) => {
       }
     });
 
-    return sendSuccessResponse(res, 200, 'Society rule categories fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Society rule categories fetched successfully.', {
       data: {
         not_added: notAdded,
         added,
@@ -655,7 +655,7 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const viewAsRaw = normalizeString(
@@ -686,7 +686,7 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
       );
 
       if (!societyIdCandidate) {
-        return next(createHttpError('societyId is required for guards to view society rules', 400));
+        return next(createHttpError('societyId is required for guards to view society rules.', 400));
       }
 
       
@@ -696,7 +696,7 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
       );
 
       if (!isAssociatedWithSociety) {
-        return next(createHttpError('Guard is not associated with this society', 403));
+        return next(createHttpError('Guard is not associated with this society.', 403));
       }
 
       societyId = societyIdCandidate;
@@ -709,7 +709,7 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
       );
 
       if (!unitIdCandidate) {
-        return next(createHttpError('unitId is required to view society rules', 400));
+        return next(createHttpError('unitId is required to view society rules.', 400));
       }
 
       let unitDoc;
@@ -721,7 +721,7 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
 
       societyId = unitDoc.societyId;
     } else {
-      return next(createHttpError('Only members, guards, or society admins can perform this action', 403));
+      return next(createHttpError('Only members, guards, or society admins can perform this action.', 403));
     }
 
     const rules = await SocietyRule.find({
@@ -794,7 +794,7 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
       });
     });
 
-    return sendSuccessResponse(res, 200, 'Society rule categories fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Society rule categories fetched successfully.', {
       data: {
         categories,
       },

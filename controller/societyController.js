@@ -120,7 +120,7 @@ const createSociety = async (req, res, next) => {
     });
 
     await newSociety.save();
-    return sendSuccessResponse(res, 201, 'Society created successfully', { data: newSociety });
+    return sendSuccessResponse(res, 201, 'Society created successfully.', { data: newSociety });
   } catch (error) {
     next(setErrorDefaults(error, 'Failed to create society'));
   }
@@ -139,7 +139,7 @@ const getAllSociety = async (req, res, next) => {
     );
 
     const societies = await Society.find().lean();
-    return sendSuccessResponse(res, 200, 'Societies fetched successfully', { data: societies });
+    return sendSuccessResponse(res, 200, 'Societies fetched successfully.', { data: societies });
   } catch (error) {
     next(setErrorDefaults(error, 'Failed to fetch societies'));
   }
@@ -151,7 +151,7 @@ const getSocietyById = async (req, res, next) => {
     const society = await Society.findById(id);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     // Auto-expire society if engagement has ended
@@ -167,7 +167,7 @@ const getSocietyById = async (req, res, next) => {
       }
     }
 
-    return sendSuccessResponse(res, 200, 'Society fetched successfully', { data: society });
+    return sendSuccessResponse(res, 200, 'Society fetched successfully.', { data: society });
   } catch (error) {
     next(setErrorDefaults(error, 'Failed to fetch society'));
   }
@@ -201,7 +201,7 @@ const updateSocietyById = async (req, res, next) => {
     });
 
     if (!updatedSociety) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     
@@ -233,7 +233,7 @@ const updateSocietyById = async (req, res, next) => {
       
     }
 
-    return sendSuccessResponse(res, 200, 'Society updated successfully', { data: updatedSociety });
+    return sendSuccessResponse(res, 200, 'Society updated successfully.', { data: updatedSociety });
   } catch (error) {
     next(setErrorDefaults(error, 'Failed to update society'));
   }
@@ -245,7 +245,7 @@ const toggleSocietyStatus = async (req, res, next) => {
     const society = await Society.findById(id);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     society.status = society.status === 'Active' ? 'Inactive' : 'Active';
@@ -265,17 +265,17 @@ const suspendSociety = async (req, res, next) => {
     const society = await Society.findById(id);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     if (society.status === 'Suspended') {
-      return next(createHttpError('Society is already suspended', 400));
+      return next(createHttpError('Society is already suspended.', 400));
     }
 
     society.status = 'Suspended';
     await society.save();
 
-    return sendSuccessResponse(res, 200, 'Society suspended successfully', {
+    return sendSuccessResponse(res, 200, 'Society suspended successfully.', {
       data: society,
     });
   } catch (error) {

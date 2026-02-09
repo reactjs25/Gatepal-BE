@@ -48,7 +48,7 @@ const assertVehicleTypeLimit = async ({ unitId, vehicleType, excludeVehicleId })
 const addVehicle = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
 
     const unitIdCandidate = normalizeString(
       (req.params && (req.params.unitId || req.params.id)) || (req.body || {}).unitId
@@ -77,7 +77,7 @@ const addVehicle = async (req, res, next) => {
         deletedAt: null,
       });
       if (exists) {
-        return next(createHttpError('A vehicle with this number already exists for the unit', 409));
+        return next(createHttpError('A vehicle with this number already exists for the unit.', 409));
       }
     }
 
@@ -117,7 +117,7 @@ const addVehicle = async (req, res, next) => {
 const getVehiclesByUnit = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || '');
     let unitDoc;
@@ -131,7 +131,7 @@ const getVehiclesByUnit = async (req, res, next) => {
 
     const items = await Vehicle.find({ unitId: canonicalUnitId, deletedAt: null }).sort({ createdAt: -1 }).lean();
 
-    return sendSuccessResponse(res, 200, 'Vehicles fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Vehicles fetched successfully.', {
       data: items.map((v) => ({
         vehicleId: v.vehicleId,
         unitId: String(unitDoc._id),
@@ -152,11 +152,11 @@ const getVehiclesByUnit = async (req, res, next) => {
 const editVehicle = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || '');
     const vehicleId = normalizeString((req.params && req.params.vehicleId) || '');
-    if (!vehicleId) return next(createHttpError('vehicleId path parameter is required', 400));
+    if (!vehicleId) return next(createHttpError('vehicleId path parameter is required.', 400));
 
     let unitDoc;
     try {
@@ -168,9 +168,9 @@ const editVehicle = async (req, res, next) => {
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
     const doc = await Vehicle.findOne({ vehicleId });
-    if (!doc) return next(createHttpError('Vehicle not found', 404));
+    if (!doc) return next(createHttpError('Vehicle not found.', 404));
     if (doc.unitId !== canonicalUnitId) {
-      return next(createHttpError('Vehicle does not belong to the provided unit', 403));
+      return next(createHttpError('Vehicle does not belong to the provided unit.', 403));
     }
 
     let validated;
@@ -186,7 +186,7 @@ const editVehicle = async (req, res, next) => {
         vehicleNumber: validated.vehicleNumber,
         deletedAt: null,
       });
-      if (dup) return next(createHttpError('A vehicle with this number already exists for the unit', 409));
+      if (dup) return next(createHttpError('A vehicle with this number already exists for the unit.', 409));
     }
 
     try {
@@ -227,11 +227,11 @@ const editVehicle = async (req, res, next) => {
 const getVehicleById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || '');
     const vehicleId = normalizeString((req.params && req.params.vehicleId) || '');
-    if (!vehicleId) return next(createHttpError('vehicleId path parameter is required', 400));
+    if (!vehicleId) return next(createHttpError('vehicleId path parameter is required.', 400));
 
     let unitDoc;
     try {
@@ -243,15 +243,15 @@ const getVehicleById = async (req, res, next) => {
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
     const doc = await Vehicle.findOne({ vehicleId }).lean();
-    if (!doc) return next(createHttpError('Vehicle not found', 404));
+    if (!doc) return next(createHttpError('Vehicle not found.', 404));
     if (doc.unitId !== canonicalUnitId) {
-      return next(createHttpError('Vehicle does not belong to the provided unit', 403));
+      return next(createHttpError('Vehicle does not belong to the provided unit.', 403));
     }
     if (doc.deletedAt) {
-      return next(createHttpError('Vehicle not found', 404));
+      return next(createHttpError('Vehicle not found.', 404));
     }
 
-    return sendSuccessResponse(res, 200, 'Vehicle fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Vehicle fetched successfully.', {
       data: {
         vehicleId: doc.vehicleId,
         unitId: String(unitDoc._id),
@@ -272,11 +272,11 @@ const getVehicleById = async (req, res, next) => {
 const deleteVehicle = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || '');
     const vehicleId = normalizeString((req.params && req.params.vehicleId) || '');
-    if (!vehicleId) return next(createHttpError('vehicleId path parameter is required', 400));
+    if (!vehicleId) return next(createHttpError('vehicleId path parameter is required.', 400));
 
     let unitDoc;
     try {
@@ -288,9 +288,9 @@ const deleteVehicle = async (req, res, next) => {
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
     const doc = await Vehicle.findOne({ vehicleId });
-    if (!doc) return next(createHttpError('Vehicle not found', 404));
+    if (!doc) return next(createHttpError('Vehicle not found.', 404));
     if (doc.unitId !== canonicalUnitId) {
-      return next(createHttpError('Vehicle does not belong to the provided unit', 403));
+      return next(createHttpError('Vehicle does not belong to the provided unit.', 403));
     }
 
     const deletedAt = new Date();

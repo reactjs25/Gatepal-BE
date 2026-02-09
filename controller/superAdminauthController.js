@@ -27,26 +27,26 @@ const signUp = async (req, res, next) => {
     const { fullName, email, password, phoneNumber } = req.body;
 
     if (!fullName || !email || !password || !phoneNumber) {
-      return next(createHttpError('All fields are required', 400));
+      return next(createHttpError('All fields are required.', 400));
     }
 
     const normalizedEmail = email.toLowerCase();
     const digits = normalizeDigits(phoneNumber);
 
     if (digits.length !== 10) {
-      return next(createHttpError('Phone number must contain exactly 10 digits', 400));
+      return next(createHttpError('Phone number must contain exactly 10 digits.', 400));
     }
 
     // Check for duplicate email in SuperAdmin
     const existingSuperAdminByEmail = await SuperAdmin.findOne({ email: normalizedEmail });
     if (existingSuperAdminByEmail) {
-      return next(createHttpError('A user already exists with this email address', 409));
+      return next(createHttpError('A user already exists with this email address.', 409));
     }
 
     // Check for duplicate phone in SuperAdmin
     const existingSuperAdminByPhone = await SuperAdmin.exists({ phoneNumber: digits });
     if (existingSuperAdminByPhone) {
-      return next(createHttpError('A user already exists with this phone number', 409));
+      return next(createHttpError('A user already exists with this phone number.', 409));
     }
 
     const superAdmin = new SuperAdmin({
@@ -60,7 +60,7 @@ const signUp = async (req, res, next) => {
 
     const token = generateToken(superAdmin._id, superAdmin.email);
 
-    return sendSuccessResponse(res, 201, 'Super admin created successfully', {
+    return sendSuccessResponse(res, 201, 'Super admin created successfully.', {
       data: mapSuperAdminResponse(superAdmin),
       token,
     });
@@ -74,24 +74,24 @@ const login = async (req, res, next) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return next(createHttpError('Email and password are required', 400));
+      return next(createHttpError('Email and password are required.', 400));
     }
 
     const superAdmin = await SuperAdmin.findOne({ email: email.toLowerCase() });
 
     if (!superAdmin) {
-      return next(createHttpError('Invalid email or password', 401));
+      return next(createHttpError('Invalid email or password.', 401));
     }
 
     const isPasswordValid = await superAdmin.comparePassword(password);
 
     if (!isPasswordValid) {
-      return next(createHttpError('Invalid email or password', 401));
+      return next(createHttpError('Invalid email or password.', 401));
     }
 
     const token = generateToken(superAdmin._id, superAdmin.email);
 
-    return sendSuccessResponse(res, 200, 'Super admin login successful', {
+    return sendSuccessResponse(res, 200, 'Super admin login successful.', {
       data: mapSuperAdminResponse(superAdmin),
       token,
     });
@@ -105,13 +105,13 @@ const forgotPassword = async (req, res, next) => {
     const { email } = req.body;
 
     if (!email) {
-      return next(createHttpError('Email is required', 400));
+      return next(createHttpError('Email is required.', 400));
     }
 
     const superAdmin = await SuperAdmin.findOne({ email: email.toLowerCase() });
 
     if (!superAdmin) {
-      return next(createHttpError('No account found with this email address', 404));
+      return next(createHttpError('No account found with this email address.', 404));
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -137,7 +137,7 @@ const forgotPassword = async (req, res, next) => {
              <p>If you did not request this, please ignore this email.</p>`,
     });
 
-    return sendSuccessResponse(res, 200, 'If the email exists, a password reset link has been sent');
+    return sendSuccessResponse(res, 200, 'If the email exists, a password reset link has been sent.');
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to send password reset email'));
   }
@@ -148,7 +148,7 @@ const resetPassword = async (req, res, next) => {
     const { token, email, password } = req.body;
 
     if (!token || !email || !password) {
-      return next(createHttpError('Token, email, and password are required', 400));
+      return next(createHttpError('Token, email, and password are required.', 400));
     }
 
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
@@ -160,7 +160,7 @@ const resetPassword = async (req, res, next) => {
     });
 
     if (!superAdmin) {
-      return next(createHttpError('Invalid or expired reset token', 400));
+      return next(createHttpError('Invalid or expired reset token.', 400));
     }
 
     superAdmin.password = password;
@@ -171,7 +171,7 @@ const resetPassword = async (req, res, next) => {
 
     const authToken = generateToken(superAdmin._id, superAdmin.email);
 
-    return sendSuccessResponse(res, 200, 'Password reset successful', {
+    return sendSuccessResponse(res, 200, 'Password reset successful.', {
       data: mapSuperAdminResponse(superAdmin),
       token: authToken,
     });

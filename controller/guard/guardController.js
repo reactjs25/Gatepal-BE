@@ -18,7 +18,7 @@ const getAllSociety = async (req, res, next) => {
   try {
     const rawSocietyId = normalizeString(req?.body?.societyId || req?.query?.societyId);
     if (rawSocietyId && !validator.isMongoId(rawSocietyId)) {
-      return next(createHttpError('Invalid societyId', 400));
+      return next(createHttpError('Invalid societyId.', 400));
     }
 
     const filter = rawSocietyId ? { _id: rawSocietyId } : {};
@@ -60,11 +60,11 @@ const getAllSociety = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (user.role !== 'guard') {
-      return next(createHttpError('Only guards can access this endpoint', 403));
+      return next(createHttpError('Only guards can access this endpoint.', 403));
     }
 
     const { imageUrl, phoneNumber, name, countryCode } = req.body || {};
@@ -84,7 +84,7 @@ const getAllSociety = async (req, res, next) => {
     if (name !== undefined) {
       const candidateName = toTitleCaseName(name);
       if (!candidateName) {
-        return next(createHttpError('Name cannot be empty', 400));
+        return next(createHttpError('Name cannot be empty.', 400));
       }
       updates.fullName = candidateName;
     }
@@ -100,20 +100,20 @@ const getAllSociety = async (req, res, next) => {
     if (phoneNumber !== undefined) {
       const digits = String(phoneNumber).replace(/\D/g, '');
       if (!digits || digits.length !== 10) {
-        return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+        return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
       }
 
    
       const alreadyUser = await User.exists({ phoneNumber: digits, _id: { $ne: user._id } });
       if (alreadyUser) {
-        return next(createHttpError('This phone number already exists in the system', 409));
+        return next(createHttpError('This phone number already exists in the system.', 409));
       }
 
   
       const SuperAdmin = require('../../model/superAdminSchema');
       const saExists = await SuperAdmin.exists({ phoneNumber: digits });
       if (saExists) {
-        return next(createHttpError('This phone number already exists in the system', 409));
+        return next(createHttpError('This phone number already exists in the system.', 409));
       }
 
 
@@ -122,7 +122,7 @@ const getAllSociety = async (req, res, next) => {
       if (adminMatch) {
         const linkedId = user.linkedSocietyAdminId || null;
         if (!linkedId || String(linkedId) !== String(adminMatch.adminId)) {
-          return next(createHttpError('This phone number already exists in the system', 409));
+          return next(createHttpError('This phone number already exists in the system.', 409));
         }
       }
 
@@ -130,7 +130,7 @@ const getAllSociety = async (req, res, next) => {
     }
 
     if (Object.keys(updates).length === 0) {
-      return sendSuccessResponse(res, 200, 'No changes provided');
+      return sendSuccessResponse(res, 200, 'No changes provided.');
     }
 
     Object.assign(user, updates);
@@ -155,11 +155,11 @@ const addSociety = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (user.role !== 'guard') {
-      return next(createHttpError('Only guards can access this endpoint', 403));
+      return next(createHttpError('Only guards can access this endpoint.', 403));
     }
 
     const { societyName, societyPin } = req.body || {};
@@ -168,11 +168,11 @@ const addSociety = async (req, res, next) => {
     const normalizedSocietyPin = normalizeString(societyPin);
 
     if (!normalizedSocietyName) {
-      return next(createHttpError('Society name is required', 400));
+      return next(createHttpError('Society name is required.', 400));
     }
 
     if (!normalizedSocietyPin) {
-      return next(createHttpError('Society PIN is required', 400));
+      return next(createHttpError('Society PIN is required.', 400));
     }
 
  
@@ -180,7 +180,7 @@ const addSociety = async (req, res, next) => {
     const society = await Society.findOne({ societyName: nameRegex, societyPin: normalizedSocietyPin });
 
     if (!society) {
-      return next(createHttpError('Society not found for provided name and PIN', 404));
+      return next(createHttpError('Society not found for provided name and PIN.', 404));
     }
 
     if (!Array.isArray(user.guardSocieties)) {
@@ -191,7 +191,7 @@ const addSociety = async (req, res, next) => {
       (s) => String(s.societyId) === String(society._id)
     );
     if (alreadyEnrolled) {
-      return next(createHttpError('You are already enrolled in this society', 409));
+      return next(createHttpError('You are already enrolled in this society.', 409));
     }
 
     user.guardSocieties.push({
@@ -232,11 +232,11 @@ const getGuardProfile = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (user.role !== 'guard') {
-      return next(createHttpError('Only guards can access this endpoint', 403));
+      return next(createHttpError('Only guards can access this endpoint.', 403));
     }
 
   
@@ -310,21 +310,21 @@ const startDuty = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (user.role !== 'guard') {
-      return next(createHttpError('Only guards can access this endpoint', 403));
+      return next(createHttpError('Only guards can access this endpoint.', 403));
     }
 
     const { societyId, gateId } = req.body || {};
 
     if (!societyId) {
-      return next(createHttpError('Society ID is required', 400));
+      return next(createHttpError('Society ID is required.', 400));
     }
 
     if (!gateId) {
-      return next(createHttpError('Gate ID is required', 400));
+      return next(createHttpError('Gate ID is required.', 400));
     }
 
     const guardSocieties = Array.isArray(user.guardSocieties) ? user.guardSocieties : [];
@@ -333,7 +333,7 @@ const startDuty = async (req, res, next) => {
     );
 
     if (societyIndex === -1) {
-      return next(createHttpError('You are not enrolled in this society', 403));
+      return next(createHttpError('You are not enrolled in this society.', 403));
     }
 
     const alreadyOnDuty = guardSocieties.find((s) => s.isOnDuty === true);
@@ -343,13 +343,13 @@ const startDuty = async (req, res, next) => {
 
     const society = await Society.findById(societyId).lean();
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     const allGates = [...(society.entryGates || []), ...(society.exitGates || [])];
     const gate = allGates.find((g) => String(g._id) === String(gateId));
     if (!gate) {
-      return next(createHttpError('Gate not found in this society', 404));
+      return next(createHttpError('Gate not found in this society.', 404));
     }
 
     user.guardSocieties[societyIndex].isOnDuty = true;
@@ -390,17 +390,17 @@ const endDuty = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (user.role !== 'guard') {
-      return next(createHttpError('Only guards can access this endpoint', 403));
+      return next(createHttpError('Only guards can access this endpoint.', 403));
     }
 
     const { societyId } = req.body || {};
 
     if (!societyId) {
-      return next(createHttpError('Society ID is required', 400));
+      return next(createHttpError('Society ID is required.', 400));
     }
 
 
@@ -410,11 +410,11 @@ const endDuty = async (req, res, next) => {
     );
 
     if (societyIndex === -1) {
-      return next(createHttpError('You are not enrolled in this society', 403));
+      return next(createHttpError('You are not enrolled in this society.', 403));
     }
 
     if (!user.guardSocieties[societyIndex].isOnDuty) {
-      return next(createHttpError('You are not currently on duty at this society', 400));
+      return next(createHttpError('You are not currently on duty at this society.', 400));
     }
 
     const dutyStartedAt = user.guardSocieties[societyIndex].dutyStartedAt;
@@ -491,11 +491,11 @@ const listSocietyDailyHelpForGuard = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'guard') {
-      return next(createHttpError('Only guards can perform this action', 403));
+      return next(createHttpError('Only guards can perform this action.', 403));
     }
 
     const societyIdCandidate = normalizeString(
@@ -503,11 +503,11 @@ const listSocietyDailyHelpForGuard = async (req, res, next) => {
     );
 
     if (!societyIdCandidate) {
-      return next(createHttpError('societyId is required', 400));
+      return next(createHttpError('societyId is required.', 400));
     }
 
     if (!validator.isMongoId(societyIdCandidate)) {
-      return next(createHttpError('Invalid societyId', 400));
+      return next(createHttpError('Invalid societyId.', 400));
     }
 
     
@@ -517,12 +517,12 @@ const listSocietyDailyHelpForGuard = async (req, res, next) => {
     );
 
     if (!isAssociatedWithSociety) {
-      return next(createHttpError('Guard is not associated with this society', 403));
+      return next(createHttpError('Guard is not associated with this society.', 403));
     }
 
     const society = await Society.findById(societyIdCandidate).lean();
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     const categoryFilter = normalizeString((req.body || {}).category);

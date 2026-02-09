@@ -49,23 +49,23 @@ const validateMemberUnitPayload = (payload = {}) => {
   const occupancyStatus = toCanonicalOccupancyStatus(payload.occupancyStatus);
 
   if (!societyPin) {
-    throw createHttpError('societyPin is required', 400);
+    throw createHttpError('societyPin is required.', 400);
   }
 
   if (!wingName || !unitNumber) {
-    throw createHttpError('wingName and unitNumber are required', 400);
+    throw createHttpError('wingName and unitNumber are required.', 400);
   }
 
   if (!occupantType) {
     throw createHttpError(
-      'occupantType must be one of unit_owner, unit_owner_family_member, tenant, tenant_family_member',
+      'occupantType must be one of unit_owner, unit_owner_family_member, tenant, tenant_family_member.',
       400
     );
   }
 
   if (!occupancyStatus) {
     throw createHttpError(
-      'occupancyStatus must be one of currently_residing, unit_rented, unit_vacant',
+      'occupancyStatus must be one of currently_residing, unit_rented, unit_vacant.',
       400
     );
   }
@@ -86,14 +86,14 @@ const addMemberUnit = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const { city, societyName, societyPin, wingName, unitNumber, occupantType, occupancyStatus } =
       validateMemberUnitPayload(req.body || {});
 
     if (!isMemberOrSocietyAdmin(authUser)) {
-      return next(createHttpError('Only members can add units to their account', 403));
+      return next(createHttpError('Only members can add units to their account.', 403));
     }
 
     const targetUser = authUser;
@@ -105,18 +105,18 @@ const addMemberUnit = async (req, res, next) => {
       society = await Society.findOne({ ...nameFilter, ...cityFilter }).lean();
     }
     if (!society) {
-      return next(createHttpError('Society not found for provided details', 404));
+      return next(createHttpError('Society not found for provided details.', 404));
     }
     if (societyPin && normalizeString(society.societyPin) !== societyPin) {
-      return next(createHttpError('Provided societyPin does not match selected society', 400));
+      return next(createHttpError('Provided societyPin does not match selected society.', 400));
     }
 
     const { wing, unit } = findWingAndUnit(society, wingName, unitNumber);
     if (!wing) {
-      return next(createHttpError('Wing not found in the member’s society', 404));
+      return next(createHttpError('Wing not found in the member’s society.', 404));
     }
     if (!unit) {
-      return next(createHttpError('Unit not found in the specified wing', 404));
+      return next(createHttpError('Unit not found in the specified wing.', 404));
     }
 
     const primaryOwner = await MemberUnit.findOne({
@@ -149,7 +149,7 @@ const addMemberUnit = async (req, res, next) => {
     });
 
     if (exists) {
-      return next(createHttpError('This unit has already been added for the member', 409));
+      return next(createHttpError('This unit has already been added for the member.', 409));
     }
 
     const payload = {
@@ -171,7 +171,7 @@ const addMemberUnit = async (req, res, next) => {
 
     const doc = await MemberUnit.create(payload);
 
-    return sendSuccessResponse(res, 201, 'Unit added successfully', {
+    return sendSuccessResponse(res, 201, 'Unit added successfully.', {
       data: {
         id: doc._id,
         societyName: society.societyName,
@@ -194,32 +194,32 @@ const updateUnitOccupancyStatus = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (!isMemberOrSocietyAdmin(authUser)) {
-      return next(createHttpError('Only members can update unit occupancy status', 403));
+      return next(createHttpError('Only members can update unit occupancy status.', 403));
     }
 
     const unitId = normalizeString(req.params.id || req.params.unit_id || '');
     const incomingStatus = normalizeString(req.body.occupancy_status);
 
     if (!unitId) {
-      return next(createHttpError('unit_id is required', 400));
+      return next(createHttpError('unit_id is required.', 400));
     }
 
     if (!mongoose.Types.ObjectId.isValid(unitId)) {
-      return next(createHttpError('Invalid unit_id', 400));
+      return next(createHttpError('Invalid unit_id.', 400));
     }
 
     if (!incomingStatus) {
-      return next(createHttpError('occupancy_status is required', 400));
+      return next(createHttpError('occupancy_status is required.', 400));
     }
 
     if (!UI_OCCUPANCY_ALLOWED.has(incomingStatus)) {
       return next(
         createHttpError(
-          'occupancy_status must be one of owner_is_residing, unit_is_empty, unit_is_rented_out',
+          'occupancy_status must be one of owner_is_residing, unit_is_empty, unit_is_rented_out.',
           400
         )
       );
@@ -228,17 +228,17 @@ const updateUnitOccupancyStatus = async (req, res, next) => {
     const canonical = mapUiToCanonicalOccupancy(incomingStatus);
 
     if (!canonical || !OCCUPANCY_STATUSES.has(canonical)) {
-      return next(createHttpError('Invalid occupancy status value', 400));
+      return next(createHttpError('Invalid occupancy status value.', 400));
     }
 
     const doc = await MemberUnit.findById(unitId);
 
     if (!doc) {
-      return next(createHttpError('Unit not found', 404));
+      return next(createHttpError('Unit not found.', 404));
     }
 
     if (String(doc.memberId) !== String(authUser._id)) {
-      return next(createHttpError('Forbidden: you do not own this unit', 403));
+      return next(createHttpError('Forbidden: you do not own this unit.', 403));
     }
 
     doc.occupancyStatus = canonical;
@@ -269,33 +269,33 @@ const getUnitById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const unitId = normalizeString(req.params.id || '');
 
     if (!unitId) {
-      return next(createHttpError('unitId path parameter is required', 400));
+      return next(createHttpError('unitId path parameter is required.', 400));
     }
 
     if (!mongoose.Types.ObjectId.isValid(unitId)) {
-      return next(createHttpError('Invalid unit ID format', 400));
+      return next(createHttpError('Invalid unit ID format.', 400));
     }
 
     const doc = await MemberUnit.findById(unitId);
 
     if (!doc) {
-      return next(createHttpError('Unit not found', 404));
+      return next(createHttpError('Unit not found.', 404));
     }
 
     if (String(doc.memberId) !== String(authUser._id)) {
-      return next(createHttpError('Forbidden: you do not own this unit', 403));
+      return next(createHttpError('Forbidden: you do not own this unit.', 403));
     }
 
     const society = await Society.findById(doc.societyId).lean();
     const member = await User.findById(doc.memberId).lean();
 
-    return sendSuccessResponse(res, 200, 'Unit details fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Unit details fetched successfully.', {
       data: {
         id: String(doc._id),
         memberName: member ? member.fullName || null : null,
@@ -327,7 +327,7 @@ const getUnitDashboard = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const unitIdCandidate = normalizeString(
@@ -337,7 +337,7 @@ const getUnitDashboard = async (req, res, next) => {
       ''
     );
     if (!unitIdCandidate) {
-      return next(createHttpError('unitId is required', 400));
+      return next(createHttpError('unitId is required.', 400));
     }
 
     let unitDoc;
@@ -633,7 +633,7 @@ const getUnitDashboard = async (req, res, next) => {
       },
     ];
 
-    return sendSuccessResponse(res, 200, 'Unit dashboard fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Unit dashboard fetched successfully.', {
 
       data: cards,
     });

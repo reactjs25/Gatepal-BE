@@ -89,29 +89,29 @@ const validateUploadPayload = (payload = {}) => {
     const yearRaw = payload.year;
     const year = Math.round(Number(yearRaw));
     if (!Number.isFinite(year) || String(year).length !== 4) {
-        throw createHttpError('year must be a 4-digit number', 400);
+        throw createHttpError('year must be a 4-digit number.', 400);
     }
 
     const currentYear = new Date().getFullYear();
     const minYear = currentYear - 2;
     const maxYear = currentYear + 2;
     if (year < minYear || year > maxYear) {
-        throw createHttpError(`year must be between ${minYear} and ${maxYear}`, 400);
+        throw createHttpError(`year must be between ${minYear} and ${maxYear}.`, 400);
     }
 
     const month = toCanonicalMonth(payload.month);
     if (!month || !ALLOWED_MONTHS.has(month)) {
-        throw createHttpError('month must be one of January, February, March, April, May, June, July, August, September, October, November, December', 400);
+        throw createHttpError('month must be one of January, February, March, April, May, June, July, August, September, October, November, December.', 400);
     }
 
     const amount = parseCurrencyAmount(payload.amount);
     if (amount === null) {
-        throw createHttpError('amount is required and must be a valid number', 400);
+        throw createHttpError('amount is required and must be a valid number.', 400);
     }
 
     const transactionDate = toDateOrNull(payload.transactionDate);
     if (!transactionDate) {
-        throw createHttpError('transactionDate is required', 400);
+        throw createHttpError('transactionDate is required.', 400);
     }
 
     const proofImageUrl = ensureBase64ImageDataUrl({ value: payload.proofImageUrl, fieldLabel: 'Proof of Maintenance' });
@@ -131,8 +131,8 @@ const isMemberOrSocietyAdmin = (authUser) =>
 const uploadMaintainanceProof = async (req, res, next) => {
     try {
         const authUser = req.appUser;
-        if (!authUser) return next(createHttpError('Unauthorized', 401));
-        if (!isMemberOrSocietyAdmin(authUser)) return next(createHttpError('Only members can upload maintenance proof', 403));
+        if (!authUser) return next(createHttpError('Unauthorized.', 401));
+        if (!isMemberOrSocietyAdmin(authUser)) return next(createHttpError('Only members can upload maintenance proof.', 403));
         console.info('[maintainance:upload] invoked', { userId: String(authUser._id) });
 
           const unitIdCandidate = normalizeString(
@@ -216,7 +216,7 @@ const uploadMaintainanceProof = async (req, res, next) => {
         });
     } catch (error) {
         if (error && error.code === 11000) {
-            return next(createHttpError('A maintenance proof for the specified month already exists for the unit', 409));
+            return next(createHttpError('A maintenance proof for the specified month already exists for the unit.', 409));
         }
         return next(setErrorDefaults(error, 'Failed to upload maintenance proof'));
     }
@@ -225,15 +225,15 @@ const uploadMaintainanceProof = async (req, res, next) => {
 const getMaintainancesByUnit = async (req, res, next) => {
     try {
         const authUser = req.appUser;
-        if (!authUser) return next(createHttpError('Unauthorized', 401));
-        if (!isMemberOrSocietyAdmin(authUser)) return next(createHttpError('Only members can view maintenance', 403));
+        if (!authUser) return next(createHttpError('Unauthorized.', 401));
+        if (!isMemberOrSocietyAdmin(authUser)) return next(createHttpError('Only members can view maintenance.', 403));
 
         const unitIdCandidate = normalizeString(
             (req.body && req.body.unitId) || (req.params && (req.params.unitId || req.params.id)) || ''
         );
 
         if (!unitIdCandidate) {
-            return next(createHttpError('unitId is required', 400));
+            return next(createHttpError('unitId is required.', 400));
         }
 
         let unitDoc;
@@ -386,7 +386,7 @@ const getMaintainancesByUnit = async (req, res, next) => {
             })
         );
 
-        return sendSuccessResponse(res, 200, 'Maintenance fetched successfully', {
+        return sendSuccessResponse(res, 200, 'Maintenance fetched successfully.', {
             data,
         });
     } catch (error) {
@@ -397,17 +397,17 @@ const getMaintainancesByUnit = async (req, res, next) => {
 const getMaintainanceById = async (req, res, next) => {
     try {
         const authUser = req.appUser;
-        if (!authUser) return next(createHttpError('Unauthorized', 401));
-        if (!isMemberOrSocietyAdmin(authUser)) return next(createHttpError('Only members can view maintenance', 403));
+        if (!authUser) return next(createHttpError('Unauthorized.', 401));
+        if (!isMemberOrSocietyAdmin(authUser)) return next(createHttpError('Only members can view maintenance.', 403));
 
         const unitIdCandidate = normalizeString((req.body && req.body.unitId) || '');
         const maintenanceId = normalizeString((req.body && req.body.maintenanceId) || '');
 
         if (!unitIdCandidate) {
-            return next(createHttpError('unitId is required', 400));
+            return next(createHttpError('unitId is required.', 400));
         }
         if (!maintenanceId) {
-            return next(createHttpError('maintenanceId is required', 400));
+            return next(createHttpError('maintenanceId is required.', 400));
         }
 
         let unitDoc;
@@ -420,12 +420,12 @@ const getMaintainanceById = async (req, res, next) => {
         const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
         const doc = await Maintenance.findOne({ maintenanceId }).lean();
-        if (!doc) return next(createHttpError('Maintenance not found', 404));
+        if (!doc) return next(createHttpError('Maintenance not found.', 404));
         if (doc.unitId !== canonicalUnitId) {
-            return next(createHttpError('Maintenance does not belong to the provided unit', 403));
+            return next(createHttpError('Maintenance does not belong to the provided unit.', 403));
         }
         if (doc.deletedAt) {
-            return next(createHttpError('Maintenance not found', 404));
+            return next(createHttpError('Maintenance not found.', 404));
         }
 
         const User = require('../../model/userSchema');
@@ -462,7 +462,7 @@ const getMaintainanceById = async (req, res, next) => {
             }
         }
 
-        return sendSuccessResponse(res, 200, 'Maintenance fetched successfully', {
+        return sendSuccessResponse(res, 200, 'Maintenance fetched successfully.', {
             data: {
                 maintenanceId: doc.maintenanceId,
                 unitId: String(unitDoc._id),

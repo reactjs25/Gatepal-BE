@@ -52,15 +52,15 @@ const registerUser = async (req, res, next) => {
     } = req.body || {};
 
     if (!phoneNumber || !password || !confirmPassword) {
-      throw createHttpError('Phone number, password, and confirm password are required', 400);
+      throw createHttpError('Phone number, password, and confirm password are required.', 400);
     }
 
     if (password !== confirmPassword) {
-      throw createHttpError('Password and confirm password do not match', 400);
+      throw createHttpError('Password and confirm password do not match.', 400);
     }
 
     if (!termsAccepted) {
-      throw createHttpError('You must accept the terms to continue', 400);
+      throw createHttpError('You must accept the terms to continue.', 400);
     }
 
     const normalizedRole = normalizeRole(role);
@@ -68,11 +68,11 @@ const registerUser = async (req, res, next) => {
     const normalizedPhone = normalizeDigits(normalizePhoneNumber(phoneNumber));
 
     if (!normalizedPhone) {
-      throw createHttpError('Phone number is required', 400);
+      throw createHttpError('Phone number is required.', 400);
     }
 
     if (normalizedPhone.length !== 10) {
-      throw createHttpError('Phone number must contain exactly 10 digits', 400);
+      throw createHttpError('Phone number must contain exactly 10 digits.', 400);
     }
 
     const normalizedCountryCode = normalizeCountryCode(countryCode);
@@ -84,13 +84,13 @@ const registerUser = async (req, res, next) => {
     }
 
     if (user && user.onboardingStatus === 'completed') {
-      throw createHttpError('A user already exists with this phone number', 409);
+      throw createHttpError('A user already exists with this phone number.', 409);
     }
 
   
     const saExists = await SuperAdmin.exists({ phoneNumber: normalizedPhone });
     if (saExists) {
-      throw createHttpError('A user already exists with this phone number', 409);
+      throw createHttpError('A user already exists with this phone number.', 409);
     }
 
     
@@ -145,17 +145,17 @@ const verifyRegistrationOtp = async (req, res, next) => {
     const { userId, otp } = req.body || {};
 
     if (!userId || !otp) {
-      throw createHttpError('User ID and OTP are required', 400);
+      throw createHttpError('User ID and OTP are required.', 400);
     }
 
     const user = await User.findById(userId);
 
     if (!user) {
-      throw createHttpError('Account not found for the provided details', 404);
+      throw createHttpError('Account not found for the provided details.', 404);
     }
 
     if (user.status !== 'pending_otp') {
-      throw createHttpError('OTP verification is not required for this account', 400);
+      throw createHttpError('OTP verification is not required for this account.', 400);
     }
 
     const isValid = user.verifyOtp(otp);
@@ -187,11 +187,11 @@ const completeOnboarding = async (req, res, next) => {
     const user = req.appUser;
 
     if (!user) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     if (user.onboardingStatus === 'completed') {
-      throw createHttpError('Onboarding already completed for this account', 409);
+      throw createHttpError('Onboarding already completed for this account.', 409);
     }
 
     const flow = user.onboardingFlow || resolveOnboardingFlow(user.intendedRole || user.role);
@@ -208,7 +208,7 @@ const completeOnboarding = async (req, res, next) => {
     } else if (flow === 'visitor') {
       await handleVisitorOnboarding({ user, payload });
     } else {
-      throw createHttpError('Unsupported onboarding flow', 400);
+      throw createHttpError('Unsupported onboarding flow.', 400);
     }
 
     user.onboardedAt = new Date();

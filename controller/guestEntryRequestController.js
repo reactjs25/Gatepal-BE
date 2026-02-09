@@ -417,7 +417,7 @@ const resolveExistingVisitorPhoto = async ({ phoneDigits, visitorType }) => {
 
 const resolveAdminSocietyId = async (authUser) => {
   if (!authUser) {
-    throw createHttpError('Unauthorized', 401);
+    throw createHttpError('Unauthorized.', 401);
   }
   if (authUser.adminSocietyId) {
     return authUser.adminSocietyId;
@@ -428,7 +428,7 @@ const resolveAdminSocietyId = async (authUser) => {
   const digits = normalizeDigits(authUser.phoneNumber || '');
   const match = digits ? await lookupSocietyAdminByMobile(digits) : null;
   if (!match?.societyId) {
-    throw createHttpError('Society not found', 404);
+    throw createHttpError('Society not found.', 404);
   }
   return match.societyId;
 };
@@ -437,7 +437,7 @@ const requireGuardOnDuty = (authUser) => {
   const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
   const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
   if (!activeDuty) {
-    throw createHttpError('You must be on duty to perform this action', 400);
+    throw createHttpError('You must be on duty to perform this action.', 400);
   }
   return activeDuty;
 };
@@ -538,8 +538,8 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser, approvedByGuard, companyLo
 const getRecentGuestsForGuard = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
     const activeDuty = requireGuardOnDuty(authUser);
 
@@ -551,9 +551,9 @@ const getRecentGuestsForGuard = async (req, res, next) => {
     const unitNumber = Array.isArray(unitNumberRaw) ? null : normalizeString(unitNumberRaw);
     const daysNumber = Number(req.body?.days);
 
-    if (!wingName) return next(createHttpError('wingName is required', 400));
+    if (!wingName) return next(createHttpError('wingName is required.', 400));
     if (unitNumbers.length === 0 && !unitNumber) {
-      return next(createHttpError('unitNumber is required', 400));
+      return next(createHttpError('unitNumber is required.', 400));
     }
 
     const limit = 20;
@@ -572,7 +572,7 @@ const getRecentGuestsForGuard = async (req, res, next) => {
     const unitIds = (unitDocs || []).map((u) => u._id);
 
     if (!unitIds || unitIds.length === 0) {
-      return sendSuccessResponse(res, 200, 'Recent guests fetched successfully', {
+      return sendSuccessResponse(res, 200, 'Recent guests fetched successfully.', {
         data: {
           unit: { wingName, unitNumber },
           guests: [],
@@ -663,7 +663,7 @@ const getRecentGuestsForGuard = async (req, res, next) => {
       .sort((a, b) => new Date(b.lastVisitedAt).getTime() - new Date(a.lastVisitedAt).getTime())
       .slice(0, limit);
 
-    return sendSuccessResponse(res, 200, 'Recent guests fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Recent guests fetched successfully.', {
       data: {
         unit: { wingName, unitNumber },
         guests: recentGuests,
@@ -677,8 +677,8 @@ const getRecentGuestsForGuard = async (req, res, next) => {
 const listGuestEntryRequestsForGuard = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
     const activeDuty = requireGuardOnDuty(authUser);
 
@@ -698,7 +698,7 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
         : VISITOR_TYPES;
 
     if (visitorTypes.length > 0 && normalizedVisitorTypes.length === 0) {
-      return next(createHttpError('visitorType is invalid', 400));
+      return next(createHttpError('visitorType is invalid.', 400));
     }
 
     const statusFilter = STATUS_FILTERS[statusKey] || STATUS_FILTERS.awaiting_approval;
@@ -1056,7 +1056,7 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
         return rest;
       });
 
-    return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully.', {
       data: mapped,
     });
   } catch (error) {
@@ -1067,8 +1067,8 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
 const createGuestEntryRequest = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
     const activeDuty = requireGuardOnDuty(authUser);
 
@@ -1097,35 +1097,35 @@ const createGuestEntryRequest = async (req, res, next) => {
 
     const vehicleNumber = normalizeString(req.body?.vehicleNumber).toUpperCase() || null;
 
-    if (!wingName) return next(createHttpError('wingName is required', 400));
+    if (!wingName) return next(createHttpError('wingName is required.', 400));
     if (unitNumbers.length === 0 && !unitNumber) {
-      return next(createHttpError('unitNumber is required', 400));
+      return next(createHttpError('unitNumber is required.', 400));
     }
-    if (!guestName) return next(createHttpError('guestName is required', 400));
-    if (!phoneRaw) return next(createHttpError('phoneNumber is required', 400));
-    if (!isTenDigitPhone(phoneRaw)) return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+    if (!guestName) return next(createHttpError('guestName is required.', 400));
+    if (!phoneRaw) return next(createHttpError('phoneNumber is required.', 400));
+    if (!isTenDigitPhone(phoneRaw)) return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
 
     let visitorType = (visitorTypeRaw || '').toLowerCase().replace(/\s+/g, '_') || 'guest';
     if (!visitorTypeRaw && companyNameRaw) visitorType = 'delivery_executive';
     if (!VISITOR_TYPES.includes(visitorType)) {
-      return next(createHttpError('visitorType is invalid', 400));
+      return next(createHttpError('visitorType is invalid.', 400));
     }
     if (unitNumbers.length > 0 && visitorType !== 'delivery_executive') {
       return next(
-        createHttpError('Multiple units are only supported for delivery executive', 400)
+        createHttpError('Multiple units are only supported for delivery executive.', 400)
       );
     }
     if (visitorType === 'delivery_executive' && !companyNameRaw) {
-      return next(createHttpError('deliveryCompanyName is required for delivery executive', 400));
+      return next(createHttpError('deliveryCompanyName is required for delivery executive.', 400));
     }
     if (visitorType === 'taxi_vehicle_driver' && !companyNameRaw) {
-      return next(createHttpError('companyName is required for taxi vehicle driver', 400));
+      return next(createHttpError('companyName is required for taxi vehicle driver.', 400));
     }
     if (visitorType === 'other_visitor' && !workCategoryRaw) {
-      return next(createHttpError('workCategory is required for other visitor', 400));
+      return next(createHttpError('workCategory is required for other visitor.', 400));
     }
     if (visitorType === 'other_visitor' && !companyNameRaw) {
-      return next(createHttpError('companyName is required for other visitor', 400));
+      return next(createHttpError('companyName is required for other visitor.', 400));
     }
 
     let companyName = companyNameRaw;
@@ -1133,7 +1133,7 @@ const createGuestEntryRequest = async (req, res, next) => {
       const matchedTaxiCompany = await resolveTaxiCompanyName(companyName);
       if (!matchedTaxiCompany) {
         return next(
-          createHttpError('Taxi company must match a registered taxi company', 400)
+          createHttpError('Taxi company must match a registered taxi company.', 400)
         );
       }
       companyName = matchedTaxiCompany;
@@ -1180,7 +1180,7 @@ const createGuestEntryRequest = async (req, res, next) => {
       });
 
       const labels = toVisitorLabels(visitorType);
-      return sendSuccessResponse(res, 200, 'Photo required before creating request', {
+      return sendSuccessResponse(res, 200, 'Photo required before creating request.', {
         data: {
           requestCreated: false,
           requestId: draft.requestId,
@@ -1343,7 +1343,7 @@ const createGuestEntryRequest = async (req, res, next) => {
     }
 
     if (createdDocs.length === 1) {
-      return sendSuccessResponse(res, 201, 'Guest approval request created successfully', {
+      return sendSuccessResponse(res, 201, 'Guest approval request created successfully.', {
         data: {
           ...basePayload,
           requestId: primaryDoc.requestId,
@@ -1352,7 +1352,7 @@ const createGuestEntryRequest = async (req, res, next) => {
       });
     }
 
-    return sendSuccessResponse(res, 201, 'Guest approval requests created successfully', {
+    return sendSuccessResponse(res, 201, 'Guest approval requests created successfully.', {
       data: {
         ...basePayload,
         requestIds: createdDocs.map((d) => d.requestId),
@@ -1368,8 +1368,8 @@ const createGuestEntryRequest = async (req, res, next) => {
 const getGuestEntryRequestForGuard = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
     const activeDuty = requireGuardOnDuty(authUser);
 
@@ -1386,15 +1386,15 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
               .filter(Boolean)
           : [];
 
-    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
+    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required.', 400));
 
     
     if (!requestId && requestIds.length > 0) {
       const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
-      if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
+      if (!docs || docs.length === 0) return next(createHttpError('Request not found.', 404));
 
       const filtered = docs.filter((d) => String(d.societyId) === String(activeDuty.societyId));
-      if (filtered.length === 0) return next(createHttpError('Request does not belong to this society', 403));
+      if (filtered.length === 0) return next(createHttpError('Request does not belong to this society.', 403));
 
       
       const nowMs = Date.now();
@@ -1455,15 +1455,15 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
         ),
       };
 
-      return sendSuccessResponse(res, 200, 'Entry requests fetched successfully', { data: payload });
+      return sendSuccessResponse(res, 200, 'Entry requests fetched successfully.', { data: payload });
     }
 
     
     const doc = await GuestEntryRequest.findOne({ requestId });
-    if (!doc) return next(createHttpError('Request not found', 404));
+    if (!doc) return next(createHttpError('Request not found.', 404));
 
     if (String(doc.societyId) !== String(activeDuty.societyId)) {
-      return next(createHttpError('Request does not belong to this society', 403));
+      return next(createHttpError('Request does not belong to this society.', 403));
     }
 
     if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
@@ -1481,7 +1481,7 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
     });
     const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
 
-    return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', { data: payload });
+    return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully.', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch guest entry request'));
   }
@@ -1491,13 +1491,13 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
 const listGuestEntryRequestsForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can perform this action', 403));
+      return next(createHttpError('Only members can perform this action.', 403));
     }
 
     const unitId = normalizeString(req.body?.unitId);
-    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
 
     let unitDoc;
     try {
@@ -1978,7 +1978,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       const { _sortAt, ...rest } = item;
       return rest;
     });
-    return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully', { data: finalPayload });
+    return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully.', { data: finalPayload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch guest entry requests'));
   }
@@ -1987,9 +1987,9 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
-      return next(createHttpError('Only society admins can perform this action', 403));
+      return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
     const societyId = await resolveAdminSocietyId(authUser);
@@ -2012,7 +2012,7 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
         : VISITOR_TYPES;
 
     if (visitorTypes.length > 0 && normalizedVisitorTypes.length === 0) {
-      return next(createHttpError('visitorType is invalid', 400));
+      return next(createHttpError('visitorType is invalid.', 400));
     }
 
     
@@ -2031,14 +2031,14 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
       if (startDateRaw) {
         startAt = new Date(startDateRaw);
         if (Number.isNaN(startAt.getTime())) {
-          return next(createHttpError('Invalid startDate format', 400));
+          return next(createHttpError('Invalid startDate format.', 400));
         }
         startAt.setHours(0, 0, 0, 0);
       }
       if (endDateRaw) {
         endAt = new Date(endDateRaw);
         if (Number.isNaN(endAt.getTime())) {
-          return next(createHttpError('Invalid endDate format', 400));
+          return next(createHttpError('Invalid endDate format.', 400));
         }
         endAt.setHours(23, 59, 59, 999);
       }
@@ -2157,7 +2157,7 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
       };
     });
 
-    return sendSuccessResponse(res, 200, 'Visitor log fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Visitor log fetched successfully.', {
       data: payload,
     });
   } catch (error) {
@@ -2168,17 +2168,17 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
 const getGuestEntryRequestDetailForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can perform this action', 403));
+      return next(createHttpError('Only members can perform this action.', 403));
     }
 
     const unitId = normalizeString(req.body?.unitId);
     const requestId = normalizeString(req.body?.requestId || req.params?.requestId);
     const isPreApproval = Boolean(req.body?.isPreApproval);
 
-    if (!unitId) return next(createHttpError('unitId is required', 400));
-    if (!requestId) return next(createHttpError('requestId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
+    if (!requestId) return next(createHttpError('requestId is required.', 400));
 
     let unitDoc;
     try {
@@ -2221,7 +2221,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           doc.wingNameLower !== unitDoc.wingNameLower ||
           doc.unitNumberLower !== unitDoc.unitNumberLower
         ) {
-          return next(createHttpError('Forbidden: request does not belong to this unit', 403));
+          return next(createHttpError('Forbidden: request does not belong to this unit.', 403));
         }
 
         if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
@@ -2274,7 +2274,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           companyName: doc.visitorCompanyName,
         });
 
-        return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
+        return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully.', {
           data: {
             requestId: doc.requestId,
             status: toMemberStatusLabel(doc.status, doc),
@@ -2414,7 +2414,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         companyName: preDoc.companyName,
       });
 
-      return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully', {
+      return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully.', {
         data: {
           requestId: preDoc.preApprovalId,
           status: preApprovalLabel(effectiveStatus),
@@ -2538,7 +2538,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         }
       }
 
-      return sendSuccessResponse(res, 200, 'Guest invite fetched successfully', {
+      return sendSuccessResponse(res, 200, 'Guest invite fetched successfully.', {
         data: {
           requestId: guestInvite.inviteId,
           status: inviteStatusLabel(effectiveStatus),
@@ -2575,7 +2575,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       });
     }
 
-    return next(createHttpError('Request not found', 404));
+    return next(createHttpError('Request not found.', 404));
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch guest entry request'));
   }
@@ -2585,26 +2585,26 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
 const decideGuestEntryRequest = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can perform this action', 403));
+      return next(createHttpError('Only members can perform this action.', 403));
     }
 
     const unitId = normalizeString(req.body?.unitId);
     const requestId = normalizeString(req.body?.requestId || req.params?.requestId);
     const decision = normalizeString(req.body?.decision).toLowerCase();
-    if (!unitId) return next(createHttpError('unitId is required', 400));
-    if (!requestId) return next(createHttpError('requestId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
+    if (!requestId) return next(createHttpError('requestId is required.', 400));
     if (decision !== 'approve' && decision !== 'reject') {
-      return next(createHttpError("decision must be 'approve' or 'reject'", 400));
+      return next(createHttpError("decision must be 'approve' or 'reject'.", 400));
     }
 
     const reason = normalizeString(req.body?.reason);
     const description = normalizeString(req.body?.description);
     if (decision === 'reject') {
-      if (!reason) return next(createHttpError('reason is required for rejection', 400));
+      if (!reason) return next(createHttpError('reason is required for rejection.', 400));
       if (reason.toLowerCase() === 'other' && !description) {
-        return next(createHttpError('description is required when reason is other', 400));
+        return next(createHttpError('description is required when reason is other.', 400));
       }
     }
 
@@ -2616,25 +2616,25 @@ const decideGuestEntryRequest = async (req, res, next) => {
     }
 
     const doc = await GuestEntryRequest.findOne({ requestId });
-    if (!doc) return next(createHttpError('Request not found', 404));
+    if (!doc) return next(createHttpError('Request not found.', 404));
 
     if (
       String(doc.societyId) !== String(unitDoc.societyId) ||
       doc.wingNameLower !== unitDoc.wingNameLower ||
       doc.unitNumberLower !== unitDoc.unitNumberLower
     ) {
-      return next(createHttpError('Forbidden: request does not belong to this unit', 403));
+      return next(createHttpError('Forbidden: request does not belong to this unit.', 403));
     }
 
     
     if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
       doc.status = 'expired';
       await doc.save();
-      return next(createHttpError('Request has expired', 409));
+      return next(createHttpError('Request has expired.', 409));
     }
 
     if (doc.status !== 'pending') {
-      return next(createHttpError(`Request is already ${doc.status}`, 409));
+      return next(createHttpError(`Request is already ${doc.status}.`, 409));
     }
 
     if (decision === 'approve') {
@@ -2676,7 +2676,7 @@ const decideGuestEntryRequest = async (req, res, next) => {
       console.log('[GuestEntryRequest] No createdByGuardId found, skipping notification');
     }
 
-    return sendSuccessResponse(res, 200, 'Guest entry request updated successfully', {
+    return sendSuccessResponse(res, 200, 'Guest entry request updated successfully.', {
       data: {
         requestId: doc.requestId,
         status: doc.status === 'approved' ? 'Approved' : 'Denied',
@@ -2692,8 +2692,8 @@ const decideGuestEntryRequest = async (req, res, next) => {
 const allowGuestEntry = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
     const activeDuty = requireGuardOnDuty(authUser);
 
@@ -2710,15 +2710,15 @@ const allowGuestEntry = async (req, res, next) => {
               .filter(Boolean)
           : [];
 
-    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
+    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required.', 400));
 
     
     if (!requestId && requestIds.length > 0) {
       const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
-      if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
+      if (!docs || docs.length === 0) return next(createHttpError('Request not found.', 404));
 
       const sameSociety = docs.filter((d) => String(d.societyId) === String(activeDuty.societyId));
-      if (sameSociety.length === 0) return next(createHttpError('Request does not belong to this society', 403));
+      if (sameSociety.length === 0) return next(createHttpError('Request does not belong to this society.', 403));
 
       const nowMs = Date.now();
       let anyApproved = false;
@@ -2738,7 +2738,7 @@ const allowGuestEntry = async (req, res, next) => {
       }
 
       if (!anyApproved && !sameSociety.some((d) => d.status === 'entered')) {
-        return next(createHttpError('Entry can only be allowed for approved requests', 409));
+        return next(createHttpError('Entry can only be allowed for approved requests.', 409));
       }
 
       await Promise.all(sameSociety.map((d) => d.save()));
@@ -2771,10 +2771,10 @@ const allowGuestEntry = async (req, res, next) => {
 
     
     const doc = await GuestEntryRequest.findOne({ requestId });
-    if (!doc) return next(createHttpError('Request not found', 404));
+    if (!doc) return next(createHttpError('Request not found.', 404));
 
     if (String(doc.societyId) !== String(activeDuty.societyId)) {
-      return next(createHttpError('Request does not belong to this society', 403));
+      return next(createHttpError('Request does not belong to this society.', 403));
     }
 
     if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
@@ -2783,7 +2783,7 @@ const allowGuestEntry = async (req, res, next) => {
     }
 
     if (doc.status !== 'approved' && doc.status !== 'entered') {
-      return next(createHttpError('Entry can only be allowed for approved requests', 409));
+      return next(createHttpError('Entry can only be allowed for approved requests.', 409));
     }
 
     if (doc.status === 'entered') {
@@ -2796,7 +2796,7 @@ const allowGuestEntry = async (req, res, next) => {
         companyName: doc.visitorCompanyName,
       });
       const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
-      return sendSuccessResponse(res, 200, 'Entry already allowed', { data: payload });
+      return sendSuccessResponse(res, 200, 'Entry already allowed.', { data: payload });
     }
 
     doc.status = 'entered';
@@ -2834,7 +2834,7 @@ const allowGuestEntry = async (req, res, next) => {
       companyName: doc.visitorCompanyName,
     });
     const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
-    return sendSuccessResponse(res, 200, 'Entry allowed successfully', { data: payload });
+    return sendSuccessResponse(res, 200, 'Entry allowed successfully.', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to allow entry'));
   }
@@ -2843,8 +2843,8 @@ const allowGuestEntry = async (req, res, next) => {
 const allowEntryWithoutApproval = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
     const activeDuty = requireGuardOnDuty(authUser);
 
@@ -2861,14 +2861,14 @@ const allowEntryWithoutApproval = async (req, res, next) => {
               .filter(Boolean)
           : [];
 
-    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
+    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required.', 400));
 
     if (!requestId && requestIds.length > 0) {
       const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
-      if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
+      if (!docs || docs.length === 0) return next(createHttpError('Request not found.', 404));
 
       const sameSociety = docs.filter((d) => String(d.societyId) === String(activeDuty.societyId));
-      if (sameSociety.length === 0) return next(createHttpError('Request does not belong to this society', 403));
+      if (sameSociety.length === 0) return next(createHttpError('Request does not belong to this society.', 403));
 
       const nowMs = Date.now();
       let anyPending = false;
@@ -2895,7 +2895,7 @@ const allowEntryWithoutApproval = async (req, res, next) => {
       }
 
       if (!anyPending && !sameSociety.some((d) => d.status === 'entered')) {
-        return next(createHttpError('No pending requests found to allow entry without approval', 409));
+        return next(createHttpError('No pending requests found to allow entry without approval.', 409));
       }
 
       await Promise.all(sameSociety.map((d) => d.save()));
@@ -2906,16 +2906,16 @@ const allowEntryWithoutApproval = async (req, res, next) => {
     }
 
     const doc = await GuestEntryRequest.findOne({ requestId });
-    if (!doc) return next(createHttpError('Request not found', 404));
+    if (!doc) return next(createHttpError('Request not found.', 404));
 
     if (String(doc.societyId) !== String(activeDuty.societyId)) {
-      return next(createHttpError('Request does not belong to this society', 403));
+      return next(createHttpError('Request does not belong to this society.', 403));
     }
 
     if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
       doc.status = 'expired';
       await doc.save();
-      return next(createHttpError('Request has expired', 409));
+      return next(createHttpError('Request has expired.', 409));
     }
 
     if (doc.status !== 'pending') {
@@ -2931,9 +2931,9 @@ const allowEntryWithoutApproval = async (req, res, next) => {
           companyName: doc.visitorCompanyName,
         });
         const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser: null, approvedByGuard, companyLogo });
-        return sendSuccessResponse(res, 200, 'Entry already allowed', { data: payload });
+        return sendSuccessResponse(res, 200, 'Entry already allowed.', { data: payload });
       }
-      return next(createHttpError(`Cannot allow entry for request with status: ${doc.status}`, 409));
+      return next(createHttpError(`Cannot allow entry for request with status: ${doc.status}.`, 409));
     }
 
     doc.status = 'approved';
@@ -2953,7 +2953,7 @@ const allowEntryWithoutApproval = async (req, res, next) => {
       companyName: doc.visitorCompanyName,
     });
     const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser: null, approvedByGuard: authUser, companyLogo });
-    return sendSuccessResponse(res, 200, 'Entry allowed without member approval', { data: payload });
+    return sendSuccessResponse(res, 200, 'Entry allowed without member approval.', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to allow entry without approval'));
   }
@@ -2962,8 +2962,8 @@ const allowEntryWithoutApproval = async (req, res, next) => {
 const allowGuestExit = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
     const activeDuty = requireGuardOnDuty(authUser);
 
@@ -2980,15 +2980,15 @@ const allowGuestExit = async (req, res, next) => {
               .filter(Boolean)
           : [];
 
-    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required', 400));
+    if (!requestId && requestIds.length === 0) return next(createHttpError('requestId is required.', 400));
 
     
     if (!requestId && requestIds.length > 0) {
       const docs = await GuestEntryRequest.find({ requestId: { $in: requestIds } });
-      if (!docs || docs.length === 0) return next(createHttpError('Request not found', 404));
+      if (!docs || docs.length === 0) return next(createHttpError('Request not found.', 404));
 
       const sameSociety = docs.filter((d) => String(d.societyId) === String(activeDuty.societyId));
-      if (sameSociety.length === 0) return next(createHttpError('Request does not belong to this society', 403));
+      if (sameSociety.length === 0) return next(createHttpError('Request does not belong to this society.', 403));
 
       let anyEntered = false;
       for (const d of sameSociety) {
@@ -3001,7 +3001,7 @@ const allowGuestExit = async (req, res, next) => {
       }
 
       if (!anyEntered && !sameSociety.some((d) => d.status === 'left')) {
-        return next(createHttpError('Exit can only be allowed for inside society requests', 409));
+        return next(createHttpError('Exit can only be allowed for inside society requests.', 409));
       }
 
       await Promise.all(sameSociety.map((d) => d.save()));
@@ -3032,14 +3032,14 @@ const allowGuestExit = async (req, res, next) => {
     }
 
     const doc = await GuestEntryRequest.findOne({ requestId });
-    if (!doc) return next(createHttpError('Request not found', 404));
+    if (!doc) return next(createHttpError('Request not found.', 404));
 
     if (String(doc.societyId) !== String(activeDuty.societyId)) {
-      return next(createHttpError('Request does not belong to this society', 403));
+      return next(createHttpError('Request does not belong to this society.', 403));
     }
 
     if (doc.status !== 'entered' && doc.status !== 'left') {
-      return next(createHttpError('Exit can only be allowed for inside society requests', 409));
+      return next(createHttpError('Exit can only be allowed for inside society requests.', 409));
     }
 
     if (doc.status === 'left') {
@@ -3052,7 +3052,7 @@ const allowGuestExit = async (req, res, next) => {
         companyName: doc.visitorCompanyName,
       });
       const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
-      return sendSuccessResponse(res, 200, 'Exit already allowed', { data: payload });
+      return sendSuccessResponse(res, 200, 'Exit already allowed.', { data: payload });
     }
 
     doc.status = 'left';
@@ -3088,7 +3088,7 @@ const allowGuestExit = async (req, res, next) => {
       companyName: doc.visitorCompanyName,
     });
     const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
-    return sendSuccessResponse(res, 200, 'Exit allowed successfully', { data: payload });
+    return sendSuccessResponse(res, 200, 'Exit allowed successfully.', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to allow exit'));
   }
@@ -3097,15 +3097,15 @@ const allowGuestExit = async (req, res, next) => {
 const updateGuestEntryRequestPhoto = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
     const activeDuty = requireGuardOnDuty(authUser);
 
     const requestId = normalizeString(req.body?.requestId || req.params?.requestId || req.query?.requestId);
     const imageUrl = normalizeString(req.body?.imageUrl);
 
-    if (!imageUrl) return next(createHttpError('imageUrl is required', 400));
+    if (!imageUrl) return next(createHttpError('imageUrl is required.', 400));
 
     if (!requestId) {
       return createGuestEntryRequest(req, res, next);
@@ -3137,10 +3137,10 @@ const updateGuestEntryRequestPhoto = async (req, res, next) => {
     }
 
     const doc = await GuestEntryRequest.findOne({ requestId });
-    if (!doc) return next(createHttpError('Request not found', 404));
+    if (!doc) return next(createHttpError('Request not found.', 404));
 
     if (String(doc.societyId) !== String(activeDuty.societyId)) {
-      return next(createHttpError('Request does not belong to this society', 403));
+      return next(createHttpError('Request does not belong to this society.', 403));
     }
 
     doc.guestImageUrl = imageUrl;
@@ -3148,7 +3148,7 @@ const updateGuestEntryRequestPhoto = async (req, res, next) => {
 
     const labels = toVisitorLabels(doc.visitorType || 'guest');
 
-    return sendSuccessResponse(res, 200, 'Guest photo updated successfully', {
+    return sendSuccessResponse(res, 200, 'Guest photo updated successfully.', {
       data: {
         requestId: doc.requestId,
         status: 'Awaiting Approval',
@@ -3178,16 +3178,16 @@ const updateGuestEntryRequestPhoto = async (req, res, next) => {
 const allowGuestExitForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can perform this action', 403));
+      return next(createHttpError('Only members can perform this action.', 403));
     }
 
     const unitId = normalizeString(req.body?.unitId);
     const requestId = normalizeString(req.body?.requestId);
 
-    if (!unitId) return next(createHttpError('unitId is required', 400));
-    if (!requestId) return next(createHttpError('requestId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
+    if (!requestId) return next(createHttpError('requestId is required.', 400));
 
     let unitDoc;
     try {
@@ -3197,18 +3197,18 @@ const allowGuestExitForMember = async (req, res, next) => {
     }
 
     const doc = await GuestEntryRequest.findOne({ requestId });
-    if (!doc) return next(createHttpError('Request not found', 404));
+    if (!doc) return next(createHttpError('Request not found.', 404));
 
     if (
       String(doc.societyId) !== String(unitDoc.societyId) ||
       doc.wingNameLower !== unitDoc.wingNameLower ||
       doc.unitNumberLower !== unitDoc.unitNumberLower
     ) {
-      return next(createHttpError('Request does not belong to this unit', 403));
+      return next(createHttpError('Request does not belong to this unit.', 403));
     }
 
     if (doc.status !== 'entered' && doc.status !== 'left') {
-      return next(createHttpError('Exit can only be marked for visitors inside society', 409));
+      return next(createHttpError('Exit can only be marked for visitors inside society.', 409));
     }
 
     
@@ -3276,7 +3276,7 @@ const allowGuestExitForMember = async (req, res, next) => {
 
     if (doc.status === 'left') {
       const payload = await buildExitResponse(doc, true);
-      return sendSuccessResponse(res, 200, 'Visitor has already left', { data: payload });
+      return sendSuccessResponse(res, 200, 'Visitor has already left.', { data: payload });
     }
 
     doc.status = 'left';
@@ -3308,7 +3308,7 @@ const allowGuestExitForMember = async (req, res, next) => {
     }
 
     const payload = await buildExitResponse(doc);
-    return sendSuccessResponse(res, 200, 'Visitor marked as left successfully', { data: payload });
+    return sendSuccessResponse(res, 200, 'Visitor marked as left successfully.', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to mark visitor as left'));
   }
@@ -3325,9 +3325,9 @@ const WRONG_ENTRY_REASONS = [
 const markWrongEntryForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can perform this action', 403));
+      return next(createHttpError('Only members can perform this action.', 403));
     }
 
     const unitId = normalizeString(req.body?.unitId);
@@ -3335,16 +3335,16 @@ const markWrongEntryForMember = async (req, res, next) => {
     const reason = normalizeOption(req.body?.reason);
     const description = normalizeString(req.body?.description);
 
-    if (!unitId) return next(createHttpError('unitId is required', 400));
-    if (!requestId) return next(createHttpError('requestId is required', 400));
-    if (!reason) return next(createHttpError('reason is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
+    if (!requestId) return next(createHttpError('requestId is required.', 400));
+    if (!reason) return next(createHttpError('reason is required.', 400));
 
     if (!WRONG_ENTRY_REASONS.includes(reason)) {
-      return next(createHttpError(`Invalid reason. Allowed: ${WRONG_ENTRY_REASONS.join(', ')}`, 400));
+      return next(createHttpError(`Invalid reason. Allowed: ${WRONG_ENTRY_REASONS.join(', ')}.`, 400));
     }
 
     if (reason === 'other' && !description) {
-      return next(createHttpError('Description is required when reason is "other"', 400));
+      return next(createHttpError('Description is required when reason is "other".', 400));
     }
 
     let unitDoc;
@@ -3355,22 +3355,22 @@ const markWrongEntryForMember = async (req, res, next) => {
     }
 
     const doc = await GuestEntryRequest.findOne({ requestId });
-    if (!doc) return next(createHttpError('Request not found', 404));
+    if (!doc) return next(createHttpError('Request not found.', 404));
 
     if (
       String(doc.societyId) !== String(unitDoc.societyId) ||
       doc.wingNameLower !== unitDoc.wingNameLower ||
       doc.unitNumberLower !== unitDoc.unitNumberLower
     ) {
-      return next(createHttpError('Request does not belong to this unit', 403));
+      return next(createHttpError('Request does not belong to this unit.', 403));
     }
 
     if (doc.status !== 'entered' && doc.status !== 'left') {
-      return next(createHttpError('Wrong entry can only be marked for visitors who have entered the society', 409));
+      return next(createHttpError('Wrong entry can only be marked for visitors who have entered the society.', 409));
     }
 
     if (doc.isWrongEntry) {
-      return sendSuccessResponse(res, 200, 'This visitor is already marked as wrong entry', {
+      return sendSuccessResponse(res, 200, 'This visitor is already marked as wrong entry.', {
         data: { requestId: doc.requestId, isWrongEntry: true, status: 'wrong_entry' },
       });
     }
@@ -3435,7 +3435,7 @@ const markWrongEntryForMember = async (req, res, next) => {
       wrongEntryDescription: doc.wrongEntryDescription || null,
     };
 
-    return sendSuccessResponse(res, 200, 'Visitor marked as wrong entry successfully', { data: payload });
+    return sendSuccessResponse(res, 200, 'Visitor marked as wrong entry successfully.', { data: payload });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to mark visitor as wrong entry'));
   }
@@ -3444,8 +3444,8 @@ const markWrongEntryForMember = async (req, res, next) => {
 const createOnboardedVisitorEntry = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
-    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action', 403));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
     const activeDuty = requireGuardOnDuty(authUser);
 
@@ -3462,25 +3462,25 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     const accompanyingCountNumber = Number(accompanyingCountRaw);
     const accompanyingCount = Number.isFinite(accompanyingCountNumber) && accompanyingCountNumber > 0 ? accompanyingCountNumber : 0;
 
-    if (!userId) return next(createHttpError('userId is required', 400));
-    if (!wingName) return next(createHttpError('wingName is required', 400));
+    if (!userId) return next(createHttpError('userId is required.', 400));
+    if (!wingName) return next(createHttpError('wingName is required.', 400));
     if (unitNumbers.length === 0 && !unitNumber) {
-      return next(createHttpError('unitNumber is required', 400));
+      return next(createHttpError('unitNumber is required.', 400));
     }
 
     
     const visitor = await User.findById(userId).lean();
-    if (!visitor) return next(createHttpError('Visitor not found', 404));
-    if (visitor.role !== 'visitor') return next(createHttpError('User is not an onboarded visitor', 400));
+    if (!visitor) return next(createHttpError('Visitor not found.', 404));
+    if (visitor.role !== 'visitor') return next(createHttpError('User is not an onboarded visitor.', 400));
 
     
     const visitorType = visitor.visitorType || 'guest';
     if (!VISITOR_TYPES.includes(visitorType)) {
-      return next(createHttpError('Invalid visitor type', 400));
+      return next(createHttpError('Invalid visitor type.', 400));
     }
     if (unitNumbers.length > 0 && visitorType !== 'delivery_executive') {
       return next(
-        createHttpError('Multiple units are only supported for delivery executive', 400)
+        createHttpError('Multiple units are only supported for delivery executive.', 400)
       );
     }
 
@@ -3491,7 +3491,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     const workCategory = visitor.visitorWorkCategory || null;
 
     if (!phoneDigits) {
-      return next(createHttpError('Visitor does not have a valid phone number', 400));
+      return next(createHttpError('Visitor does not have a valid phone number.', 400));
     }
 
     
@@ -3657,7 +3657,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     };
 
     if (createdDocs.length === 1) {
-      return sendSuccessResponse(res, 201, 'Visitor entry request created successfully', {
+      return sendSuccessResponse(res, 201, 'Visitor entry request created successfully.', {
         data: {
           ...basePayload,
           requestId: primaryDoc.requestId,
@@ -3666,7 +3666,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
       });
     }
 
-    return sendSuccessResponse(res, 201, 'Visitor entry requests created successfully', {
+    return sendSuccessResponse(res, 201, 'Visitor entry requests created successfully.', {
       data: {
         ...basePayload,
         requestIds: createdDocs.map((d) => d.requestId),

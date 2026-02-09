@@ -84,11 +84,11 @@ const normalizeOption = (value) =>
 
 const parseDateOnly = (value, fieldLabel) => {
   if (!value) {
-    throw createHttpError(`${fieldLabel} is required`, 400);
+    throw createHttpError(`${fieldLabel} is required.`, 400);
   }
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) {
-    throw createHttpError(`Invalid ${fieldLabel} format`, 400);
+    throw createHttpError(`Invalid ${fieldLabel} format.`, 400);
   }
   d.setHours(0, 0, 0, 0);
   return d;
@@ -96,11 +96,11 @@ const parseDateOnly = (value, fieldLabel) => {
 
 const parseDateTime = (value, fieldLabel) => {
   if (!value) {
-    throw createHttpError(`${fieldLabel} is required`, 400);
+    throw createHttpError(`${fieldLabel} is required.`, 400);
   }
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) {
-    throw createHttpError(`Invalid ${fieldLabel} format`, 400);
+    throw createHttpError(`Invalid ${fieldLabel} format.`, 400);
   }
   return d;
 };
@@ -108,7 +108,7 @@ const parseDateTime = (value, fieldLabel) => {
 const parseTimeOfDay = (value, fieldLabel) => {
   const raw = (value || '').toString().trim();
   if (!raw) {
-    throw createHttpError(`${fieldLabel} is required`, 400);
+    throw createHttpError(`${fieldLabel} is required.`, 400);
   }
 
   const lower = raw.toLowerCase();
@@ -122,7 +122,7 @@ const parseTimeOfDay = (value, fieldLabel) => {
     const meridiem = twelveHourMatch[3];
 
     if (hour < 1 || hour > 12 || minute < 0 || minute > 59) {
-      throw createHttpError(`Invalid ${fieldLabel} value`, 400);
+      throw createHttpError(`Invalid ${fieldLabel} value.`, 400);
     }
 
     if (meridiem === 'pm' && hour !== 12) {
@@ -139,17 +139,17 @@ const parseTimeOfDay = (value, fieldLabel) => {
     const hour = parseInt(twentyFourMatch[1], 10);
     const minute = parseInt(twentyFourMatch[2], 10);
     if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      throw createHttpError(`Invalid ${fieldLabel} value`, 400);
+      throw createHttpError(`Invalid ${fieldLabel} value.`, 400);
     }
     return { hour, minute };
   }
 
-  throw createHttpError(`Invalid ${fieldLabel} format`, 400);
+  throw createHttpError(`Invalid ${fieldLabel} format.`, 400);
 };
 
 const sanitizeGuests = (guests) => {
   if (!Array.isArray(guests) || guests.length === 0) {
-    throw createHttpError('At least one guest is required', 400);
+    throw createHttpError('At least one guest is required.', 400);
   }
 
   const cleaned = [];
@@ -161,7 +161,7 @@ const sanitizeGuests = (guests) => {
     const sourceRaw = normalizeString(raw.source);
 
     if (!name) {
-      throw createHttpError('Guest name is required', 400);
+      throw createHttpError('Guest name is required.', 400);
     }
 
     let phoneNumber = null;
@@ -170,7 +170,7 @@ const sanitizeGuests = (guests) => {
 
     if (phoneNumberRaw) {
       if (!isTenDigitPhone(phoneNumberRaw)) {
-        throw createHttpError('Guest phoneNumber must contain exactly 10 digits', 400);
+        throw createHttpError('Guest phoneNumber must contain exactly 10 digits.', 400);
       }
       phoneDigits = normalizeDigits(phoneNumberRaw);
       phoneNumber = phoneDigits;
@@ -206,16 +206,16 @@ const computeValidityWindow = ({ validFrom, validTill, validityHours }) => {
   } else {
     const hours = Number(validityHours);
     if (!Number.isFinite(hours) || hours <= 0) {
-      throw createHttpError('validityHours must be a positive number', 400);
+      throw createHttpError('validityHours must be a positive number.', 400);
     }
     if (hours > 24) {
-      throw createHttpError('validityHours cannot exceed 24 hours for quick invites', 400);
+      throw createHttpError('validityHours cannot exceed 24 hours for quick invites.', 400);
     }
     end = new Date(start.getTime() + hours * 60 * 60 * 1000);
   }
 
   if (end <= start) {
-    throw createHttpError('validTill must be after validFrom', 400);
+    throw createHttpError('validTill must be after validFrom.', 400);
   }
 
   return { validFrom: start, validTill: end };
@@ -246,11 +246,11 @@ const computeUiBasedValidityWindow = ({
     normalizedDateOption === 'custom'
   ) {
     if (!selectedDate) {
-      throw createHttpError('selectedDate is required when dateOption is selectDate', 400);
+      throw createHttpError('selectedDate is required when dateOption is selectDate.', 400);
     }
     const parsed = new Date(selectedDate);
     if (Number.isNaN(parsed.getTime())) {
-      throw createHttpError('Invalid selectedDate format', 400);
+      throw createHttpError('Invalid selectedDate format.', 400);
     }
     baseDate = new Date(parsed);
     baseDate.setHours(0, 0, 0, 0);
@@ -286,7 +286,7 @@ const computeUiBasedValidityWindow = ({
     }
 
     if (end <= start) {
-      throw createHttpError('Computed validity end time must be after start time', 400);
+      throw createHttpError('Computed validity end time must be after start time.', 400);
     }
 
     return { validFrom: start, validTill: end };
@@ -321,7 +321,7 @@ const computeGroupInviteValidityWindow = ({
   const dateStr = (selectedDate || '').toString().trim();
   const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!dateMatch) {
-    throw createHttpError('selectedDate must be in YYYY-MM-DD format', 400);
+    throw createHttpError('selectedDate must be in YYYY-MM-DD format.', 400);
   }
   
   const timeOfDay = parseTimeOfDay(startingFrom, 'startingFrom');
@@ -338,21 +338,21 @@ const computeGroupInviteValidityWindow = ({
   const start = new Date(istDateTimeStr);
 
   if (Number.isNaN(start.getTime())) {
-    throw createHttpError('Invalid selectedDate or startingFrom value', 400);
+    throw createHttpError('Invalid selectedDate or startingFrom value.', 400);
   }
 
   const hours = Number(validityHours);
   if (!Number.isFinite(hours) || hours <= 0) {
-    throw createHttpError('validityHours must be a positive number', 400);
+    throw createHttpError('validityHours must be a positive number.', 400);
   }
   if (hours > 24) {
-    throw createHttpError('validityHours cannot exceed 24 hours for group invites', 400);
+    throw createHttpError('validityHours cannot exceed 24 hours for group invites.', 400);
   }
 
   const end = new Date(start.getTime() + hours * 60 * 60 * 1000);
 
   if (end <= start) {
-    throw createHttpError('Computed validity end time must be after start time', 400);
+    throw createHttpError('Computed validity end time must be after start time.', 400);
   }
 
   return { validFrom: start, validTill: end };
@@ -398,7 +398,7 @@ const computeFrequentInviteValidityWindow = ({
   end.setHours(23, 59, 59, 999);
 
   if (end < start) {
-    throw createHttpError('endDate must be on or after startDate', 400);
+    throw createHttpError('endDate must be on or after startDate.', 400);
   }
 
   return { validFrom: start, validTill: end };
@@ -457,11 +457,11 @@ const createGroupInvite = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can create guest invites', 403));
+      return next(createHttpError('Only members can create guest invites.', 403));
     }
 
     const { unitId, selectedDate, startingFrom, validityHours, guestCount } = req.body || {};
@@ -486,7 +486,7 @@ const createGroupInvite = async (req, res, next) => {
 
     const countNumber = Number(guestCount);
     if (!Number.isFinite(countNumber) || countNumber <= 0) {
-      return next(createHttpError('guestCount must be a positive number', 400));
+      return next(createHttpError('guestCount must be a positive number.', 400));
     }
 
     let placeholderGuests;
@@ -562,7 +562,7 @@ const createGroupInvite = async (req, res, next) => {
 
     const shareMessage = `${authUser.fullName || 'A member'} has invited you. Show this QR code to the guard at the gate.`;
 
-    return sendSuccessResponse(res, 201, 'Group guest invite created successfully', {
+    return sendSuccessResponse(res, 201, 'Group guest invite created successfully.', {
       data: responseData,
       shareMessage,
     });
@@ -575,11 +575,11 @@ const createFrequentInvite = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can create guest invites', 403));
+      return next(createHttpError('Only members can create guest invites.', 403));
     }
 
     const {
@@ -672,7 +672,7 @@ const createFrequentInvite = async (req, res, next) => {
 
     const shareMessage = `${authUser.fullName || 'A member'} has invited you. Show this QR code to the guard at the gate.`;
 
-    return sendSuccessResponse(res, 201, 'Frequent guest invite created successfully', {
+    return sendSuccessResponse(res, 201, 'Frequent guest invite created successfully.', {
       data: responseData,
       shareMessage,
     });
@@ -685,11 +685,11 @@ const createQuickInvite = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can create guest invites', 403));
+      return next(createHttpError('Only members can create guest invites.', 403));
     }
 
     const {
@@ -792,7 +792,7 @@ const createQuickInvite = async (req, res, next) => {
 
     const shareMessage = `${authUser.fullName || 'A member'} has invited you. Show this QR code to the guard at the gate.`;
 
-    return sendSuccessResponse(res, 201, 'Guest quick invite created successfully', {
+    return sendSuccessResponse(res, 201, 'Guest quick invite created successfully.', {
       data: responseData,
       shareMessage,
     });
@@ -804,9 +804,9 @@ const createQuickInvite = async (req, res, next) => {
 const updateGuestInviteForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can update guest invites', 403));
+      return next(createHttpError('Only members can update guest invites.', 403));
     }
 
     const inviteId = normalizeString(req.body?.inviteId);
@@ -828,8 +828,8 @@ const updateGuestInviteForMember = async (req, res, next) => {
       isPrivateInvite,
     } = req.body || {};
 
-    if (!inviteId) return next(createHttpError('inviteId is required', 400));
-    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!inviteId) return next(createHttpError('inviteId is required.', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
 
     let unitDoc;
     try {
@@ -843,9 +843,9 @@ const updateGuestInviteForMember = async (req, res, next) => {
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
     });
-    if (!invite) return next(createHttpError('Guest invite not found', 404));
+    if (!invite) return next(createHttpError('Guest invite not found.', 404));
     if (invite.status !== 'active') {
-      return next(createHttpError('Only active guest invites can be updated', 409));
+      return next(createHttpError('Only active guest invites can be updated.', 409));
     }
 
     let window;
@@ -891,7 +891,7 @@ const updateGuestInviteForMember = async (req, res, next) => {
     if (invite.type === 'group' && guestCount !== undefined) {
       const countNumber = Number(guestCount);
       if (!Number.isFinite(countNumber) || countNumber <= 0) {
-        return next(createHttpError('guestCount must be a positive number', 400));
+        return next(createHttpError('guestCount must be a positive number.', 400));
       }
       invite.maxEntries = countNumber;
     }
@@ -936,7 +936,7 @@ const updateGuestInviteForMember = async (req, res, next) => {
     const tillTimeLabel = toISTTimeLabel(invite.validTill);
     const validityLabel = `${dateLabel}, ${fromTimeLabel} to ${tillTimeLabel}`;
 
-    return sendSuccessResponse(res, 200, 'Guest invite updated successfully', {
+    return sendSuccessResponse(res, 200, 'Guest invite updated successfully.', {
       data: {
         inviteId: invite.inviteId,
         type: invite.type,
@@ -976,9 +976,9 @@ const updateGuestInviteForMember = async (req, res, next) => {
 const cancelGuestInviteForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can cancel guest invites', 403));
+      return next(createHttpError('Only members can cancel guest invites.', 403));
     }
 
     const inviteId = normalizeString(req.body?.inviteId);
@@ -986,11 +986,11 @@ const cancelGuestInviteForMember = async (req, res, next) => {
     const reason = normalizeString(req.body?.reason);
     const description = normalizeString(req.body?.description);
 
-    if (!inviteId) return next(createHttpError('inviteId is required', 400));
-    if (!unitId) return next(createHttpError('unitId is required', 400));
-    if (!reason) return next(createHttpError('reason is required', 400));
+    if (!inviteId) return next(createHttpError('inviteId is required.', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
+    if (!reason) return next(createHttpError('reason is required.', 400));
     if (reason.toLowerCase() === 'other' && !description) {
-      return next(createHttpError('description is required when reason is other', 400));
+      return next(createHttpError('description is required when reason is other.', 400));
     }
 
     let unitDoc;
@@ -1005,15 +1005,15 @@ const cancelGuestInviteForMember = async (req, res, next) => {
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
     });
-    if (!invite) return next(createHttpError('Guest invite not found', 404));
+    if (!invite) return next(createHttpError('Guest invite not found.', 404));
     if (invite.status === 'cancelled') {
-      return next(createHttpError('Guest invite is already cancelled', 400));
+      return next(createHttpError('Guest invite is already cancelled.', 400));
     }
 
     const hasArrived = (invite.guests || []).some((g) => g?.hasArrived);
     const hasEntryLogs = Array.isArray(invite.entryLogs) && invite.entryLogs.length > 0;
     if (hasArrived || hasEntryLogs) {
-      return next(createHttpError('Cannot cancel guest invite while visitor is inside society', 409));
+      return next(createHttpError('Cannot cancel guest invite while visitor is inside society.', 409));
     }
 
     invite.status = 'cancelled';
@@ -1023,7 +1023,7 @@ const cancelGuestInviteForMember = async (req, res, next) => {
     invite.cancelledByUserId = authUser._id;
     await invite.save();
 
-    return sendSuccessResponse(res, 200, 'Guest invite cancelled successfully', {
+    return sendSuccessResponse(res, 200, 'Guest invite cancelled successfully.', {
       data: {
         inviteId: invite.inviteId,
         status: 'cancelled',
@@ -1038,11 +1038,11 @@ const scanGuestInvite = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'guard') {
-      return next(createHttpError('Only guards can scan guest invites', 403));
+      return next(createHttpError('Only guards can scan guest invites.', 403));
     }
 
     const { qrData: qrDataRaw, qrCodeImage, vehicleNumber, accompanyingCount } = req.body || {};
@@ -1051,7 +1051,7 @@ const scanGuestInvite = async (req, res, next) => {
     const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
 
     if (!activeDuty) {
-      return next(createHttpError('You must be on duty to scan guest invites', 400));
+      return next(createHttpError('You must be on duty to scan guest invites.', 400));
     }
 
     let payload;
@@ -1071,17 +1071,17 @@ const scanGuestInvite = async (req, res, next) => {
         const decoded = jsQR(imageData, width, height);
         if (!decoded) {
           console.log('jsQR failed to decode QR code from image');
-          return next(createHttpError('Could not decode QR code from image', 400));
+          return next(createHttpError('Could not decode QR code from image.', 400));
         }
         text = normalizeString(decoded.data);
       }
       if (!text) {
-        return next(createHttpError('qrData is required', 400));
+        return next(createHttpError('qrData is required.', 400));
       }
       payload = JSON.parse(text);
     } catch (e) {
       console.log('QR decode error:', e.message);
-      return next(createHttpError('Invalid QR data', 400));
+      return next(createHttpError('Invalid QR data.', 400));
     }
 
     
@@ -1098,7 +1098,7 @@ const scanGuestInvite = async (req, res, next) => {
         const visitor = await User.findById(payload.userId).select('profilePhoto').lean();
         imageUrl = visitor?.profilePhoto || null;
       }
-      return sendSuccessResponse(res, 200, 'Visitor QR code scanned successfully', {
+      return sendSuccessResponse(res, 200, 'Visitor QR code scanned successfully.', {
         qrType: 'visitor',
         visitorInfo: {
           userId: payload.userId || null,
@@ -1118,7 +1118,7 @@ const scanGuestInvite = async (req, res, next) => {
 
     
     if (qrType === 'gatepal_member') {
-      return sendSuccessResponse(res, 200, 'Member QR code scanned successfully', {
+      return sendSuccessResponse(res, 200, 'Member QR code scanned successfully.', {
         qrType: 'member',
         memberInfo: {
           memberId: payload.memberId || null,
@@ -1135,33 +1135,33 @@ const scanGuestInvite = async (req, res, next) => {
 
     
     if (qrType !== 'gatepal_guest_invite' || !payload.inviteId) {
-      return next(createHttpError('QR code is not a valid GatePal QR', 400));
+      return next(createHttpError('QR code is not a valid GatePal QR.', 400));
     }
 
     const invite = await GuestInvite.findOne({ inviteId: payload.inviteId });
 
     if (!invite) {
-      return next(createHttpError('Guest invite not found or expired', 404));
+      return next(createHttpError('Guest invite not found or expired.', 404));
     }
 
     if (String(invite.societyId) !== String(activeDuty.societyId)) {
-      return next(createHttpError('Invite does not belong to this society', 403));
+      return next(createHttpError('Invite does not belong to this society.', 403));
     }
 
     const now = new Date();
 
     if (invite.status !== 'active') {
-      return next(createHttpError('Invite is no longer active', 400));
+      return next(createHttpError('Invite is no longer active.', 400));
     }
 
     if (now < invite.validFrom) {
-      return next(createHttpError('Invite is not yet valid', 400));
+      return next(createHttpError('Invite is not yet valid.', 400));
     }
 
     if (now > invite.validTill) {
       invite.status = 'expired';
       await invite.save();
-      return next(createHttpError('Invite has expired', 400));
+      return next(createHttpError('Invite has expired.', 400));
     }
 
     
@@ -1173,13 +1173,13 @@ const scanGuestInvite = async (req, res, next) => {
     if (guestId && guestId !== 'group') {
       arrivingGuestIndex = invite.guests.findIndex((g) => g.guestId === guestId);
       if (arrivingGuestIndex === -1) {
-        return next(createHttpError('Guest not found in this invite', 404));
+        return next(createHttpError('Guest not found in this invite.', 404));
       }
       arrivingGuest = invite.guests[arrivingGuestIndex];
 
       
       if (invite.type === 'quick' && arrivingGuest.hasArrived) {
-        return next(createHttpError(`${arrivingGuest.name} has already used this invite`, 400));
+        return next(createHttpError(`${arrivingGuest.name} has already used this invite.`, 400));
       }
     }
 
@@ -1187,7 +1187,7 @@ const scanGuestInvite = async (req, res, next) => {
     const usedEntries = Array.isArray(invite.entryLogs) ? invite.entryLogs.length : 0;
     const hasEntryLimit = invite.type === 'group';
     if (hasEntryLimit && usedEntries >= invite.maxEntries) {
-      return next(createHttpError('Entry limit reached for this invite', 400));
+      return next(createHttpError('Entry limit reached for this invite.', 400));
     }
 
     
@@ -1343,7 +1343,7 @@ const scanGuestInvite = async (req, res, next) => {
     
     const { qrType: responseQrType, ...restResponseData } = responseData;
     
-    return sendSuccessResponse(res, 200, 'Guest invite validated successfully', {
+    return sendSuccessResponse(res, 200, 'Guest invite validated successfully.', {
       qrType: responseQrType,
       data: restResponseData,
     });
@@ -1356,11 +1356,11 @@ const getRecentGuests = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'member') {
-      return next(createHttpError('Only members can view recent guests', 403));
+      return next(createHttpError('Only members can view recent guests.', 403));
     }
 
     const daysNumber = Number(req.body?.days);
@@ -1412,7 +1412,7 @@ const getRecentGuests = async (req, res, next) => {
       .sort((a, b) => new Date(b.lastInvitedAt).getTime() - new Date(a.lastInvitedAt).getTime())
       .slice(0, limit);
 
-    return sendSuccessResponse(res, 200, 'Recent guests fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Recent guests fetched successfully.', {
       data: { guests: recentGuests },
     });
   } catch (error) {
@@ -1424,35 +1424,35 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'guard') {
-      return next(createHttpError('Only guards can update guest invite entry details', 403));
+      return next(createHttpError('Only guards can update guest invite entry details.', 403));
     }
 
     const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
     const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
 
     if (!activeDuty) {
-      return next(createHttpError('You must be on duty to update entry details', 400));
+      return next(createHttpError('You must be on duty to update entry details.', 400));
     }
 
     const { inviteId, guestId, vehicleNumber, accompanyingCount, imageUrl } = req.body || {};
 
     const normalizedInviteId = normalizeString(inviteId);
     if (!normalizedInviteId) {
-      return next(createHttpError('inviteId is required', 400));
+      return next(createHttpError('inviteId is required.', 400));
     }
 
     const invite = await GuestInvite.findOne({ inviteId: normalizedInviteId });
 
     if (!invite) {
-      return next(createHttpError('Guest invite not found', 404));
+      return next(createHttpError('Guest invite not found.', 404));
     }
 
     if (String(invite.societyId) !== String(activeDuty.societyId)) {
-      return next(createHttpError('Invite does not belong to this society', 403));
+      return next(createHttpError('Invite does not belong to this society.', 403));
     }
 
     const logs = Array.isArray(invite.entryLogs) ? invite.entryLogs : [];
@@ -1468,7 +1468,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
     }
 
     if (targetLogIndex === -1) {
-      return next(createHttpError('No entry scan found to update for this invite', 404));
+      return next(createHttpError('No entry scan found to update for this invite.', 404));
     }
 
     const normalizedVehicleNumber =
@@ -1488,7 +1488,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
 
     if (safeCount !== undefined) {
       if (safeCount === null) {
-        return next(createHttpError('accompanyingCount must be a non-negative number', 400));
+        return next(createHttpError('accompanyingCount must be a non-negative number.', 400));
       }
       invite.entryLogs[targetLogIndex].accompanyingCount = safeCount;
     }
@@ -1569,7 +1569,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       remainingEntries,
     };
 
-    return sendSuccessResponse(res, 200, 'Entry details updated successfully', {
+    return sendSuccessResponse(res, 200, 'Entry details updated successfully.', {
       data: responseData,
     });
   } catch (error) {

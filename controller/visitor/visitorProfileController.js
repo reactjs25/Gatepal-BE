@@ -136,22 +136,22 @@ const getVisitorProfile = async (req, res, next) => {
     try {
         const user = req.appUser;
         if (!user) {
-            return next(createHttpError('Unauthorized', 401));
+            return next(createHttpError('Unauthorized.', 401));
         }
 
         if (user.role !== 'visitor') {
-            return next(createHttpError('Only visitors can access this profile', 403));
+            return next(createHttpError('Only visitors can access this profile.', 403));
         }
 
         const qrCodeImageUrl = await ensureVisitorQrCode(user);
         const companyLogo = await resolveCompanyLogo(user.visitorType, user.visitorCompanyName);
         user.qrCodeImage = qrCodeImageUrl;
 
-        return sendSuccessResponse(res, 200, 'Visitor profile fetched successfully', {
+        return sendSuccessResponse(res, 200, 'Visitor profile fetched successfully.', {
             data: buildVisitorProfileResponse(user, { includeQr: true, companyLogo }),
         });
     } catch (error) {
-        return next(setErrorDefaults(error, 'Failed to fetch visitor profile'));
+        return next(setErrorDefaults(error, 'Failed to fetch visitor profile.'));
     }
 };
 
@@ -159,11 +159,11 @@ const updateVisitorProfile = async (req, res, next) => {
     try {
         const user = req.appUser;
         if (!user) {
-            return next(createHttpError('Unauthorized', 401));
+            return next(createHttpError('Unauthorized.', 401));
         }
 
         if (user.role !== 'visitor') {
-            return next(createHttpError('Only visitors can update this profile', 403));
+            return next(createHttpError('Only visitors can update this profile.', 403));
         }
 
         const payload = req.body || {};
@@ -196,7 +196,7 @@ const updateVisitorProfile = async (req, res, next) => {
         if (fullNameRaw !== undefined) {
             const candidateName = toTitleCaseName(fullNameRaw);
             if (!candidateName) {
-                return next(createHttpError('fullName cannot be empty', 400));
+                return next(createHttpError('fullName cannot be empty.', 400));
             }
             updates.fullName = candidateName;
             shouldInvalidateQr = true;
@@ -205,24 +205,24 @@ const updateVisitorProfile = async (req, res, next) => {
         if (phoneNumberRaw !== undefined) {
             const digits = String(phoneNumberRaw).replace(/\D/g, '');
             if (!digits || digits.length !== 10) {
-                return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+                return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
             }
 
             const alreadyUser = await User.exists({ phoneNumber: digits, _id: { $ne: user._id } });
             if (alreadyUser) {
-                return next(createHttpError('This phone number already exists in the system', 409));
+                return next(createHttpError('This phone number already exists in the system.', 409));
             }
 
             const saExists = await SuperAdmin.exists({ phoneNumber: digits });
             if (saExists) {
-                return next(createHttpError('This phone number already exists in the system', 409));
+                return next(createHttpError('This phone number already exists in the system.', 409));
             }
 
             const adminMatch = await lookupSocietyAdminByMobile(digits);
             if (adminMatch) {
                 const linkedId = user.linkedSocietyAdminId || null;
                 if (!linkedId || String(linkedId) !== String(adminMatch.adminId)) {
-                    return next(createHttpError('This phone number already exists in the system', 409));
+                    return next(createHttpError('This phone number already exists in the system.', 409));
                 }
             }
 
@@ -238,7 +238,7 @@ const updateVisitorProfile = async (req, res, next) => {
                 if (!/^[A-Z0-9]{4,15}$/.test(candidate)) {
                     return next(
                         createHttpError(
-                            'vehicleNumber must be alphanumeric without spaces or special characters',
+                            'vehicleNumber must be alphanumeric without spaces or special characters.',
                             400
                         )
                     );
@@ -253,7 +253,7 @@ const updateVisitorProfile = async (req, res, next) => {
                 updates.visitorCompanyName = null;
             } else {
                 if (candidate.length < 2 || candidate.length > 80) {
-                    return next(createHttpError('companyName must be between 2 and 80 characters', 400));
+                    return next(createHttpError('companyName must be between 2 and 80 characters.', 400));
                 }
                 updates.visitorCompanyName = candidate;
             }
@@ -265,14 +265,14 @@ const updateVisitorProfile = async (req, res, next) => {
                 updates.visitorWorkCategory = null;
             } else {
                 if (candidate.length < 3 || candidate.length > 60) {
-                    return next(createHttpError('subCategory must be between 3 and 60 characters', 400));
+                    return next(createHttpError('subCategory must be between 3 and 60 characters.', 400));
                 }
                 updates.visitorWorkCategory = candidate;
             }
         }
 
         if (Object.keys(updates).length === 0) {
-            return sendSuccessResponse(res, 200, 'No changes provided');
+            return sendSuccessResponse(res, 200, 'No changes provided.');
         }
 
         Object.assign(user, updates);
@@ -306,11 +306,11 @@ const updateVisitorProfile = async (req, res, next) => {
         const companyLogo = await resolveCompanyLogo(user.visitorType, user.visitorCompanyName);
         user.qrCodeImage = qrCodeImageUrl;
 
-        return sendSuccessResponse(res, 200, 'Visitor profile updated successfully', {
+        return sendSuccessResponse(res, 200, 'Visitor profile updated successfully.', {
             data: buildVisitorProfileResponse(user, { includeQr: true, companyLogo }),
         });
     } catch (error) {
-        return next(setErrorDefaults(error, 'Failed to update visitor profile'));
+        return next(setErrorDefaults(error, 'Failed to update visitor profile.'));
     }
 };
 

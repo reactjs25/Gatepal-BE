@@ -19,7 +19,7 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   const digitsOnly = normalizeDigits(rawPhone);
 
   if (!digitsOnly) {
-    throw createHttpError('Phone number is required', 400);
+    throw createHttpError('Phone number is required.', 400);
   }
 
   const normalizedCountryCode = normalizeCountryCode(countryCode);
@@ -146,13 +146,13 @@ const login = async (req, res, next) => {
     const { role, countryCode, phoneNumber, password, fcmToken, deviceType, deviceId } = req.body;
 
     if (!role || !phoneNumber || !password) {
-      throw createHttpError('Role, phone number, and password are required', 400);
+      throw createHttpError('Role, phone number, and password are required.', 400);
     }
 
     const principal = await findPrincipal({ role, countryCode, phoneNumber });
 
     if (!principal) {
-      throw createHttpError('Account not found for the provided details', 404);
+      throw createHttpError('Account not found for the provided details.', 404);
     }
 
 
@@ -164,17 +164,17 @@ const login = async (req, res, next) => {
     
 
     if (normalizedRequestedRole === ROLE_TYPES.MEMBER && !allowedMemberAppRoles.has(principal.role)) {
-      throw createHttpError('Invalid credentials', 401);
+      throw createHttpError('Invalid credentials.', 401);
     }
     
     
     if (normalizedRequestedRole === ROLE_TYPES.GUARD && !allowedGuardAppRoles.has(principal.role)) {
-      throw createHttpError('Invalid credentials', 401);
+      throw createHttpError('Invalid credentials.', 401);
     }
     
     
     if (normalizedRequestedRole === ROLE_TYPES.VISITOR && !allowedVisitorAppRoles.has(principal.role)) {
-      throw createHttpError('Invalid credentials', 401);
+      throw createHttpError('Invalid credentials.', 401);
     }
 
     ensureAccountIsActive(principal);
@@ -217,7 +217,7 @@ const login = async (req, res, next) => {
     }
 
     if (!isPasswordValid) {
-      throw createHttpError('Invalid credentials', 401);
+      throw createHttpError('Invalid credentials.', 401);
     }
 
     const token = generateUserAuthToken({
@@ -306,7 +306,7 @@ const login = async (req, res, next) => {
       }
     }
 
-    return sendSuccessResponse(res, 200, 'Login successful', {
+    return sendSuccessResponse(res, 200, 'Login successful.', {
       data: mapPrincipalResponse(principal),
       token,
     });
@@ -320,13 +320,13 @@ const requestPasswordOtp = async (req, res, next) => {
     const { role, countryCode, phoneNumber } = req.body;
 
     if (!role || !phoneNumber) {
-      throw createHttpError('Role and mobile number are required', 400);
+      throw createHttpError('Role and mobile number are required.', 400);
     }
 
     const principal = await findPrincipal({ role, countryCode, phoneNumber });
 
     if (!principal) {
-      throw createHttpError('Account not found for the provided details', 404);
+      throw createHttpError('Account not found for the provided details.', 404);
     }
 
     ensureAccountIsActive(principal);
@@ -342,7 +342,7 @@ const requestPasswordOtp = async (req, res, next) => {
 
     await principal.save();
 
-    return sendSuccessResponse(res, 200, 'OTP sent successfully', {
+    return sendSuccessResponse(res, 200, 'OTP sent successfully.', {
       data: {
         otpValidForMs: OTP_TTL_IN_MS,
         otp,
@@ -358,13 +358,13 @@ const verifyOtp = async (req, res, next) => {
     const { role, countryCode, phoneNumber, otp } = req.body;
 
     if (!role || !phoneNumber || !otp) {
-      throw createHttpError('Role, mobile number, and OTP are required', 400);
+      throw createHttpError('Role, mobile number, and OTP are required.', 400);
     }
 
     const principal = await findPrincipal({ role, countryCode, phoneNumber });
 
     if (!principal) {
-      throw createHttpError('Account not found for the provided details', 404);
+      throw createHttpError('Account not found for the provided details.', 404);
     }
 
     ensureAccountIsActive(principal);
@@ -383,7 +383,7 @@ const verifyOtp = async (req, res, next) => {
 
     await principal.save();
 
-    return sendSuccessResponse(res, 200, 'OTP verified successfully', {
+    return sendSuccessResponse(res, 200, 'OTP verified successfully.', {
       data: {
         resetToken,
         resetTokenExpiresAt: Date.now() + PASSWORD_RESET_TOKEN_TTL,
@@ -399,13 +399,13 @@ const resetPassword = async (req, res, next) => {
     const { role, countryCode, phoneNumber, password, resetToken } = req.body;
 
     if (!role || !phoneNumber || !password || !resetToken) {
-      throw createHttpError('Role, mobile number, password, and reset token are required', 400);
+      throw createHttpError('Role, mobile number, password, and reset token are required.', 400);
     }
 
     const principal = await findPrincipal({ role, countryCode, phoneNumber });
 
     if (!principal) {
-      throw createHttpError('Account not found for the provided details', 404);
+      throw createHttpError('Account not found for the provided details.', 404);
     }
 
     ensureAccountIsActive(principal);
@@ -417,7 +417,7 @@ const resetPassword = async (req, res, next) => {
       principal.doc.resetPasswordExpires.getTime() > Date.now();
 
     if (!tokenMatches) {
-      throw createHttpError('Invalid or expired reset token', 400);
+      throw createHttpError('Invalid or expired reset token.', 400);
     }
 
     if (principal.type === 'user') {
@@ -441,7 +441,7 @@ const resetPassword = async (req, res, next) => {
           : {},
     });
 
-    return sendSuccessResponse(res, 200, 'Password reset successful', {
+    return sendSuccessResponse(res, 200, 'Password reset successful.', {
       data: mapPrincipalResponse(principal),
       token,
     });
@@ -455,24 +455,24 @@ const registerFcmToken = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const { fcmToken, deviceType, deviceId } = req.body;
 
     if (!fcmToken) {
-      throw createHttpError('fcmToken is required', 400);
+      throw createHttpError('fcmToken is required.', 400);
     }
 
     const normalizedDeviceType = (deviceType || 'android').toLowerCase();
     if (!['android', 'ios', 'web'].includes(normalizedDeviceType)) {
-      throw createHttpError('deviceType must be android, ios, or web', 400);
+      throw createHttpError('deviceType must be android, ios, or web.', 400);
     }
 
     
     const user = await User.findById(authUser._id);
     if (!user) {
-      throw createHttpError('User not found', 404);
+      throw createHttpError('User not found.', 404);
     }
 
     
@@ -510,7 +510,7 @@ const registerFcmToken = async (req, res, next) => {
 
     await user.save();
 
-    return sendSuccessResponse(res, 200, 'FCM token registered successfully', {
+    return sendSuccessResponse(res, 200, 'FCM token registered successfully.', {
       data: {
         tokenCount: user.fcmTokens.length,
       },
@@ -525,20 +525,20 @@ const removeFcmToken = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const { fcmToken } = req.body;
 
     if (!fcmToken) {
-      throw createHttpError('fcmToken is required', 400);
+      throw createHttpError('fcmToken is required.', 400);
     }
 
     await User.findByIdAndUpdate(authUser._id, {
       $pull: { fcmTokens: { token: fcmToken } },
     });
 
-    return sendSuccessResponse(res, 200, 'FCM token removed successfully');
+    return sendSuccessResponse(res, 200, 'FCM token removed successfully.');
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to remove FCM token'));
   }

@@ -256,22 +256,22 @@ const buildMaintenanceReceiptPdf = async ({
   });
 
 const resolveAdminSociety = async (authUser) => {
-  if (!authUser) throw createHttpError('Unauthorized', 401);
+  if (!authUser) throw createHttpError('Unauthorized.', 401);
   if (authUser.adminSocietyId) {
     const society = await Society.findById(authUser.adminSocietyId).lean();
-    if (!society) throw createHttpError('Society not found', 404);
+    if (!society) throw createHttpError('Society not found.', 404);
     return society;
   }
   const linkedId = authUser.linkedSocietyAdminId || null;
   if (linkedId) {
     const society = await Society.findOne({ 'societyAdmins._id': linkedId }).lean();
-    if (!society) throw createHttpError('Society not found', 404);
+    if (!society) throw createHttpError('Society not found.', 404);
     return society;
   }
   const match = await lookupSocietyAdminByMobile(authUser.phoneNumber || '');
-  if (!match) throw createHttpError('Society not found', 404);
+  if (!match) throw createHttpError('Society not found.', 404);
   const society = await Society.findById(match.societyId).lean();
-  if (!society) throw createHttpError('Society not found', 404);
+  if (!society) throw createHttpError('Society not found.', 404);
   return society;
 };
 
@@ -313,7 +313,7 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
 
     const year = Math.round(Number((req.body && req.body.year) || (req.query && req.query.year) || new Date().getFullYear()));
     if (!Number.isFinite(year) || String(year).length !== 4) {
-      return next(createHttpError('year must be a 4-digit number', 400));
+      return next(createHttpError('year must be a 4-digit number.', 400));
     }
 
     const now = new Date();
@@ -381,7 +381,7 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
       // For future years, only show months that have any uploads/records.
       monthsToReturn = MONTH_LABELS.filter((m) => (docsByMonth[m] || []).length > 0);
       if (monthsToReturn.length === 0) {
-        return sendSuccessResponse(res, 200, 'Maintenance yearly summary fetched successfully', {
+        return sendSuccessResponse(res, 200, 'Maintenance yearly summary fetched successfully.', {
           data: null,
         });
       }
@@ -456,7 +456,7 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
       };
     });
 
-    return sendSuccessResponse(res, 200, 'Maintenance yearly summary fetched successfully', { data });
+    return sendSuccessResponse(res, 200, 'Maintenance yearly summary fetched successfully.', { data });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch maintenance yearly summary'));
   }
@@ -469,10 +469,10 @@ const getMaintenanceSummaryByMonth = async (req, res, next) => {
 
     const monthRaw = (req.body && req.body.month) || '';
     const month = toCanonicalMonth(monthRaw);
-    if (!month) return next(createHttpError('Invalid month', 400));
+    if (!month) return next(createHttpError('Invalid month.', 400));
     const year = Math.round(Number((req.body && req.body.year) || new Date().getFullYear()));
     if (!Number.isFinite(year) || String(year).length !== 4) {
-      return next(createHttpError('year must be a 4-digit number', 400));
+      return next(createHttpError('year must be a 4-digit number.', 400));
     }
 
     const wings = Array.isArray(society.structure) ? society.structure : [];
@@ -546,7 +546,7 @@ const getMaintenanceSummaryByMonth = async (req, res, next) => {
 
     const totalPending = owner.pending + tenant.pending;
 
-    return sendSuccessResponse(res, 200, 'Maintenance summary fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Maintenance summary fetched successfully.', {
       data: {
         monthLabel: `${month} ${year}`,
         societyId: String(society._id),
@@ -570,10 +570,10 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
 
     const monthRaw = (req.body && req.body.month) || '';
     const month = toCanonicalMonth(monthRaw);
-    if (!month) return next(createHttpError('Invalid month parameter', 400));
+    if (!month) return next(createHttpError('Invalid month parameter.', 400));
     const year = Math.round(Number((req.body && req.body.year) || new Date().getFullYear()));
     if (!Number.isFinite(year) || String(year).length !== 4) {
-      return next(createHttpError('year must be a 4-digit number', 400));
+      return next(createHttpError('year must be a 4-digit number.', 400));
     }
 
     const statusRaw = normalizeString((req.body && req.body.status) || '');
@@ -587,7 +587,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
       } else {
         const statusCanonicalMap = { uploaded: 'UPLOADED', verified: 'VERIFIED', rejected: 'REJECTED' };
         const canonical = statusCanonicalMap[s] || null;
-        if (!canonical) return next(createHttpError('Invalid status parameter', 400));
+        if (!canonical) return next(createHttpError('Invalid status parameter.', 400));
         const legacyMap = { UPLOADED: 'Uploaded', VERIFIED: 'Verified', REJECTED: 'Rejected' };
         statusQuery = { $in: [canonical, legacyMap[canonical]] };
       }
@@ -818,7 +818,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
       data = dataUploaded.concat(synthetic);
     }
 
-    return sendSuccessResponse(res, 200, 'Maintenance uploads fetched successfully', { data });
+    return sendSuccessResponse(res, 200, 'Maintenance uploads fetched successfully.', { data });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch maintenance uploads'));
   }
@@ -830,22 +830,22 @@ const verifyMaintenance = async (req, res, next) => {
     const society = await resolveAdminSociety(authUser);
 
     const maintenanceId = normalizeString((req.body && req.body.maintenanceId) || '');
-    if (!maintenanceId) return next(createHttpError('maintenanceId is required', 400));
+    if (!maintenanceId) return next(createHttpError('maintenanceId is required.', 400));
 
     const doc = await Maintenance.findOne({ maintenanceId });
-    if (!doc) return next(createHttpError('Maintenance not found', 404));
+    if (!doc) return next(createHttpError('Maintenance not found.', 404));
 
     const prefix = `${String(society._id)}:`;
     if (!String(doc.unitId).startsWith(prefix)) {
-      return next(createHttpError('Maintenance does not belong to this society', 403));
+      return next(createHttpError('Maintenance does not belong to this society.', 403));
     }
 
-    if (doc.deletedAt) return next(createHttpError('Maintenance not found', 404));
+    if (doc.deletedAt) return next(createHttpError('Maintenance not found.', 404));
     if (doc.status && doc.status.toLowerCase() === 'verified') {
-      return next(createHttpError('Maintenance already verified', 409));
+      return next(createHttpError('Maintenance already verified.', 409));
     }
     if (doc.status && doc.status.toLowerCase() === 'rejected') {
-      return next(createHttpError('Maintenance is rejected and cannot be verified', 409));
+      return next(createHttpError('Maintenance is rejected and cannot be verified.', 409));
     }
 
     const { unitWing, unitNumber, unitCategory, ownerName, amount, transactionDate, uploadedBy, proofImageUrl, uploadedOn, monthLabel } = req.body || {};
@@ -869,55 +869,55 @@ const verifyMaintenance = async (req, res, next) => {
     const uploaderUser = await User.findById(doc.memberId, { fullName: 1 }).lean();
 
     if (unitWing !== undefined && normalizeString(unitWing) !== normalizeString(expectedWing)) {
-      return next(createHttpError('Payload unitWing does not match record', 409));
+      return next(createHttpError('Payload unitWing does not match record.', 409));
     }
     if (unitNumber !== undefined && normalizeString(unitNumber) !== normalizeString(expectedNumber)) {
-      return next(createHttpError('Payload unitNumber does not match record', 409));
+      return next(createHttpError('Payload unitNumber does not match record.', 409));
     }
     if (unitCategory !== undefined && normalizeString(unitCategory) !== normalizeString(expectedCategory)) {
-      return next(createHttpError('Payload unitCategory does not match record', 409));
+      return next(createHttpError('Payload unitCategory does not match record.', 409));
     }
     if (ownerName !== undefined && normalizeString(ownerName) !== normalizeString(ownerUser ? ownerUser.fullName : '')) {
-      return next(createHttpError('Payload ownerName does not match record', 409));
+      return next(createHttpError('Payload ownerName does not match record.', 409));
     }
     if (amount !== undefined && Number(amount) !== doc.amount) {
-      return next(createHttpError('Payload amount does not match record', 409));
+      return next(createHttpError('Payload amount does not match record.', 409));
     }
     if (transactionDate !== undefined) {
       const txDatePayload = new Date(transactionDate);
       if (Number.isNaN(txDatePayload.getTime())) {
-        return next(createHttpError('transactionDate must be a valid date', 400));
+        return next(createHttpError('transactionDate must be a valid date.', 400));
       }
       const toDateOnlyStr = (d) => new Date(d).toISOString().split('T')[0];
       if (toDateOnlyStr(txDatePayload) !== toDateOnlyStr(doc.transactionDate)) {
-        return next(createHttpError('Payload transactionDate does not match record', 409));
+        return next(createHttpError('Payload transactionDate does not match record.', 409));
       }
     }
     if (uploadedBy !== undefined && normalizeString(uploadedBy) !== normalizeString(uploaderUser ? uploaderUser.fullName : '')) {
-      return next(createHttpError('Payload uploadedBy does not match record', 409));
+      return next(createHttpError('Payload uploadedBy does not match record.', 409));
     }
 
     if (!proofImageUrl) {
-      return next(createHttpError('proofImageUrl is required', 400));
+      return next(createHttpError('proofImageUrl is required.', 400));
     }
     const formattedProof = ensureBase64ImageDataUrl({ value: proofImageUrl, fieldLabel: 'Proof of Maintenance' });
     if (normalizeString(formattedProof) !== normalizeString(doc.proofImageUrl)) {
-      return next(createHttpError('Payload proofImageUrl does not match record', 409));
+      return next(createHttpError('Payload proofImageUrl does not match record.', 409));
     }
     if (!uploadedOn) {
-      return next(createHttpError('uploadedOn is required', 400));
+      return next(createHttpError('uploadedOn is required.', 400));
     }
     const expectedUploadedOn = toISTDateTimeLabel(doc.createdAt);
     if (normalizeString(uploadedOn) !== normalizeString(expectedUploadedOn)) {
-      return next(createHttpError('Payload uploadedOn does not match record', 409));
+      return next(createHttpError('Payload uploadedOn does not match record.', 409));
     }
     if (!monthLabel) {
-      return next(createHttpError('monthLabel is required', 400));
+      return next(createHttpError('monthLabel is required.', 400));
     }
     const canonicalPayloadMonthLabel = toCanonicalMonthLabel(monthLabel);
     const canonicalExpectedMonthLabel = `${doc.month} ${doc.year}`;
     if (canonicalPayloadMonthLabel !== canonicalExpectedMonthLabel) {
-      return next(createHttpError('Payload monthLabel does not match record', 409));
+      return next(createHttpError('Payload monthLabel does not match record.', 409));
     }
 
     if (!doc.receiptNumber) {
@@ -966,7 +966,7 @@ const verifyMaintenance = async (req, res, next) => {
 
     const receiptBase64 = receiptBuffer.toString('base64');
 
-    return sendSuccessResponse(res, 200, 'Maintenance verified successfully', {
+    return sendSuccessResponse(res, 200, 'Maintenance verified successfully.', {
       data: {
         maintenanceId: doc.maintenanceId,
         monthLabel: `${doc.month} ${doc.year}`,
@@ -995,37 +995,37 @@ const rejectMaintenance = async (req, res, next) => {
     const society = await resolveAdminSociety(authUser);
 
     const maintenanceId = normalizeString((req.body && req.body.maintenanceId) || '');
-    if (!maintenanceId) return next(createHttpError('maintenanceId is required', 400));
+    if (!maintenanceId) return next(createHttpError('maintenanceId is required.', 400));
 
     const { unitId, rejectReason, description } = req.body || {};
     const reasonRaw = normalizeString(rejectReason);
-    if (!reasonRaw) return next(createHttpError('rejectReason is required', 400));
+    if (!reasonRaw) return next(createHttpError('rejectReason is required.', 400));
     const reasonLower = reasonRaw.toLowerCase();
     const reasonCanonical = reasonLower.replace(/\s+/g, '_');
     if (!MAINTENANCE_REJECT_REASON_CODES.has(reasonCanonical)) {
-      return next(createHttpError('Invalid rejectReason', 400));
+      return next(createHttpError('Invalid rejectReason.', 400));
     }
     const desc = normalizeString(description);
     if (reasonCanonical === 'others' && !desc) {
-      return next(createHttpError('description is required when rejectReason is Others', 400));
+      return next(createHttpError('description is required when rejectReason is Others.', 400));
     }
 
     const doc = await Maintenance.findOne({ maintenanceId });
-    if (!doc) return next(createHttpError('Maintenance not found', 404));
+    if (!doc) return next(createHttpError('Maintenance not found.', 404));
 
     const prefix = `${String(society._id)}:`;
     if (!String(doc.unitId).startsWith(prefix)) {
-      return next(createHttpError('Maintenance does not belong to this society', 403));
+      return next(createHttpError('Maintenance does not belong to this society.', 403));
     }
-    if (doc.deletedAt) return next(createHttpError('Maintenance not found', 404));
+    if (doc.deletedAt) return next(createHttpError('Maintenance not found.', 404));
     if (doc.status && doc.status.toLowerCase() === 'verified') {
-      return next(createHttpError('Verified maintenance cannot be rejected', 409));
+      return next(createHttpError('Verified maintenance cannot be rejected.', 409));
     }
     if (doc.status && doc.status.toLowerCase() === 'rejected') {
-      return next(createHttpError('Maintenance already rejected', 409));
+      return next(createHttpError('Maintenance already rejected.', 409));
     }
 
-    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
     const parseUnit = (u) => {
       const parts = String(u || '').split(':');
       return { societyId: parts[0] || '', wingLower: parts[1] || '', unitLower: parts[2] || '' };
@@ -1035,7 +1035,7 @@ const rejectMaintenance = async (req, res, next) => {
     const acceptableUnitIds = new Set([String(doc.unitId)]);
     for (const u of unitDocs) acceptableUnitIds.add(String(u._id));
     if (!acceptableUnitIds.has(String(unitId))) {
-      return next(createHttpError('unitId does not match record', 409));
+      return next(createHttpError('unitId does not match record.', 409));
     }
 
     doc.status = 'Rejected';
@@ -1067,7 +1067,7 @@ const rejectMaintenance = async (req, res, next) => {
     const uploaderUser = await User.findById(doc.memberId, { fullName: 1 }).lean();
     const primaryUnitDoc = unitDocs.find((u) => u.occupantType === 'unit_owner') || unitDocs.find((u) => u.occupantType === 'tenant') || unitDocs[0] || null;
 
-    return sendSuccessResponse(res, 200, 'Maintenance rejected successfully', {
+    return sendSuccessResponse(res, 200, 'Maintenance rejected successfully.', {
       data: {
         maintenanceId: doc.maintenanceId,
         monthLabel: `${doc.month} ${doc.year}`,
@@ -1102,7 +1102,7 @@ const getMaintenanceRejectReasonCategories = async (req, res, next) => {
       name,
     }));
 
-    return sendSuccessResponse(res, 200, 'Maintenance reject reason categories fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Maintenance reject reason categories fetched successfully.', {
       data: categories,
     });
   } catch (error) {
@@ -1119,3 +1119,17 @@ module.exports = {
   getMaintenanceRejectReasonCategories,
   buildMaintenanceReceiptPdf,
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -7,13 +7,13 @@ const getGuardLogs = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
   
     const societyId = req.user?.societyId || user.societyId;
     if (!societyId) {
-      return next(createHttpError('Society not found for this admin', 400));
+      return next(createHttpError('Society not found for this admin.', 400));
     }
 
     const { filter } = req.body || {};
@@ -53,7 +53,7 @@ const getGuardLogs = async (req, res, next) => {
       gateName: log.gateName || null,
     }));
 
-    return sendSuccessResponse(res, 200, 'Guard logs fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Guard logs fetched successfully.', {
       data: formattedLogs,
     });
   } catch (error) {
@@ -64,3 +64,5 @@ const getGuardLogs = async (req, res, next) => {
 module.exports = {
   getGuardLogs,
 };
+
+

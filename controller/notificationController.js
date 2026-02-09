@@ -41,7 +41,7 @@ const sendTestNotification = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const { title = 'Test Notification', body = 'This is a test push notification from GatePal!', type = 'general' } = req.body;
@@ -77,7 +77,7 @@ const sendTestNotification = async (req, res, next) => {
       );
     }
 
-    return sendSuccessResponse(res, 200, 'Test notification sent', {
+    return sendSuccessResponse(res, 200, 'Test notification sent.', {
       data: {
         fcmResult: result,
         userId: targetId,
@@ -104,7 +104,7 @@ const getNotifications = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const query = getNotificationQuery(req);
@@ -139,7 +139,7 @@ const getNotifications = async (req, res, next) => {
       data: n.data || {},
     }));
 
-    return sendSuccessResponse(res, 200, 'Notifications fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Notifications fetched successfully.', {
       data: formattedNotifications,
       unreadCount,
     });
@@ -156,7 +156,7 @@ const getUnreadCount = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const query = getNotificationQuery(req);
@@ -164,7 +164,7 @@ const getUnreadCount = async (req, res, next) => {
 
     const unreadCount = await Notification.countDocuments(query);
 
-    return sendSuccessResponse(res, 200, 'Unread count fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Unread count fetched successfully.', {
       data: { unreadCount },
     });
   } catch (error) {
@@ -180,7 +180,7 @@ const markAsRead = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const { id } = req.params;
@@ -195,10 +195,10 @@ const markAsRead = async (req, res, next) => {
     );
 
     if (!notification) {
-      throw createHttpError('Notification not found', 404);
+      throw createHttpError('Notification not found.', 404);
     }
 
-    return sendSuccessResponse(res, 200, 'Notification marked as read', {
+    return sendSuccessResponse(res, 200, 'Notification marked as read.', {
       data: notification,
     });
   } catch (error) {
@@ -215,13 +215,13 @@ const markMultipleAsRead = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const { notificationIds } = req.body;
 
     if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
-      throw createHttpError('notificationIds array is required', 400);
+      throw createHttpError('notificationIds array is required.', 400);
     }
 
     const query = getNotificationQuery(req);
@@ -233,7 +233,7 @@ const markMultipleAsRead = async (req, res, next) => {
       { isRead: true, readAt: new Date() }
     );
 
-    return sendSuccessResponse(res, 200, 'Notifications marked as read', {
+    return sendSuccessResponse(res, 200, 'Notifications marked as read.', {
       data: { modifiedCount: result.modifiedCount },
     });
   } catch (error) {
@@ -249,7 +249,7 @@ const markAllAsRead = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const query = getNotificationQuery(req);
@@ -260,7 +260,7 @@ const markAllAsRead = async (req, res, next) => {
       { isRead: true, readAt: new Date() }
     );
 
-    return sendSuccessResponse(res, 200, 'All notifications marked as read', {
+    return sendSuccessResponse(res, 200, 'All notifications marked as read.', {
       data: { modifiedCount: result.modifiedCount },
     });
   } catch (error) {
@@ -276,7 +276,7 @@ const deleteNotification = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const { id } = req.params;
@@ -287,10 +287,10 @@ const deleteNotification = async (req, res, next) => {
     const notification = await Notification.findOneAndDelete(query);
 
     if (!notification) {
-      throw createHttpError('Notification not found', 404);
+      throw createHttpError('Notification not found.', 404);
     }
 
-    return sendSuccessResponse(res, 200, 'Notification deleted successfully');
+    return sendSuccessResponse(res, 200, 'Notification deleted successfully.');
   } catch (error) {
     return next(error);
   }
@@ -304,7 +304,7 @@ const clearReadNotifications = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      throw createHttpError('Unauthorized', 401);
+      throw createHttpError('Unauthorized.', 401);
     }
 
     const query = getNotificationQuery(req);
@@ -312,7 +312,7 @@ const clearReadNotifications = async (req, res, next) => {
 
     const result = await Notification.deleteMany(query);
 
-    return sendSuccessResponse(res, 200, 'Read notifications cleared', {
+    return sendSuccessResponse(res, 200, 'Read notifications cleared.', {
       data: { deletedCount: result.deletedCount },
     });
   } catch (error) {

@@ -51,17 +51,17 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
   const normalizedVisitorType = (visitorType || '').toString().trim().toLowerCase();
 
   if (!normalizedVisitorType) {
-    throw createHttpError('Visitor type is required for onboarding', 400);
+    throw createHttpError('Visitor type is required for onboarding.', 400);
   }
 
   if (!SUPPORTED_VISITOR_TYPES.has(normalizedVisitorType)) {
-    throw createHttpError('Unsupported visitor type provided', 400);
+    throw createHttpError('Unsupported visitor type provided.', 400);
   }
 
   const sanitizedFullName = toTitleCaseName(fullName);
 
   if (!sanitizedFullName) {
-    throw createHttpError('Full name is required for visitor onboarding', 400);
+    throw createHttpError('Full name is required for visitor onboarding.', 400);
   }
 
   const hasProfilePhoto = Boolean((profilePhoto || '').trim());
@@ -120,16 +120,16 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
     sanitizedVehicleNumber = vehicleNumber?.toString().trim().toUpperCase();
 
     if (!sanitizedCompanyName) {
-      throw createHttpError('Company name is required for this visitor type', 400);
+      throw createHttpError('Company name is required for this visitor type.', 400);
     }
 
     if (!sanitizedVehicleNumber) {
-      throw createHttpError('Vehicle number is required for this visitor type', 400);
+      throw createHttpError('Vehicle number is required for this visitor type.', 400);
     }
 
     if (!/^[A-Z0-9]{4,15}$/.test(sanitizedVehicleNumber)) {
       throw createHttpError(
-        'Vehicle number must be alphanumeric without spaces or special characters',
+        'Vehicle number must be alphanumeric without spaces or special characters.',
         400
       );
     }
@@ -152,11 +152,11 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
     sanitizedWorkCategory = workCategory?.trim();
 
     if (!sanitizedWorkCategory) {
-      throw createHttpError('Work category is required for other visitors', 400);
+      throw createHttpError('Work category is required for other visitors.', 400);
     }
 
     if (sanitizedWorkCategory.length < 3 || sanitizedWorkCategory.length > 60) {
-      throw createHttpError('Work category must be between 3 and 60 characters', 400);
+      throw createHttpError('Work category must be between 3 and 60 characters.', 400);
     }
   }
 
@@ -168,7 +168,7 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
     normalizedVisitorType !== VISITOR_TYPES.GUEST &&
     !VEHICLE_REQUIRED_VISITOR_TYPES.has(normalizedVisitorType)
   ) {
-    throw createHttpError('Onboarding for this visitor type is not yet supported', 400);
+    throw createHttpError('Onboarding for this visitor type is not yet supported.', 400);
   }
 
   if (VEHICLE_REQUIRED_VISITOR_TYPES.has(normalizedVisitorType)) {

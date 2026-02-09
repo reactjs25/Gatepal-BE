@@ -59,24 +59,24 @@ const handleMemberOnboarding = async ({ user, payload }) => {
 
   if (!fullName || !email || !societyName || !societyPin || !wingName || !unitNumber) {
     throw createHttpError(
-      'Full name, email, society name, society pin, wing, and unit details are required for onboarding',
+      'Full name, email, society name, society pin, wing, and unit details are required for onboarding.',
       400
     );
   }
 
   if (!country || !city) {
-    throw createHttpError('Country and city are required for onboarding', 400);
+    throw createHttpError('Country and city are required for onboarding.', 400);
   }
 
   if (!OCCUPANT_TYPES.has(occupantType)) {
-    throw createHttpError('Invalid occupant type provided', 400);
+    throw createHttpError('Invalid occupant type provided.', 400);
   }
 
   if (!OCCUPANCY_STATUSES.has(occupancyStatus)) {
     if (occupantType === 'tenant' || occupantType === 'tenant_family_member') {
       occupancyStatus = 'unit_rented';
     } else {
-      throw createHttpError('Invalid occupancy status provided', 400);
+      throw createHttpError('Invalid occupancy status provided.', 400);
     }
   }
 
@@ -89,7 +89,7 @@ const handleMemberOnboarding = async ({ user, payload }) => {
   });
 
   if (!society) {
-    throw createHttpError('Society not found for provided name and pin', 404);
+    throw createHttpError('Society not found for provided name and pin.', 404);
   }
 
   user.fullName = fullName;

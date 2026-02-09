@@ -23,11 +23,11 @@ const normalizeCompanyId = (name) =>
 
 const parseDateTime = (value, fieldLabel) => {
   if (!value) {
-    throw createHttpError(`${fieldLabel} is required`, 400);
+    throw createHttpError(`${fieldLabel} is required.`, 400);
   }
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) {
-    throw createHttpError(`Invalid ${fieldLabel} format`, 400);
+    throw createHttpError(`Invalid ${fieldLabel} format.`, 400);
   }
   return d;
 };
@@ -42,16 +42,16 @@ const computeValidityWindow = ({ validFrom, validTill, validityHours }) => {
   } else {
     const hours = Number(validityHours);
     if (!Number.isFinite(hours) || hours <= 0) {
-      throw createHttpError('validityHours must be a positive number', 400);
+      throw createHttpError('validityHours must be a positive number.', 400);
     }
     if (hours > 24) {
-      throw createHttpError('validityHours cannot exceed 24 hours', 400);
+      throw createHttpError('validityHours cannot exceed 24 hours.', 400);
     }
     end = new Date(start.getTime() + hours * 60 * 60 * 1000);
   }
 
   if (end <= start) {
-    throw createHttpError('validTill must be after validFrom', 400);
+    throw createHttpError('validTill must be after validFrom.', 400);
   }
 
   return { validFrom: start, validTill: end };
@@ -82,11 +82,11 @@ const computeUiBasedValidityWindow = ({
     normalizedDateOption === 'custom'
   ) {
     if (!selectedDate) {
-      throw createHttpError('selectedDate is required when dateOption is selectDate', 400);
+      throw createHttpError('selectedDate is required when dateOption is selectDate.', 400);
     }
     const parsed = new Date(selectedDate);
     if (Number.isNaN(parsed.getTime())) {
-      throw createHttpError('Invalid selectedDate format', 400);
+      throw createHttpError('Invalid selectedDate format.', 400);
     }
     baseDate = new Date(parsed);
     baseDate.setHours(0, 0, 0, 0);
@@ -122,7 +122,7 @@ const computeUiBasedValidityWindow = ({
     }
 
     if (end <= start) {
-      throw createHttpError('Computed validity end time must be after start time', 400);
+      throw createHttpError('Computed validity end time must be after start time.', 400);
     }
 
     return { validFrom: start, validTill: end };
@@ -183,11 +183,11 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can create taxi driver pre-approvals', 403));
+      return next(createHttpError('Only members can create taxi driver pre-approvals.', 403));
     }
 
     const {
@@ -217,7 +217,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
     const resolvedCompany = await resolveCompanyData({ companyName });
     if (!resolvedCompany) {
       return next(
-        createHttpError('companyName must match a registered taxi company', 400)
+        createHttpError('companyName must match a registered taxi company.', 400)
       );
     }
 
@@ -262,7 +262,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
     const tillLabel = toISTDateTimeLabelNoComma(window.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
-    return sendSuccessResponse(res, 201, 'Taxi/Cab pre-approval created successfully', {
+    return sendSuccessResponse(res, 201, 'Taxi/Cab pre-approval created successfully.', {
       data: {
         preApprovalId: approval.preApprovalId,
         category: 'Taxi',
@@ -295,9 +295,9 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
 const updateTaxiDriverPreApproval = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can update taxi pre-approvals', 403));
+      return next(createHttpError('Only members can update taxi pre-approvals.', 403));
     }
 
     const preApprovalId = normalizeString(req.body?.preApprovalId);
@@ -318,8 +318,8 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
       isPrivateInvite,
     } = req.body || {};
 
-    if (!preApprovalId) return next(createHttpError('preApprovalId is required', 400));
-    if (!unitId) return next(createHttpError('unitId is required', 400));
+    if (!preApprovalId) return next(createHttpError('preApprovalId is required.', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
 
     let unitDoc;
     try {
@@ -333,16 +333,16 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
     });
-    if (!approval) return next(createHttpError('Pre-approval not found', 404));
+    if (!approval) return next(createHttpError('Pre-approval not found.', 404));
     if (approval.status !== 'active') {
-      return next(createHttpError('Only active pre-approvals can be updated', 409));
+      return next(createHttpError('Only active pre-approvals can be updated.', 409));
     }
 
     let resolvedCompany = null;
     if (companyName) {
       resolvedCompany = await resolveCompanyData({ companyName });
       if (!resolvedCompany) {
-        return next(createHttpError('companyName must match a registered taxi company', 400));
+        return next(createHttpError('companyName must match a registered taxi company.', 400));
       }
     }
 
@@ -401,7 +401,7 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
     const tillLabel = toISTDateTimeLabelNoComma(approval.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
-    return sendSuccessResponse(res, 200, 'Taxi/Cab pre-approval updated successfully', {
+    return sendSuccessResponse(res, 200, 'Taxi/Cab pre-approval updated successfully.', {
       data: {
         preApprovalId: approval.preApprovalId,
         category: 'Taxi',
@@ -436,9 +436,9 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
 const cancelTaxiDriverPreApproval = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
-      return next(createHttpError('Only members can cancel taxi pre-approvals', 403));
+      return next(createHttpError('Only members can cancel taxi pre-approvals.', 403));
     }
 
     const preApprovalId = normalizeString(req.body?.preApprovalId);
@@ -446,11 +446,11 @@ const cancelTaxiDriverPreApproval = async (req, res, next) => {
     const reason = normalizeString(req.body?.reason);
     const description = normalizeString(req.body?.description);
 
-    if (!preApprovalId) return next(createHttpError('preApprovalId is required', 400));
-    if (!unitId) return next(createHttpError('unitId is required', 400));
-    if (!reason) return next(createHttpError('reason is required', 400));
+    if (!preApprovalId) return next(createHttpError('preApprovalId is required.', 400));
+    if (!unitId) return next(createHttpError('unitId is required.', 400));
+    if (!reason) return next(createHttpError('reason is required.', 400));
     if (reason.toLowerCase() === 'other' && !description) {
-      return next(createHttpError('description is required when reason is other', 400));
+      return next(createHttpError('description is required when reason is other.', 400));
     }
 
     let unitDoc;
@@ -477,25 +477,25 @@ const cancelTaxiDriverPreApproval = async (req, res, next) => {
       });
 
       if (!entryRequest) {
-        return next(createHttpError('Pre-approval not found', 404));
+        return next(createHttpError('Pre-approval not found.', 404));
       }
 
       if (entryRequest.status === 'cancelled') {
-        return next(createHttpError('Entry request is already cancelled', 400));
+        return next(createHttpError('Entry request is already cancelled.', 400));
       }
 
       if (entryRequest.status === 'entered') {
-        return next(createHttpError('Cannot cancel while visitor is inside society', 409));
+        return next(createHttpError('Cannot cancel while visitor is inside society.', 409));
       }
 
       if (!['approved', 'pending'].includes(entryRequest.status)) {
-        return next(createHttpError('Entry request cannot be cancelled in current status', 400));
+        return next(createHttpError('Entry request cannot be cancelled in current status.', 400));
       }
 
       entryRequest.status = 'cancelled';
       await entryRequest.save();
 
-      return sendSuccessResponse(res, 200, 'Entry request cancelled successfully', {
+      return sendSuccessResponse(res, 200, 'Entry request cancelled successfully.', {
         data: {
           preApprovalId: entryRequest.requestId,
           status: 'cancelled',
@@ -504,7 +504,7 @@ const cancelTaxiDriverPreApproval = async (req, res, next) => {
     }
 
     if (approval.status === 'cancelled') {
-      return next(createHttpError('Pre-approval is already cancelled', 400));
+      return next(createHttpError('Pre-approval is already cancelled.', 400));
     }
 
     const activeEntry = await GuestEntryRequest.findOne({
@@ -517,7 +517,7 @@ const cancelTaxiDriverPreApproval = async (req, res, next) => {
       ...(approval.vehicleNumber ? { vehicleNumber: approval.vehicleNumber } : {}),
     }).lean();
     if (activeEntry) {
-      return next(createHttpError('Cannot cancel pre-approval while visitor is inside society', 409));
+      return next(createHttpError('Cannot cancel pre-approval while visitor is inside society.', 409));
     }
 
     approval.status = 'cancelled';
@@ -527,7 +527,7 @@ const cancelTaxiDriverPreApproval = async (req, res, next) => {
     approval.cancelledByUserId = authUser._id;
     await approval.save();
 
-    return sendSuccessResponse(res, 200, 'Taxi/Cab pre-approval cancelled successfully', {
+    return sendSuccessResponse(res, 200, 'Taxi/Cab pre-approval cancelled successfully.', {
       data: {
         preApprovalId: approval.preApprovalId,
         status: 'cancelled',

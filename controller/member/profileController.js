@@ -61,7 +61,7 @@ const getMemberProfile = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const unitsFromDb = await MemberUnit.find({ memberId: user._id }).lean();
@@ -118,7 +118,7 @@ const getMemberProfile = async (req, res, next) => {
       }
     }
 
-    return sendSuccessResponse(res, 200, 'Member profile fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Member profile fetched successfully.', {
       data: {
         id: String(user._id),
         memberId: memberCode,
@@ -167,7 +167,7 @@ const updateMemberProfile = async (req, res, next) => {
   try {
     const user = req.appUser;
     if (!user) {
-      return next(createHttpError('Unauthorized', 401));
+      return next(createHttpError('Unauthorized.', 401));
     }
 
     const { imageUrl, phoneNumber, name, fullName, email } = req.body || {};
@@ -182,7 +182,7 @@ const updateMemberProfile = async (req, res, next) => {
     if (name !== undefined || fullName !== undefined) {
       const candidateName = toTitleCaseName(fullName !== undefined ? fullName : name);
       if (!candidateName) {
-        return next(createHttpError('Name cannot be empty', 400));
+        return next(createHttpError('Name cannot be empty.', 400));
       }
       updates.fullName = candidateName;
     }
@@ -190,7 +190,7 @@ const updateMemberProfile = async (req, res, next) => {
     if (email !== undefined) {
       const candidateEmail = normalizeString(email).toLowerCase();
       if (candidateEmail && !validator.isEmail(candidateEmail)) {
-        return next(createHttpError('Invalid email address', 400));
+        return next(createHttpError('Invalid email address.', 400));
       }
       updates.email = candidateEmail || null;
     }
@@ -198,11 +198,11 @@ const updateMemberProfile = async (req, res, next) => {
     if (phoneNumber !== undefined) {
       const digits = String(phoneNumber).replace(/\D/g, '');
       if (!digits || digits.length !== 10) {
-        return next(createHttpError('phoneNumber must contain exactly 10 digits', 400));
+        return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
       }
       const alreadyUser = await User.exists({ phoneNumber: digits, _id: { $ne: user._id } });
       if (alreadyUser) {
-        return next(createHttpError('This phone number already exists in the system', 409));
+        return next(createHttpError('This phone number already exists in the system.', 409));
       }
 
       const SuperAdmin = require('../../model/superAdminSchema');
@@ -210,14 +210,14 @@ const updateMemberProfile = async (req, res, next) => {
 
       const saExists = await SuperAdmin.exists({ phoneNumber: digits });
       if (saExists) {
-        return next(createHttpError('This phone number already exists in the system', 409));
+        return next(createHttpError('This phone number already exists in the system.', 409));
       }
 
       const adminMatch = await lookupSocietyAdminByMobile(digits);
       if (adminMatch) {
         const linkedId = user.linkedSocietyAdminId || null;
         if (!linkedId || String(linkedId) !== String(adminMatch.adminId)) {
-          return next(createHttpError('This phone number already exists in the system', 409));
+          return next(createHttpError('This phone number already exists in the system.', 409));
         }
       }
 
@@ -225,17 +225,17 @@ const updateMemberProfile = async (req, res, next) => {
     }
 
     if (req.body && req.body.occupancyStatus !== undefined) {
-      return next(createHttpError('occupancyStatus cannot be edited via profile', 400));
+      return next(createHttpError('occupancyStatus cannot be edited via profile.', 400));
     }
 
     if (Object.keys(updates).length === 0) {
-      return sendSuccessResponse(res, 200, 'No changes provided');
+      return sendSuccessResponse(res, 200, 'No changes provided.');
     }
 
     Object.assign(user, updates);
     await user.save();
 
-    return sendSuccessResponse(res, 200, 'Member profile updated successfully', {
+    return sendSuccessResponse(res, 200, 'Member profile updated successfully.', {
       data: {
         id: String(user._id),
         name: user.fullName || null,

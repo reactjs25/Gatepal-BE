@@ -20,7 +20,7 @@ const getCountryCityOptions = async (req, res) => {
             cities,
         };
     });
-    return sendSuccessResponse(res, 200, 'Country and city options fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Country and city options fetched successfully.', {
         data: options,
     });
 };
@@ -93,7 +93,7 @@ const getRegistrationHierarchy = async (req, res, next) => {
             }))
         );
 
-        return sendSuccessResponse(res, 200, 'Registration hierarchy fetched successfully', {
+        return sendSuccessResponse(res, 200, 'Registration hierarchy fetched successfully.', {
             data: {
                 countries,
                 totals: {

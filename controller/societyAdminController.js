@@ -46,14 +46,14 @@ const createSocietyAdmin = async (req, res, next) => {
 
     if (!name || !email || !mobile) {
       return next(
-        createHttpError('Name, email, and mobile are required to create a society admin', 400)
+        createHttpError('Name, email, and mobile are required to create a society admin.', 400)
       );
     }
 
     const society = await Society.findById(societyId);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     const normalizedEmail = normalizeAdminEmail(email);
@@ -87,7 +87,7 @@ const createSocietyAdmin = async (req, res, next) => {
     }
     const sanitizedAdmin = sanitizeSocietyAdmin(society, newAdmin);
 
-    return sendSuccessResponse(res, 201, 'Society admin created successfully', {
+    return sendSuccessResponse(res, 201, 'Society admin created successfully.', {
       data: {
         societyId: society._id.toString(),
         societyName: society.societyName,
@@ -106,10 +106,10 @@ const getAllSocietyAdmins = async (req, res, next) => {
     const society = await Society.findById(societyId);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
-    return sendSuccessResponse(res, 200, 'Society admins fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Society admins fetched successfully.', {
       data: {
         societyId: society._id.toString(),
         societyName: society.societyName,
@@ -128,16 +128,16 @@ const getSocietyAdminById = async (req, res, next) => {
     const society = await Society.findById(societyId);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     const admin = society.societyAdmins.id(adminId);
 
     if (!admin) {
-      return next(createHttpError('Society admin not found', 404));
+      return next(createHttpError('Society admin not found.', 404));
     }
 
-    return sendSuccessResponse(res, 200, 'Society admin fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Society admin fetched successfully.', {
       data: {
         societyId: society._id.toString(),
         societyName: society.societyName,
@@ -157,13 +157,13 @@ const updateSocietyAdmin = async (req, res, next) => {
     const society = await Society.findById(societyId);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     const admin = society.societyAdmins.id(adminId);
 
     if (!admin) {
-      return next(createHttpError('Society admin not found', 404));
+      return next(createHttpError('Society admin not found.', 404));
     }
 
 
@@ -195,7 +195,7 @@ const updateSocietyAdmin = async (req, res, next) => {
 
     await society.save();
 
-    return sendSuccessResponse(res, 200, 'Society admin updated successfully', {
+    return sendSuccessResponse(res, 200, 'Society admin updated successfully.', {
       data: {
         societyId: society._id.toString(),
         societyName: society.societyName,
@@ -214,13 +214,13 @@ const toggleSocietyAdminStatus = async (req, res, next) => {
     const society = await Society.findById(societyId);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     const admin = society.societyAdmins.id(adminId);
 
     if (!admin) {
-      return next(createHttpError('Society admin not found', 404));
+      return next(createHttpError('Society admin not found.', 404));
     }
 
     admin.status = admin.status === 'Active' ? 'Inactive' : 'Active';
@@ -245,19 +245,19 @@ const deleteSocietyAdmin = async (req, res, next) => {
     const society = await Society.findById(societyId);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     const admin = society.societyAdmins.id(adminId);
 
     if (!admin) {
-      return next(createHttpError('Society admin not found', 404));
+      return next(createHttpError('Society admin not found.', 404));
     }
 
     admin.deleteOne();
     await society.save();
 
-    return sendSuccessResponse(res, 200, 'Society admin deleted successfully');
+    return sendSuccessResponse(res, 200, 'Society admin deleted successfully.');
   } catch (error) {
     next(setErrorDefaults(error, 'Failed to delete society admin'));
   }
@@ -270,13 +270,13 @@ const requestSocietyAdminPasswordReset = async (req, res, next) => {
     const society = await Society.findById(societyId);
 
     if (!society) {
-      return next(createHttpError('Society not found', 404));
+      return next(createHttpError('Society not found.', 404));
     }
 
     const admin = society.societyAdmins.id(adminId);
 
     if (!admin) {
-      return next(createHttpError('Society admin not found', 404));
+      return next(createHttpError('Society admin not found.', 404));
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -308,7 +308,7 @@ const requestSocietyAdminPasswordReset = async (req, res, next) => {
              <p>If you did not request this, please ignore this email.</p>`,
     });
 
-    return sendSuccessResponse(res, 200, 'Password reset link sent successfully', {
+    return sendSuccessResponse(res, 200, 'Password reset link sent successfully.', {
       data: {
         societyId: society._id.toString(),
         admin: sanitizeSocietyAdmin(society, admin),
@@ -324,7 +324,7 @@ const resetSocietyAdminPassword = async (req, res, next) => {
     const { token, email, password } = req.body;
 
     if (!token || !email || !password) {
-      return next(createHttpError('Token, email, and password are required', 400));
+      return next(createHttpError('Token, email, and password are required.', 400));
     }
 
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
@@ -337,7 +337,7 @@ const resetSocietyAdminPassword = async (req, res, next) => {
     });
 
     if (!society) {
-      return next(createHttpError('Invalid or expired reset token', 400));
+      return next(createHttpError('Invalid or expired reset token.', 400));
     }
 
     const admin = society.societyAdmins.find(
@@ -349,7 +349,7 @@ const resetSocietyAdminPassword = async (req, res, next) => {
     );
 
     if (!admin) {
-      return next(createHttpError('Invalid or expired reset token', 400));
+      return next(createHttpError('Invalid or expired reset token.', 400));
     }
 
     const salt = await bcrypt.genSalt(SALT_ROUNDS);
@@ -359,7 +359,7 @@ const resetSocietyAdminPassword = async (req, res, next) => {
 
     await society.save();
 
-    return sendSuccessResponse(res, 200, 'Password reset successful');
+    return sendSuccessResponse(res, 200, 'Password reset successful.');
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to reset password'));
   }

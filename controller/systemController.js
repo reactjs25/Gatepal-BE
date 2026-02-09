@@ -24,7 +24,7 @@ const healthCheck = async (req, res) => {
   const dbStatus = mapReadyState(dbState);
   const isHealthy = dbState === 1;
 
-  return sendSuccessResponse(res, isHealthy ? 200 : 503, isHealthy ? 'System is healthy' : 'System is degraded', {
+  return sendSuccessResponse(res, isHealthy ? 200 : 503, isHealthy ? 'System is healthy.' : 'System is degraded.', {
     status: isHealthy ? 'ok' : 'degraded',
     database: dbStatus,
   });
@@ -32,7 +32,7 @@ const healthCheck = async (req, res) => {
 
 const logTestError = async (req, res, next) => {
   try {
-    const diagnosticError = createHttpError('Manual diagnostic error log', 500);
+    const diagnosticError = createHttpError('Manual diagnostic error log.', 500);
 
     await logError({
       req,
@@ -59,7 +59,7 @@ const triggerAlertEmail = async (req, res, next) => {
     const { subject, message } = req.body || {};
 
     if (!message) {
-      return next(createHttpError('Message is required to trigger an alert email', 400));
+      return next(createHttpError('Message is required to trigger an alert email.', 400));
     }
 
     await sendSystemAlertEmail({

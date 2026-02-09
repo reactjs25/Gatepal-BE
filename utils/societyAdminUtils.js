@@ -167,7 +167,7 @@ const ensureAdminContactsUnique = async (
 
   if (mobile) {
     if (mobile.length !== 10) {
-      throw createHttpError('Admin mobile must contain exactly 10 digits', 400);
+      throw createHttpError('Admin mobile must contain exactly 10 digits.', 400);
     }
     const conflict = await lookupSocietyAdminByMobile(mobile, options);
     if (conflict) {

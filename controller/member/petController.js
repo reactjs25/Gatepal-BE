@@ -56,15 +56,15 @@ const validatePetPayload = (payload = {}) => {
     : null;
 
   if (!petType || !ALLOWED_PET_TYPES.has(petType)) {
-    throw createHttpError('petType must be one of Dog, Cat, Parrot, Rabbit, Hamsters, Others', 400);
+    throw createHttpError('petType must be one of Dog, Cat, Parrot, Rabbit, Hamsters, Others.', 400);
   }
-  if (!name) throw createHttpError('name is required', 400);
+  if (!name) throw createHttpError('name is required.', 400);
   if (!vaccinationStatus || !ALLOWED_VACCINATION_STATUSES.has(vaccinationStatus)) {
-    throw createHttpError('vaccinationStatus must be one of Fully Vaccinated, Partially Vaccinated, Not Vaccinated, Vaccination Not Required', 400);
+    throw createHttpError('vaccinationStatus must be one of Fully Vaccinated, Partially Vaccinated, Not Vaccinated, Vaccination Not Required.', 400);
   }
 
   if ((vaccinationStatus === 'Fully Vaccinated' || vaccinationStatus === 'Partially Vaccinated') && !lastVaccinationDate) {
-    throw createHttpError('lastVaccinationDate is required for the selected vaccinationStatus', 400);
+    throw createHttpError('lastVaccinationDate is required for the selected vaccinationStatus.', 400);
   }
 
   return {
@@ -82,19 +82,19 @@ const validatePetPatchPayload = (payload = {}) => {
   if (payload.petType !== undefined) {
     const petType = normalizeString(payload.petType);
     if (!petType || !ALLOWED_PET_TYPES.has(petType)) {
-      throw createHttpError('petType must be one of Dog, Cat, Parrot, Rabbit, Hamsters, Others', 400);
+      throw createHttpError('petType must be one of Dog, Cat, Parrot, Rabbit, Hamsters, Others.', 400);
     }
     out.petType = petType;
   }
   if (payload.name !== undefined) {
     const name = toTitleCaseName(payload.name);
-    if (!name) throw createHttpError('name is required', 400);
+    if (!name) throw createHttpError('name is required.', 400);
     out.name = name;
   }
   if (payload.vaccinationStatus !== undefined) {
     const vaccinationStatus = normalizeString(payload.vaccinationStatus);
     if (!vaccinationStatus || !ALLOWED_VACCINATION_STATUSES.has(vaccinationStatus)) {
-      throw createHttpError('vaccinationStatus must be one of Fully Vaccinated, Partially Vaccinated, Not Vaccinated, Vaccination Not Required', 400);
+      throw createHttpError('vaccinationStatus must be one of Fully Vaccinated, Partially Vaccinated, Not Vaccinated, Vaccination Not Required.', 400);
     }
     out.vaccinationStatus = vaccinationStatus;
   }
@@ -113,7 +113,7 @@ const validatePetPatchPayload = (payload = {}) => {
 const addPet = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     console.info('[pets:add] invoked', { userId: String(authUser._id) });
 
     const unitIdCandidate = normalizeString(
@@ -138,7 +138,7 @@ const addPet = async (req, res, next) => {
 
     const exists = await Pet.exists({ unitId: canonicalUnitId, name: validated.name, petType: validated.petType, deletedAt: null });
     if (exists) {
-      return next(createHttpError('A pet with the same name and type already exists for the unit', 409));
+      return next(createHttpError('A pet with the same name and type already exists for the unit.', 409));
     }
 
     const doc = await Pet.create({
@@ -175,7 +175,7 @@ const addPet = async (req, res, next) => {
 const getPetsByUnit = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     console.info('[pets:list] invoked', { userId: String(authUser._id) });
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || '');
@@ -192,7 +192,7 @@ const getPetsByUnit = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    return sendSuccessResponse(res, 200, 'Pets fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Pets fetched successfully.', {
       data: items.map((p) => ({
         petId: p.petId,
         unitId: String(unitDoc._id),
@@ -215,12 +215,12 @@ const getPetsByUnit = async (req, res, next) => {
 const editPet = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     console.info('[pets:edit] invoked', { userId: String(authUser._id) });
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || '');
     const petId = normalizeString((req.params && req.params.petId) || '');
-    if (!petId) return next(createHttpError('petId path parameter is required', 400));
+    if (!petId) return next(createHttpError('petId path parameter is required.', 400));
 
     let unitDoc;
     try {
@@ -232,9 +232,9 @@ const editPet = async (req, res, next) => {
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
     const doc = await Pet.findOne({ petId });
-    if (!doc) return next(createHttpError('Pet not found', 404));
+    if (!doc) return next(createHttpError('Pet not found.', 404));
     if (doc.unitId !== canonicalUnitId) {
-      return next(createHttpError('Pet does not belong to the provided unit', 403));
+      return next(createHttpError('Pet does not belong to the provided unit.', 403));
     }
 
     let validated;
@@ -247,7 +247,7 @@ const editPet = async (req, res, next) => {
     if (validated.vaccinationStatus !== undefined) {
       const vs = validated.vaccinationStatus;
       if ((vs === 'Fully Vaccinated' || vs === 'Partially Vaccinated') && validated.lastVaccinationDate === undefined && !doc.lastVaccinationDate) {
-        return next(createHttpError('lastVaccinationDate is required for the selected vaccinationStatus', 400));
+        return next(createHttpError('lastVaccinationDate is required for the selected vaccinationStatus.', 400));
       }
     }
 
@@ -255,7 +255,7 @@ const editPet = async (req, res, next) => {
     const nextType = validated.petType !== undefined ? validated.petType : doc.petType;
     if (nextName !== doc.name || nextType !== doc.petType) {
       const dup = await Pet.exists({ unitId: canonicalUnitId, name: nextName, petType: nextType, deletedAt: null });
-      if (dup) return next(createHttpError('A pet with the same name and type already exists for the unit', 409));
+      if (dup) return next(createHttpError('A pet with the same name and type already exists for the unit.', 409));
     }
 
     if (validated.petType !== undefined) doc.petType = validated.petType;
@@ -290,12 +290,12 @@ const editPet = async (req, res, next) => {
 const getPetById = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     console.info('[pets:get] invoked', { userId: String(authUser._id) });
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || '');
     const petId = normalizeString((req.params && req.params.petId) || '');
-    if (!petId) return next(createHttpError('petId path parameter is required', 400));
+    if (!petId) return next(createHttpError('petId path parameter is required.', 400));
 
     let unitDoc;
     try {
@@ -307,15 +307,15 @@ const getPetById = async (req, res, next) => {
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
     const doc = await Pet.findOne({ petId }).lean();
-    if (!doc) return next(createHttpError('Pet not found', 404));
+    if (!doc) return next(createHttpError('Pet not found.', 404));
     if (doc.unitId !== canonicalUnitId) {
-      return next(createHttpError('Pet does not belong to the provided unit', 403));
+      return next(createHttpError('Pet does not belong to the provided unit.', 403));
     }
     if (doc.deletedAt) {
-      return next(createHttpError('Pet not found', 404));
+      return next(createHttpError('Pet not found.', 404));
     }
 
-    return sendSuccessResponse(res, 200, 'Pet fetched successfully', {
+    return sendSuccessResponse(res, 200, 'Pet fetched successfully.', {
       data: {
         petId: doc.petId,
         unitId: String(unitDoc._id),
@@ -338,12 +338,12 @@ const getPetById = async (req, res, next) => {
 const deletePet = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    if (!authUser) return next(createHttpError('Unauthorized', 401));
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
     console.info('[pets:delete] invoked', { userId: String(authUser._id) });
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || '');
     const petId = normalizeString((req.params && req.params.petId) || '');
-    if (!petId) return next(createHttpError('petId path parameter is required', 400));
+    if (!petId) return next(createHttpError('petId path parameter is required.', 400));
 
     let unitDoc;
     try {
@@ -355,9 +355,9 @@ const deletePet = async (req, res, next) => {
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
 
     const doc = await Pet.findOne({ petId });
-    if (!doc) return next(createHttpError('Pet not found', 404));
+    if (!doc) return next(createHttpError('Pet not found.', 404));
     if (doc.unitId !== canonicalUnitId) {
-      return next(createHttpError('Pet does not belong to the provided unit', 403));
+      return next(createHttpError('Pet does not belong to the provided unit.', 403));
     }
 
     const deletedAt = new Date();

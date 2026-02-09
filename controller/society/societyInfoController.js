@@ -20,7 +20,7 @@ const { toISTDateTimeLabel } = require('../../utils/dateTime');
 
 const assertSocietyInfoAccess = (authUser) => {
     if (!authUser) {
-        throw createHttpError('Unauthorized', 401);
+        throw createHttpError('Unauthorized.', 401);
     }
 
     const isSocietyAdmin =
@@ -29,12 +29,12 @@ const assertSocietyInfoAccess = (authUser) => {
     const isMember = authUser.role === 'member';
 
     if (!isSocietyAdmin && !isGuard && !isMember) {
-        throw createHttpError('Only society admins, guards, or members can perform this action', 403);
+        throw createHttpError('Only society admins, guards, or members can perform this action.', 403);
     }
 };
 
 const resolveSocietyForSocietyInfo = async (authUser, req) => {
-    if (!authUser) throw createHttpError('Unauthorized', 401);
+    if (!authUser) throw createHttpError('Unauthorized.', 401);
 
     if (authUser.role === 'guard') {
         const bodySocietyId =
@@ -54,11 +54,11 @@ const resolveSocietyForSocietyInfo = async (authUser, req) => {
         }
 
         if (!societyIdCandidate) {
-            throw createHttpError('societyId is required', 400);
+            throw createHttpError('societyId is required.', 400);
         }
 
         const society = await Society.findById(societyIdCandidate).lean();
-        if (!society) throw createHttpError('Society not found', 404);
+        if (!society) throw createHttpError('Society not found.', 404);
 
         const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
         const enrolledIds = new Set(
@@ -68,7 +68,7 @@ const resolveSocietyForSocietyInfo = async (authUser, req) => {
             ].filter(Boolean)
         );
         if (enrolledIds.size > 0 && !enrolledIds.has(String(society._id))) {
-            throw createHttpError('You are not enrolled in this society', 403);
+            throw createHttpError('You are not enrolled in this society.', 403);
         }
 
         return { society, unitDoc: null };
@@ -80,12 +80,12 @@ const resolveSocietyForSocietyInfo = async (authUser, req) => {
             null;
 
         if (!unitIdCandidate) {
-            throw createHttpError('unitId is required', 400);
+            throw createHttpError('unitId is required.', 400);
         }
 
         const unitDoc = await assertUnitResidentAccess({ unitId: unitIdCandidate, authUser });
         const society = await Society.findById(unitDoc.societyId).lean();
-        if (!society) throw createHttpError('Society not found', 404);
+        if (!society) throw createHttpError('Society not found.', 404);
         return { society, unitDoc };
     }
 
@@ -126,22 +126,22 @@ const toValidTimestamp = (value) => {
 };
 
 const resolveAdminSociety = async (authUser) => {
-    if (!authUser) throw createHttpError('Unauthorized', 401);
+    if (!authUser) throw createHttpError('Unauthorized.', 401);
     if (authUser.adminSocietyId) {
         const society = await Society.findById(authUser.adminSocietyId).lean();
-        if (!society) throw createHttpError('Society not found', 404);
+        if (!society) throw createHttpError('Society not found.', 404);
         return society;
     }
     const linkedId = authUser.linkedSocietyAdminId || null;
     if (linkedId) {
         const society = await Society.findOne({ 'societyAdmins._id': linkedId }).lean();
-        if (!society) throw createHttpError('Society not found', 404);
+        if (!society) throw createHttpError('Society not found.', 404);
         return society;
     }
     const match = await lookupSocietyAdminByMobile(authUser.phoneNumber || '');
-    if (!match) throw createHttpError('Society not found', 404);
+    if (!match) throw createHttpError('Society not found.', 404);
     const society = await Society.findById(match.societyId).lean();
-    if (!society) throw createHttpError('Society not found', 404);
+    if (!society) throw createHttpError('Society not found.', 404);
     return society;
 };
 
@@ -290,7 +290,7 @@ const getSocietyInfo = async (req, res, next) => {
                 missingUnits: [],
             };
 
-            return sendSuccessResponse(res, 200, 'Society info fetched successfully', { data });
+            return sendSuccessResponse(res, 200, 'Society info fetched successfully.', { data });
         }
 
         const wings = Array.isArray(society.structure) ? society.structure : [];
@@ -459,7 +459,7 @@ const getSocietyInfo = async (req, res, next) => {
             missingUnits,
         };
 
-        return sendSuccessResponse(res, 200, 'Society info fetched successfully', { data });
+        return sendSuccessResponse(res, 200, 'Society info fetched successfully.', { data });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to fetch society info'));
     }
@@ -503,7 +503,7 @@ const getSocietyInfoUnits = async (req, res, next) => {
                 ],
             };
 
-            return sendSuccessResponse(res, 200, 'Society units fetched successfully', { data });
+            return sendSuccessResponse(res, 200, 'Society units fetched successfully.', { data });
         }
 
         const wings = Array.isArray(society.structure) ? society.structure : [];
@@ -619,7 +619,7 @@ const getSocietyInfoUnits = async (req, res, next) => {
             units: unitList,
         };
 
-        return sendSuccessResponse(res, 200, 'Society units fetched successfully', { data });
+        return sendSuccessResponse(res, 200, 'Society units fetched successfully.', { data });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to fetch society units'));
     }
@@ -690,7 +690,7 @@ const getSocietyInfoResidents = async (req, res, next) => {
                 residents,
             };
 
-            return sendSuccessResponse(res, 200, 'Society residents fetched successfully', { data });
+            return sendSuccessResponse(res, 200, 'Society residents fetched successfully.', { data });
         }
 
         const occupants = await MemberUnit.find(
@@ -799,7 +799,7 @@ const getSocietyInfoResidents = async (req, res, next) => {
             residents,
         };
 
-        return sendSuccessResponse(res, 200, 'Society residents fetched successfully', { data });
+        return sendSuccessResponse(res, 200, 'Society residents fetched successfully.', { data });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to fetch society residents'));
     }
@@ -809,13 +809,13 @@ const updateSocietyResidentUnit = async (req, res, next) => {
     try {
         const authUser = req.appUser;
         if (!authUser) {
-            return next(createHttpError('Unauthorized', 401));
+            return next(createHttpError('Unauthorized.', 401));
         }
 
         const isSocietyAdmin =
             authUser.role === 'society_admin' || Boolean(authUser.linkedSocietyAdminId) || Boolean(authUser.adminSocietyId);
         if (!isSocietyAdmin) {
-            return next(createHttpError('Only society admins can perform this action', 403));
+            return next(createHttpError('Only society admins can perform this action.', 403));
         }
 
         const society = await resolveAdminSociety(authUser);
@@ -826,30 +826,30 @@ const updateSocietyResidentUnit = async (req, res, next) => {
             ''
         );
         if (!unitIdCandidate || !mongoose.Types.ObjectId.isValid(unitIdCandidate)) {
-            return next(createHttpError('Invalid unitId', 400));
+            return next(createHttpError('Invalid unitId.', 400));
         }
 
         const wingName = normalizeString(req.body?.wingName ?? req.body?.wing);
         const unitNumber = normalizeString(req.body?.unitNumber ?? req.body?.unit);
 
         if (!wingName || !unitNumber) {
-            return next(createHttpError('wingName and unitNumber are required', 400));
+            return next(createHttpError('wingName and unitNumber are required.', 400));
         }
 
         const unitDoc = await MemberUnit.findById(unitIdCandidate);
         if (!unitDoc) {
-            return next(createHttpError('Unit not found', 404));
+            return next(createHttpError('Unit not found.', 404));
         }
         if (String(unitDoc.societyId) !== String(society._id)) {
-            return next(createHttpError('Unit does not belong to this society', 403));
+            return next(createHttpError('Unit does not belong to this society.', 403));
         }
 
         const { wing, unit } = findWingAndUnit(society, wingName, unitNumber);
         if (!wing) {
-            return next(createHttpError('Wing not found in the society', 404));
+            return next(createHttpError('Wing not found in the society.', 404));
         }
         if (!unit) {
-            return next(createHttpError('Unit not found in the specified wing', 404));
+            return next(createHttpError('Unit not found in the specified wing.', 404));
         }
 
         const newWingLower = wingName.toLowerCase();
@@ -858,7 +858,7 @@ const updateSocietyResidentUnit = async (req, res, next) => {
         const oldUnitLower = unitDoc.unitNumberLower;
 
         if (oldWingLower === newWingLower && oldUnitLower === newUnitLower) {
-            return sendSuccessResponse(res, 200, 'No changes provided', {
+            return sendSuccessResponse(res, 200, 'No changes provided.', {
                 data: {
                     id: String(unitDoc._id),
                     memberId: String(unitDoc.memberId),
@@ -877,7 +877,7 @@ const updateSocietyResidentUnit = async (req, res, next) => {
             _id: { $ne: unitDoc._id },
         });
         if (duplicate) {
-            return next(createHttpError('This unit has already been added for the member', 409));
+            return next(createHttpError('This unit has already been added for the member.', 409));
         }
 
         if (unitDoc.occupantType === 'tenant') {
@@ -953,7 +953,7 @@ const updateSocietyResidentUnit = async (req, res, next) => {
             }
         }
 
-        return sendSuccessResponse(res, 200, 'Resident unit updated successfully', {
+        return sendSuccessResponse(res, 200, 'Resident unit updated successfully.', {
             data: {
                 id: String(unitDoc._id),
                 memberId: String(unitDoc.memberId),
@@ -1010,7 +1010,7 @@ const getSocietyInfoVehicles = async (req, res, next) => {
                 vehicles: vehiclesList,
             };
 
-            return sendSuccessResponse(res, 200, 'Society vehicles fetched successfully', { data });
+            return sendSuccessResponse(res, 200, 'Society vehicles fetched successfully.', { data });
         }
 
         const occupants = await MemberUnit.find(
@@ -1068,7 +1068,7 @@ const getSocietyInfoVehicles = async (req, res, next) => {
             vehicles: vehiclesList,
         };
 
-        return sendSuccessResponse(res, 200, 'Society vehicles fetched successfully', { data });
+        return sendSuccessResponse(res, 200, 'Society vehicles fetched successfully.', { data });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to fetch society vehicles'));
     }
@@ -1120,7 +1120,7 @@ const getSocietyInfoPets = async (req, res, next) => {
                 pets: petsList,
             };
 
-            return sendSuccessResponse(res, 200, 'Society pets fetched successfully', { data });
+            return sendSuccessResponse(res, 200, 'Society pets fetched successfully.', { data });
         }
 
         const occupants = await MemberUnit.find(
@@ -1183,7 +1183,7 @@ const getSocietyInfoPets = async (req, res, next) => {
             pets: petsList,
         };
 
-        return sendSuccessResponse(res, 200, 'Society pets fetched successfully', { data });
+        return sendSuccessResponse(res, 200, 'Society pets fetched successfully.', { data });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to fetch society pets'));
     }
@@ -1193,7 +1193,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
     try {
         const authUser = req.appUser;
         if (!authUser) {
-            return next(createHttpError('Unauthorized', 401));
+            return next(createHttpError('Unauthorized.', 401));
         }
 
         const viewAsRaw = normalizeString(
@@ -1223,7 +1223,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
             );
 
             if (!societyIdCandidate) {
-                return next(createHttpError('societyId is required for guards to view society activity summary', 400));
+                return next(createHttpError('societyId is required for guards to view society activity summary.', 400));
             }
 
             
@@ -1233,7 +1233,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
             );
 
             if (!isAssociatedWithSociety) {
-                return next(createHttpError('Guard is not associated with this society', 403));
+                return next(createHttpError('Guard is not associated with this society.', 403));
             }
 
             societyId = societyIdCandidate;
@@ -1246,7 +1246,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
             );
 
             if (!unitIdCandidate) {
-                return next(createHttpError('unitId is required to view society activity summary', 400));
+                return next(createHttpError('unitId is required to view society activity summary.', 400));
             }
 
             let unitDoc;
@@ -1258,12 +1258,12 @@ const getSocietyActivitySummary = async (req, res, next) => {
 
             societyId = unitDoc.societyId;
         } else {
-            return next(createHttpError('Only members, guards, or society admins can perform this action', 403));
+            return next(createHttpError('Only members, guards, or society admins can perform this action.', 403));
         }
 
         const society = await Society.findById(societyId).lean();
         if (!society) {
-            return next(createHttpError('Society not found', 404));
+            return next(createHttpError('Society not found.', 404));
         }
 
         const [announcementDocs, meetingDocs, ruleDocs] = await Promise.all([
@@ -1431,7 +1431,7 @@ const getSocietyActivitySummary = async (req, res, next) => {
             societyRules: recentSocietyRules,
         };
 
-        return sendSuccessResponse(res, 200, 'Society activity summary fetched successfully', { data });
+        return sendSuccessResponse(res, 200, 'Society activity summary fetched successfully.', { data });
     } catch (error) {
         return next(setErrorDefaults(error, 'Failed to fetch society activity summary'));
     }
