@@ -21,6 +21,7 @@ const societyInfoRoutes = require('./societyInfoRoute');
 const commonRoutes = require('./commonRoute');
 const notificationRoutes = require('./notificationRoute');
 const feedbackRoutes = require('./feedbackRoute');
+const actionReasonRoutes = require('./actionReasonRoute');
 
 
 const router = express.Router();
@@ -47,6 +48,7 @@ router.use('/societyInfo', societyInfoRoutes);
 router.use('/common', commonRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/feedback', feedbackRoutes);
+router.use('/action-reasons', actionReasonRoutes);
 
 
 module.exports = router;
