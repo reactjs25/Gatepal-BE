@@ -273,7 +273,7 @@ const searchApprovedSocietyDailyHelp = async (req, res, next) => {
     let unitDoc;
 
     if (authUser.role === 'guard') {
-      // Guards don't own units; verify the unit exists and guard is associated with its society
+      
       const id = normalizeString(unitIdCandidate);
       if (!id) return next(createHttpError('unitId path parameter is required.', 400));
       if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError('Invalid unit ID format.', 400));

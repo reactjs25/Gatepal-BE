@@ -62,7 +62,7 @@ const runContractExpiryJob = async () => {
 
         const { diffMonths, diffDays } = getMonthsUntilExpiry(society.engagement.endDate);
 
-        // If engagement has expired, set society to Inactive
+        
         if (diffDays <= 0) {
           society.status = 'Inactive';
           await society.save();

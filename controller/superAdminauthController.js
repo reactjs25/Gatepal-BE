@@ -37,13 +37,13 @@ const signUp = async (req, res, next) => {
       return next(createHttpError('Phone number must contain exactly 10 digits.', 400));
     }
 
-    // Check for duplicate email in SuperAdmin
+    
     const existingSuperAdminByEmail = await SuperAdmin.findOne({ email: normalizedEmail });
     if (existingSuperAdminByEmail) {
       return next(createHttpError('A user already exists with this email address.', 409));
     }
 
-    // Check for duplicate phone in SuperAdmin
+    
     const existingSuperAdminByPhone = await SuperAdmin.exists({ phoneNumber: digits });
     if (existingSuperAdminByPhone) {
       return next(createHttpError('A user already exists with this phone number.', 409));

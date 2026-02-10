@@ -128,7 +128,7 @@ const createSociety = async (req, res, next) => {
 
 const getAllSociety = async (req, res, next) => {
   try {
-    // Auto-expire societies whose engagement has ended
+    
     const now = new Date();
     await Society.updateMany(
       {
@@ -154,7 +154,7 @@ const getSocietyById = async (req, res, next) => {
       return next(createHttpError('Society not found.', 404));
     }
 
-    // Auto-expire society if engagement has ended
+    
     if (
       society.engagement &&
       society.engagement.endDate &&

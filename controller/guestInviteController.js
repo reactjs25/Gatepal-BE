@@ -1513,7 +1513,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
 
     await invite.save();
 
-    // Also update the corresponding GuestEntryRequest so list endpoints reflect the changes
+    
     const entryRequestUpdate = {};
     if (normalizedImageUrl !== undefined) {
       entryRequestUpdate.guestImageUrl = normalizedImageUrl;
@@ -1558,8 +1558,8 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
     const targetLog = invite.entryLogs[targetLogIndex];
     const arrivingGuestFromInvite = invite.guests.find((g) => g.guestId === targetLog.guestId) || null;
 
-    // For group invites, build arrivingGuest from the entry log data (which has actual guest details)
-    // rather than from invite.guests (which is just the placeholder "Group / Party Guests")
+    
+    
     const arrivingGuest = arrivingGuestFromInvite
       ? {
           guestId: arrivingGuestFromInvite.guestId,

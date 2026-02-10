@@ -28,12 +28,12 @@ const VISITOR_TYPE_LABELS = {
   other_visitor: { category: 'Visitor', visitorType: 'Other Visitor' },
 };
 
-/**
- * Filters recipientUserIds based on their notification preferences.
- * @param {Array} userIds - Array of user ObjectIds
- * @param {'entry'|'exit'} eventType - The type of event ('entry' or 'exit')
- * @returns {Promise<Array>} - Filtered array of userIds who have opted in
- */
+
+
+
+
+
+
 const filterRecipientsByPreference = async (userIds, eventType) => {
   if (!Array.isArray(userIds) || userIds.length === 0) return [];
 
@@ -1999,7 +1999,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       const mappedInvites = [];
       for (const invite of guestInvites || []) {
         if (invite.type === 'group') {
-          // Group invites always appear as a single summary card
+          
           const guest = Array.isArray(invite.guests) && invite.guests.length > 0 ? invite.guests[0] : null;
           mappedInvites.push(mapGuestInvite(invite, guest));
           continue;
@@ -2021,8 +2021,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       }
     }
 
-    // Exclude individual entry requests that belong to group invites;
-    // group invites are represented by a single summary card in guestInviteCards
+    
+    
     const filteredMapped = mapped.filter((d) => d.inviteType !== 'group');
 
     const combined = [...filteredMapped, ...preApprovalCards, ...guestInviteCards].sort((a, b) => {
