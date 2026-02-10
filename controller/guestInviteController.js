@@ -1438,7 +1438,8 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       return next(createHttpError('You must be on duty to update entry details.', 400));
     }
 
-    const { inviteId, guestId, vehicleNumber, accompanyingCount, imageUrl } = req.body || {};
+    const { inviteId, guestId, vehicleNumber, accompanyingCount, imageUrl, guestName, fullName, phoneNumber, countryCode } = req.body || {};
+    const resolvedGuestName = guestName || fullName;
 
     const normalizedInviteId = normalizeString(inviteId);
     if (!normalizedInviteId) {
@@ -1498,7 +1499,52 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       invite.entryLogs[targetLogIndex].imageUrl = normalizedImageUrl;
     }
 
+    const normalizedGuestName = resolvedGuestName === undefined ? undefined : normalizeString(resolvedGuestName) || null;
+    if (normalizedGuestName !== undefined) {
+      invite.entryLogs[targetLogIndex].guestName = normalizedGuestName;
+    }
+
+    const normalizedCountryCode = countryCode === undefined ? undefined : normalizeCountryCode(countryCode) || '+91';
+    const normalizedPhoneNumber = phoneNumber === undefined ? undefined : normalizeString(phoneNumber) || null;
+    if (normalizedPhoneNumber !== undefined) {
+      invite.entryLogs[targetLogIndex].guestPhoneNumber = normalizedPhoneNumber;
+      invite.entryLogs[targetLogIndex].guestCountryCode = normalizedCountryCode || '+91';
+    }
+
     await invite.save();
+
+    // Also update the corresponding GuestEntryRequest so list endpoints reflect the changes
+    const entryRequestUpdate = {};
+    if (normalizedImageUrl !== undefined) {
+      entryRequestUpdate.guestImageUrl = normalizedImageUrl;
+    }
+    if (normalizedVehicleNumber !== undefined) {
+      entryRequestUpdate.vehicleNumber = normalizedVehicleNumber;
+    }
+    if (safeCount !== undefined && safeCount !== null) {
+      entryRequestUpdate.accompanyingCount = safeCount;
+    }
+    if (normalizedGuestName !== undefined) {
+      entryRequestUpdate.guestName = normalizedGuestName;
+    }
+    if (normalizedPhoneNumber !== undefined) {
+      entryRequestUpdate.guestPhoneNumber = normalizedPhoneNumber;
+      entryRequestUpdate.guestCountryCode = normalizedCountryCode || '+91';
+      entryRequestUpdate.guestPhoneDigits = isTenDigitPhone(normalizedPhoneNumber)
+        ? normalizePhoneDigits(normalizedPhoneNumber)
+        : null;
+    }
+
+    if (Object.keys(entryRequestUpdate).length > 0) {
+      await GuestEntryRequest.findOneAndUpdate(
+        {
+          guestInviteId: invite._id,
+          createdByGuardId: authUser._id,
+        },
+        { $set: entryRequestUpdate },
+        { sort: { createdAt: -1 } }
+      );
+    }
 
     
     const member = await User.findById(invite.invitedByUserId).lean();
@@ -1510,7 +1556,29 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
 
     
     const targetLog = invite.entryLogs[targetLogIndex];
-    const arrivingGuest = invite.guests.find((g) => g.guestId === targetLog.guestId) || null;
+    const arrivingGuestFromInvite = invite.guests.find((g) => g.guestId === targetLog.guestId) || null;
+
+    // For group invites, build arrivingGuest from the entry log data (which has actual guest details)
+    // rather than from invite.guests (which is just the placeholder "Group / Party Guests")
+    const arrivingGuest = arrivingGuestFromInvite
+      ? {
+          guestId: arrivingGuestFromInvite.guestId,
+          name: targetLog.guestName || arrivingGuestFromInvite.name,
+          countryCode: targetLog.guestCountryCode || arrivingGuestFromInvite.countryCode || '+91',
+          phoneNumber: targetLog.guestPhoneNumber || arrivingGuestFromInvite.phoneNumber || null,
+          arrivedAt: arrivingGuestFromInvite.arrivedAt || null,
+          imageUrl: targetLog.imageUrl || null,
+        }
+      : targetLog.guestName || targetLog.guestPhoneNumber || targetLog.imageUrl
+        ? {
+            guestId: targetLog.guestId || 'group',
+            name: targetLog.guestName || 'Group Guest',
+            countryCode: targetLog.guestCountryCode || '+91',
+            phoneNumber: targetLog.guestPhoneNumber || null,
+            arrivedAt: targetLog.scannedAt || null,
+            imageUrl: targetLog.imageUrl || null,
+          }
+        : null;
 
     
     const usedEntries = invite.entryLogs.length;
@@ -1543,16 +1611,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
             phoneNumber: member.phoneNumber || null,
           }
         : null,
-      arrivingGuest: arrivingGuest
-        ? {
-            guestId: arrivingGuest.guestId,
-            name: arrivingGuest.name,
-            countryCode: arrivingGuest.countryCode,
-            phoneNumber: arrivingGuest.phoneNumber,
-            arrivedAt: arrivingGuest.arrivedAt || null,
-            imageUrl: targetLog.imageUrl || null,
-          }
-        : null,
+      arrivingGuest,
       guests: invite.guests.map((g) => ({
         guestId: g.guestId,
         name: g.name,

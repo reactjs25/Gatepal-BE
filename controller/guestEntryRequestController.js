@@ -1613,7 +1613,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
     if (guestInviteIds.length > 0) {
       const guestInviteDocs = await GuestInvite.find(
         { _id: { $in: guestInviteIds } },
-        { isPrivateInvite: 1 }
+        { isPrivateInvite: 1, type: 1 }
       ).lean();
       for (const doc of guestInviteDocs) {
         guestInvitesMap.set(String(doc._id), doc);
@@ -1658,6 +1658,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         statusKey: d.status,
         category: labels.category,
         visitorType: labels.visitorType,
+        inviteType: linkedInvite?.type || null,
         requestedOn: d.createdAt ? toISTDateTimeLabel(d.createdAt) : null,
         unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
         guest: {
@@ -1840,6 +1841,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           statusKey,
           category: labels.category,
           visitorType: labels.visitorType,
+          inviteType: null,
           requestedOn: doc.validFrom ? toISTDateTimeLabel(doc.validFrom) : null,
           guest: {
             name: displayName,
@@ -1894,6 +1896,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           createdAt: 1,
           invitedByUserId: 1,
           isPrivateInvite: 1,
+          maxEntries: 1,
         }
       ).lean();
 
@@ -1934,41 +1937,50 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         const tillLabel = toISTDateTimeLabelNoComma(invite.validTill);
         const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
+        const isGroup = invite.type === 'group';
+
         
         let guestImageUrl = null;
-        if (guest?.guestId && Array.isArray(invite.entryLogs)) {
+        if (!isGroup && guest?.guestId && Array.isArray(invite.entryLogs)) {
           const entryLog = invite.entryLogs.find((log) => log.guestId === guest.guestId);
           if (entryLog?.imageUrl) {
             guestImageUrl = entryLog.imageUrl;
           }
         }
 
-        return {
+        const card = {
           requestId: invite.inviteId,
           status: statusLabel,
           statusKey,
           category: VISITOR_TYPE_LABELS.guest.category,
           visitorType: VISITOR_TYPE_LABELS.guest.visitorType,
+          inviteType: invite.type || null,
           requestedOn: invite.validFrom ? toISTDateTimeLabel(invite.validFrom) : null,
           guest: {
-            name: guest?.name || null,
-            imageUrl: guestImageUrl,
-            companyLogo: null,
+            name: isGroup ? 'Group / Party Guests' : (guest?.name || null),
+            imageUrl: isGroup ? '' : guestImageUrl,
+            companyLogo: isGroup ? '' : null,
           },
           validityLabel,
           isPreApproval: true,
           isPrivateInvite: Boolean(invite.isPrivateInvite),
           _sortAt: invite.createdAt || invite.validFrom || invite.validTill || null,
         };
+
+        if (isGroup) {
+          card.maxEntries = invite.maxEntries || 0;
+          card.usedEntries = Array.isArray(invite.entryLogs) ? invite.entryLogs.length : 0;
+        }
+
+        return card;
       };
 
       const mappedInvites = [];
       for (const invite of guestInvites || []) {
         if (invite.type === 'group') {
+          // Group invites always appear as a single summary card
           const guest = Array.isArray(invite.guests) && invite.guests.length > 0 ? invite.guests[0] : null;
-          if (!hasMatchingGuestInvite(invite, guest)) {
-            mappedInvites.push(mapGuestInvite(invite, guest));
-          }
+          mappedInvites.push(mapGuestInvite(invite, guest));
           continue;
         }
         for (const guest of invite.guests || []) {
@@ -1988,7 +2000,11 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       }
     }
 
-    const combined = [...mapped, ...preApprovalCards, ...guestInviteCards].sort((a, b) => {
+    // Exclude individual entry requests that belong to group invites;
+    // group invites are represented by a single summary card in guestInviteCards
+    const filteredMapped = mapped.filter((d) => d.inviteType !== 'group');
+
+    const combined = [...filteredMapped, ...preApprovalCards, ...guestInviteCards].sort((a, b) => {
       const aTime = a._sortAt ? new Date(a._sortAt).getTime() : 0;
       const bTime = b._sortAt ? new Date(b._sortAt).getTime() : 0;
       return bTime - aTime;
