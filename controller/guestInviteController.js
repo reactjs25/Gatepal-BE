@@ -1359,7 +1359,7 @@ const getRecentGuests = async (req, res, next) => {
       return next(createHttpError('Unauthorized.', 401));
     }
 
-    if (authUser.role !== 'member') {
+    if (authUser.role !== 'member' && authUser.role !== 'society_admin') {
       return next(createHttpError('Only members can view recent guests.', 403));
     }
 
