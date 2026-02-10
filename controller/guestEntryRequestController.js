@@ -1573,8 +1573,10 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         createdAt: 1,
         expiresAt: 1,
         approvedByUserId: 1,
+        approvedAt: 1,
         entryAllowedAt: 1,
         entryLeftAt: 1,
+        guestInviteId: 1,
       }
     )
       .sort({ createdAt: -1 })
@@ -1602,6 +1604,21 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         .map((company) => [normalizeString(company.name).toLowerCase(), company.imageUrl || null])
         .filter(([, imageUrl]) => Boolean(imageUrl))
     );
+
+    const guestInviteIds = (items || [])
+      .map((d) => d.guestInviteId)
+      .filter(Boolean);
+
+    const guestInvitesMap = new Map();
+    if (guestInviteIds.length > 0) {
+      const guestInviteDocs = await GuestInvite.find(
+        { _id: { $in: guestInviteIds } },
+        { isPrivateInvite: 1 }
+      ).lean();
+      for (const doc of guestInviteDocs) {
+        guestInvitesMap.set(String(doc._id), doc);
+      }
+    }
 
     const toStatusLabel = (key, doc) => {
       if (key === 'approved') {
@@ -1634,6 +1651,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         companyName: d.visitorCompanyName,
         deliveryCompanyLogos,
       });
+      const linkedInvite = d.guestInviteId ? guestInvitesMap.get(String(d.guestInviteId)) : null;
       return {
         requestId: d.requestId,
         status: statusLabel,
@@ -1655,7 +1673,9 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         vehicleNumber: d.vehicleNumber || null,
         entryAt: d.entryAllowedAt ? toISTDateTimeLabel(d.entryAllowedAt) : null,
         leftAt: d.entryLeftAt ? toISTDateTimeLabel(d.entryLeftAt) : null,
-
+        isPreApproval: Boolean(d.guestInviteId),
+        isPrivateInvite: linkedInvite ? Boolean(linkedInvite.isPrivateInvite) : false,
+        isSilentDelivery: d.visitorType === 'delivery_executive' ? false : null,
       };
     });
 
