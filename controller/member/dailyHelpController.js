@@ -1,6 +1,7 @@
 const DailyHelp = require('../../model/dailyHelpSchema');
 const DailyHelpAssignment = require('../../model/dailyHelpAssignmentSchema');
 const MemberUnit = require('../../model/memberUnitSchema');
+const Society = require('../../model/societySchema');
 const User = require('../../model/userSchema');
 const FamilyMember = require('../../model/familyMemberSchema');
 const mongoose = require('mongoose');
@@ -269,30 +270,33 @@ const searchApprovedSocietyDailyHelp = async (req, res, next) => {
       return next(createHttpError('Only members or guards can view daily help.', 403));
     }
 
-    const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.query || {}).unitId);
-    let unitDoc;
+    const paramId = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.query || {}).unitId);
+    let societyId;
 
     if (authUser.role === 'guard') {
-      
-      const id = normalizeString(unitIdCandidate);
-      if (!id) return next(createHttpError('unitId path parameter is required.', 400));
-      if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError('Invalid unit ID format.', 400));
-      unitDoc = await MemberUnit.findById(id).lean();
-      if (!unitDoc) return next(createHttpError('Unit not found.', 404));
+      // For guards the param is a societyId, not a unitId
+      if (!paramId) return next(createHttpError('societyId path parameter is required.', 400));
+      if (!mongoose.Types.ObjectId.isValid(paramId)) return next(createHttpError('Invalid societyId format.', 400));
+
+      const society = await Society.findById(paramId).lean();
+      if (!society) return next(createHttpError('Society not found.', 404));
 
       const guardSocieties = authUser.guardSocieties || [];
       const isAssociated = guardSocieties.some(
-        (gs) => String(gs.societyId) === String(unitDoc.societyId)
+        (gs) => String(gs.societyId) === String(society._id)
       );
       if (!isAssociated) {
         return next(createHttpError('Guard is not associated with this society.', 403));
       }
+      societyId = society._id;
     } else {
+      let unitDoc;
       try {
-        unitDoc = await assertUnitAccess({ unitId: unitIdCandidate, authUser });
+        unitDoc = await assertUnitAccess({ unitId: paramId, authUser });
       } catch (e) {
         return next(e);
       }
+      societyId = unitDoc.societyId;
     }
 
     const categoryRaw = (req.params && req.params.category) || '';
@@ -302,7 +306,7 @@ const searchApprovedSocietyDailyHelp = async (req, res, next) => {
       return next(createHttpError('Invalid category.', 400));
     }
 
-    const docs = await DailyHelp.find({ societyId: unitDoc.societyId, status: 'APPROVED', category: canonicalCategory })
+    const docs = await DailyHelp.find({ societyId: societyId, status: 'APPROVED', category: canonicalCategory })
       .sort({ name: 1 })
       .lean();
 
