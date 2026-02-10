@@ -1675,7 +1675,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         leftAt: d.entryLeftAt ? toISTDateTimeLabel(d.entryLeftAt) : null,
         isPreApproval: Boolean(d.guestInviteId),
         isPrivateInvite: linkedInvite ? Boolean(linkedInvite.isPrivateInvite) : false,
-        isSilentDelivery: d.visitorType === 'delivery_executive' ? false : null,
+        isSilentDelivery: false,
       };
     });
 
