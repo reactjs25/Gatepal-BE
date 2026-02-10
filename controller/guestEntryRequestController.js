@@ -28,6 +28,27 @@ const VISITOR_TYPE_LABELS = {
   other_visitor: { category: 'Visitor', visitorType: 'Other Visitor' },
 };
 
+/**
+ * Filters recipientUserIds based on their notification preferences.
+ * @param {Array} userIds - Array of user ObjectIds
+ * @param {'entry'|'exit'} eventType - The type of event ('entry' or 'exit')
+ * @returns {Promise<Array>} - Filtered array of userIds who have opted in
+ */
+const filterRecipientsByPreference = async (userIds, eventType) => {
+  if (!Array.isArray(userIds) || userIds.length === 0) return [];
+
+  const preferenceField = eventType === 'entry' ? 'notifyOnEntry' : 'notifyOnExit';
+
+  const users = await User.find(
+    { _id: { $in: userIds } },
+    { _id: 1, [preferenceField]: 1 }
+  ).lean();
+
+  return users
+    .filter((u) => u[preferenceField] !== false)
+    .map((u) => u._id);
+};
+
 
 const getNotificationContent = (doc, action) => {
   const visitorType = doc.visitorType || 'guest';
@@ -2782,19 +2803,24 @@ const allowGuestEntry = async (req, res, next) => {
       
       for (const d of sameSociety) {
         if (d.status === 'entered' && d.recipientUserIds && d.recipientUserIds.length > 0) {
-          const notification = getNotificationContent(d, 'entry');
-          sendToUsers(
-            d.recipientUserIds,
-            notification.title,
-            notification.body,
-            {
-              type: 'guest_entry',
-              requestId: d.requestId,
-              visitorType: d.visitorType || 'guest',
-              status: 'entered',
-            }
-          ).catch((err) => {
-            console.error('[GuestEntryRequest] Failed to send batch entry notification:', err.message);
+          filterRecipientsByPreference(d.recipientUserIds, 'entry').then((filteredIds) => {
+            if (filteredIds.length === 0) return;
+            const notification = getNotificationContent(d, 'entry');
+            sendToUsers(
+              filteredIds,
+              notification.title,
+              notification.body,
+              {
+                type: 'guest_entry',
+                requestId: d.requestId,
+                visitorType: d.visitorType || 'guest',
+                status: 'entered',
+              }
+            ).catch((err) => {
+              console.error('[GuestEntryRequest] Failed to send batch entry notification:', err.message);
+            });
+          }).catch((err) => {
+            console.error('[GuestEntryRequest] Failed to filter entry preferences:', err.message);
           });
         }
       }
@@ -2845,19 +2871,24 @@ const allowGuestEntry = async (req, res, next) => {
 
     
     if (doc.recipientUserIds && doc.recipientUserIds.length > 0) {
-      const notification = getNotificationContent(doc, 'entry');
-      sendToUsers(
-        doc.recipientUserIds,
-        notification.title,
-        notification.body,
-        {
-          type: 'guest_entry',
-          requestId: doc.requestId,
-          visitorType: doc.visitorType || 'guest',
-          status: 'entered',
-        }
-      ).catch((err) => {
-        console.error('[GuestEntryRequest] Failed to send entry notification to members:', err.message);
+      filterRecipientsByPreference(doc.recipientUserIds, 'entry').then((filteredIds) => {
+        if (filteredIds.length === 0) return;
+        const notification = getNotificationContent(doc, 'entry');
+        sendToUsers(
+          filteredIds,
+          notification.title,
+          notification.body,
+          {
+            type: 'guest_entry',
+            requestId: doc.requestId,
+            visitorType: doc.visitorType || 'guest',
+            status: 'entered',
+          }
+        ).catch((err) => {
+          console.error('[GuestEntryRequest] Failed to send entry notification to members:', err.message);
+        });
+      }).catch((err) => {
+        console.error('[GuestEntryRequest] Failed to filter entry preferences:', err.message);
       });
     }
 
@@ -3045,19 +3076,24 @@ const allowGuestExit = async (req, res, next) => {
       
       for (const d of sameSociety) {
         if (d.status === 'left' && d.recipientUserIds && d.recipientUserIds.length > 0) {
-          const notification = getNotificationContent(d, 'exit');
-          sendToUsers(
-            d.recipientUserIds,
-            notification.title,
-            notification.body,
-            {
-              type: 'guest_exit',
-              requestId: d.requestId,
-              visitorType: d.visitorType || 'guest',
-              status: 'left',
-            }
-          ).catch((err) => {
-            console.error('[GuestEntryRequest] Failed to send batch exit notification:', err.message);
+          filterRecipientsByPreference(d.recipientUserIds, 'exit').then((filteredIds) => {
+            if (filteredIds.length === 0) return;
+            const notification = getNotificationContent(d, 'exit');
+            sendToUsers(
+              filteredIds,
+              notification.title,
+              notification.body,
+              {
+                type: 'guest_exit',
+                requestId: d.requestId,
+                visitorType: d.visitorType || 'guest',
+                status: 'left',
+              }
+            ).catch((err) => {
+              console.error('[GuestEntryRequest] Failed to send batch exit notification:', err.message);
+            });
+          }).catch((err) => {
+            console.error('[GuestEntryRequest] Failed to filter exit preferences:', err.message);
           });
         }
       }
@@ -3099,19 +3135,24 @@ const allowGuestExit = async (req, res, next) => {
 
     
     if (doc.recipientUserIds && doc.recipientUserIds.length > 0) {
-      const notification = getNotificationContent(doc, 'exit');
-      sendToUsers(
-        doc.recipientUserIds,
-        notification.title,
-        notification.body,
-        {
-          type: 'guest_exit',
-          requestId: doc.requestId,
-          visitorType: doc.visitorType || 'guest',
-          status: 'left',
-        }
-      ).catch((err) => {
-        console.error('[GuestEntryRequest] Failed to send exit notification to members:', err.message);
+      filterRecipientsByPreference(doc.recipientUserIds, 'exit').then((filteredIds) => {
+        if (filteredIds.length === 0) return;
+        const notification = getNotificationContent(doc, 'exit');
+        sendToUsers(
+          filteredIds,
+          notification.title,
+          notification.body,
+          {
+            type: 'guest_exit',
+            requestId: doc.requestId,
+            visitorType: doc.visitorType || 'guest',
+            status: 'left',
+          }
+        ).catch((err) => {
+          console.error('[GuestEntryRequest] Failed to send exit notification to members:', err.message);
+        });
+      }).catch((err) => {
+        console.error('[GuestEntryRequest] Failed to filter exit preferences:', err.message);
       });
     }
 

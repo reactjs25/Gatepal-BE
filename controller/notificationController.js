@@ -1,4 +1,5 @@
 const Notification = require('../model/notificationSchema');
+const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const createHttpError = require('../utils/httpError');
 const { sendToUser, sendToSocietyAdmin } = require('../utils/pushNotificationService');
@@ -320,6 +321,62 @@ const clearReadNotifications = async (req, res, next) => {
   }
 };
 
+const getNotificationPreferences = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      throw createHttpError('Unauthorized.', 401);
+    }
+
+    return sendSuccessResponse(res, 200, 'Notification preferences fetched successfully.', {
+      data: {
+        notifyOnEntry: authUser.notifyOnEntry !== false,
+        notifyOnExit: authUser.notifyOnExit !== false,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const updateNotificationPreferences = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      throw createHttpError('Unauthorized.', 401);
+    }
+
+    const { notifyOnEntry, notifyOnExit } = req.body;
+
+    if (notifyOnEntry === undefined && notifyOnExit === undefined) {
+      throw createHttpError('At least one preference (notifyOnEntry or notifyOnExit) is required.', 400);
+    }
+
+    const updates = {};
+    if (notifyOnEntry !== undefined) {
+      updates.notifyOnEntry = Boolean(notifyOnEntry);
+    }
+    if (notifyOnExit !== undefined) {
+      updates.notifyOnExit = Boolean(notifyOnExit);
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      authUser._id,
+      { $set: updates },
+      { new: true }
+    ).select('notifyOnEntry notifyOnExit');
+
+    return sendSuccessResponse(res, 200, 'Notification preferences updated successfully.', {
+      data: {
+        notifyOnEntry: updatedUser.notifyOnEntry !== false,
+        notifyOnExit: updatedUser.notifyOnExit !== false,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   sendTestNotification,
   getNotifications,
@@ -329,4 +386,6 @@ module.exports = {
   markAllAsRead,
   deleteNotification,
   clearReadNotifications,
+  getNotificationPreferences,
+  updateNotificationPreferences,
 };

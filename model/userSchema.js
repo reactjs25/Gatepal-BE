@@ -277,6 +277,14 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: () => ({}),
     },
+    notifyOnEntry: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnExit: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );

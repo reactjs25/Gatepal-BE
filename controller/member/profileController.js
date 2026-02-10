@@ -153,6 +153,10 @@ const getMemberProfile = async (req, res, next) => {
               : null,
           };
         }),
+        notificationPreferences: {
+          notifyOnEntry: user.notifyOnEntry !== false,
+          notifyOnExit: user.notifyOnExit !== false,
+        },
         qrCodeImage,
         message:
           'Hello, our society is using GatePal™ app to manage our society. It is a wonderful application to manage guest entries and approvals. I strongly recommend for your society. You can download it from https://maplink.com',
