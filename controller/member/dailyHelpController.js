@@ -29,6 +29,9 @@ const ALLOWED_WORK_CATEGORY_IDS = new Set(DAILY_HELP_CATEGORIES.map((c) => c.id)
 const isMemberOrSocietyAdmin = (authUser) =>
   authUser && (authUser.role === 'member' || authUser.role === 'society_admin');
 
+const isMemberSocietyAdminOrGuard = (authUser) =>
+  authUser && (authUser.role === 'member' || authUser.role === 'society_admin' || authUser.role === 'guard');
+
 const toCanonicalCategory = (value) => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '_');
 
 const getCategoryName = (categoryKey) => {
@@ -262,16 +265,34 @@ const searchApprovedSocietyDailyHelp = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
-    if (!isMemberOrSocietyAdmin(authUser)) {
-      return next(createHttpError('Only members can view daily help.', 403));
+    if (!isMemberSocietyAdminOrGuard(authUser)) {
+      return next(createHttpError('Only members or guards can view daily help.', 403));
     }
 
     const unitIdCandidate = normalizeString((req.params && (req.params.unitId || req.params.id)) || (req.query || {}).unitId);
     let unitDoc;
-    try {
-      unitDoc = await assertUnitAccess({ unitId: unitIdCandidate, authUser });
-    } catch (e) {
-      return next(e);
+
+    if (authUser.role === 'guard') {
+      // Guards don't own units; verify the unit exists and guard is associated with its society
+      const id = normalizeString(unitIdCandidate);
+      if (!id) return next(createHttpError('unitId path parameter is required.', 400));
+      if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError('Invalid unit ID format.', 400));
+      unitDoc = await MemberUnit.findById(id).lean();
+      if (!unitDoc) return next(createHttpError('Unit not found.', 404));
+
+      const guardSocieties = authUser.guardSocieties || [];
+      const isAssociated = guardSocieties.some(
+        (gs) => String(gs.societyId) === String(unitDoc.societyId)
+      );
+      if (!isAssociated) {
+        return next(createHttpError('Guard is not associated with this society.', 403));
+      }
+    } else {
+      try {
+        unitDoc = await assertUnitAccess({ unitId: unitIdCandidate, authUser });
+      } catch (e) {
+        return next(e);
+      }
     }
 
     const categoryRaw = (req.params && req.params.category) || '';
