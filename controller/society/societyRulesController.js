@@ -308,7 +308,7 @@ const getSocietyRules = async (req, res, next) => {
     const items = await SocietyRule.find(filter).sort({ createdAt: -1 }).lean();
 
     let lastSeenByCategoryTs = {};
-    if (isMemberView) {
+    if (isMemberView || isGuardView) {
       const raw = authUser.lastSocietyRulesSeenAtByCategory || {};
       if (raw && typeof raw === 'object') {
         Object.keys(raw).forEach((key) => {
@@ -343,7 +343,7 @@ const getSocietyRules = async (req, res, next) => {
       }
 
       let isRead = true;
-      if (isMemberView && effectiveAt) {
+      if ((isMemberView || isGuardView) && effectiveAt) {
         const effectiveTs = effectiveAt.getTime();
         const key = doc.categoryKey;
         const lastSeenTs = lastSeenByCategoryTs[key] || 0;
@@ -368,7 +368,7 @@ const getSocietyRules = async (req, res, next) => {
       };
     });
 
-    if (isMemberView && latestEffectiveAtByCategory.size > 0) {
+    if ((isMemberView || isGuardView) && latestEffectiveAtByCategory.size > 0) {
       const update = {};
       latestEffectiveAtByCategory.forEach((value, key) => {
         if (key) {
@@ -401,6 +401,7 @@ const getSocietyRuleById = async (req, res, next) => {
     );
     const viewAs = viewAsRaw.toLowerCase();
     const isMemberView = authUser.role === 'member' || viewAs === 'member';
+    const isGuardView = authUser.role === 'guard';
 
     let societyId = null;
 
@@ -410,7 +411,29 @@ const getSocietyRuleById = async (req, res, next) => {
     ) {
       const society = await resolveAdminSociety(authUser);
       societyId = society._id;
-    } else if (authUser.role === 'member') {
+    } else if (isGuardView) {
+      const societyIdCandidate = normalizeString(
+        (req.body && req.body.societyId) ||
+        (req.params && req.params.societyId) ||
+        (req.query && req.query.societyId) ||
+        ''
+      );
+
+      if (!societyIdCandidate) {
+        return next(createHttpError('societyId is required for guards to view society rules.', 400));
+      }
+
+      const guardSocieties = authUser.guardSocieties || [];
+      const isAssociatedWithSociety = guardSocieties.some(
+        (gs) => String(gs.societyId) === societyIdCandidate
+      );
+
+      if (!isAssociatedWithSociety) {
+        return next(createHttpError('Guard is not associated with this society.', 403));
+      }
+
+      societyId = societyIdCandidate;
+    } else if (isMemberView) {
       const unitIdCandidate = normalizeString(
         (req.body && req.body.unitId) ||
         (req.params && (req.params.unitId || req.params.id)) ||
@@ -431,7 +454,7 @@ const getSocietyRuleById = async (req, res, next) => {
 
       societyId = unitDoc.societyId;
     } else {
-      return next(createHttpError('Only members or society admins can perform this action.', 403));
+      return next(createHttpError('Only members, guards, or society admins can perform this action.', 403));
     }
 
     const ruleId = normalizeString(
@@ -451,7 +474,7 @@ const getSocietyRuleById = async (req, res, next) => {
       return next(createHttpError('Society rule not found.', 404));
     }
 
-    if (isMemberView) {
+    if (isMemberView || isGuardView) {
       const createdAt =
         doc.createdAt instanceof Date ? doc.createdAt : doc.createdAt ? new Date(doc.createdAt) : null;
       const updatedAt =

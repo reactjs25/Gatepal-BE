@@ -376,7 +376,7 @@ const getMeetings = async (req, res, next) => {
     const items = await Meeting.find({ societyId, deletedAt: null }).lean();
 
     const now = new Date();
-    const readMeetingIdsSet = isMemberView
+    const readMeetingIdsSet = (isMemberView || isGuardView)
       ? new Set(
           Array.isArray(authUser.readMeetingIds)
             ? authUser.readMeetingIds.map((id) => String(id))
@@ -392,7 +392,7 @@ const getMeetings = async (req, res, next) => {
       const target = meetingDateTime && meetingDateTime > now ? upcomingMeetings : pastMeetings;
 
       const payload = buildMeetingResponse(doc);
-      payload.isRead = isMemberView ? readMeetingIdsSet.has(String(doc.meetingId)) : true;
+      payload.isRead = (isMemberView || isGuardView) ? readMeetingIdsSet.has(String(doc.meetingId)) : true;
 
       target.push(payload);
     });
@@ -500,7 +500,7 @@ const getMeetingById = async (req, res, next) => {
       return next(createHttpError('Meeting not found.', 404));
     }
 
-    if (isMemberView) {
+    if (isMemberView || isGuardView) {
       await User.findByIdAndUpdate(authUser._id, {
         $addToSet: { readMeetingIds: String(doc.meetingId) },
       }).exec();

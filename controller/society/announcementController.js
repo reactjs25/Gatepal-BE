@@ -297,7 +297,7 @@ const getAnnouncements = async (req, res, next) => {
     const currentYear = now.getFullYear();
     const currentMonthIndex = now.getMonth();
 
-    const readAnnouncementIdsSet = isMemberView
+    const readAnnouncementIdsSet = (isMemberView || isGuardView)
       ? new Set(
           Array.isArray(authUser.readAnnouncementIds)
             ? authUser.readAnnouncementIds.map((id) => String(id))
@@ -331,7 +331,7 @@ const getAnnouncements = async (req, res, next) => {
 
       const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
-      const isRead = isMemberView ? readAnnouncementIdsSet.has(String(doc.announcementId)) : true;
+      const isRead = (isMemberView || isGuardView) ? readAnnouncementIdsSet.has(String(doc.announcementId)) : true;
 
       groupsByKey[groupKey].announcements.push({
         announcementId: doc.announcementId,
@@ -455,7 +455,7 @@ const getAnnouncementById = async (req, res, next) => {
       return next(createHttpError('Announcement not found.', 404));
     }
 
-    if (isMemberView) {
+    if (isMemberView || isGuardView) {
       await User.findByIdAndUpdate(authUser._id, {
         $addToSet: { readAnnouncementIds: String(doc.announcementId) },
       }).exec();
