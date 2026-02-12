@@ -21,11 +21,15 @@ const feedbackSchema = new mongoose.Schema(
     description: {
       type: String,
       trim: true,
+      required: true,
+      minlength: 1,
       maxlength: 1000,
-      default: '',
     },
   },
   { timestamps: true }
 );
+
+// Enforce one feedback per user (prevents duplicates at DB level).
+feedbackSchema.index({ userId: 1 }, { unique: true });
 
 module.exports = mongoose.model('Feedback', feedbackSchema);
