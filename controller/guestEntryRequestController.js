@@ -1873,7 +1873,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           },
           validityLabel,
           isPreApproval: true,
-          isSilentDelivery: doc.visitorType === 'delivery_executive' ? Boolean(doc.isSilentDelivery) : null,
+          isSilentDelivery: doc.visitorType === 'delivery_executive' ? Boolean(doc.isSilentDelivery) : false,
           isPrivateInvite: Boolean(doc.isPrivateInvite),
           _sortAt: doc.createdAt || doc.validFrom || doc.validTill || null,
         };
@@ -2504,7 +2504,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           vehicleNumber: preDoc.vehicleNumber || null,
           isPreApproval: true,
           isSilentDelivery:
-            preDoc.visitorType === 'delivery_executive' ? Boolean(preDoc.isSilentDelivery) : null,
+            preDoc.visitorType === 'delivery_executive' ? Boolean(preDoc.isSilentDelivery) : false,
           isPrivateInvite: Boolean(preDoc.isPrivateInvite),
           cancelledReason: normalizeString(preDoc.cancelledReason) || null,
           cancelledDescription: normalizeString(preDoc.cancelledDescription) || null,

@@ -284,7 +284,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
         },
         validityLabel,
         vehicleNumber: approval.vehicleNumber || null,
-        isPrivateInvite: approval.isPrivateInvite,
+        isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });
   } catch (error) {
@@ -425,7 +425,7 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
         validFrom: approval.validFrom,
         validTill: approval.validTill,
         validityLabel,
-        isPrivateInvite: approval.isPrivateInvite,
+        isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });
   } catch (error) {

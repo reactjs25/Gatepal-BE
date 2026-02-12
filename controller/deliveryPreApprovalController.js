@@ -294,7 +294,7 @@ const createDeliveryPreApproval = async (req, res, next) => {
           name: member?.fullName || authUser.fullName || null,
         },
         validityLabel,
-        isSilentDelivery: approval.isSilentDelivery,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
       },
     });
   } catch (error) {
@@ -434,7 +434,7 @@ const updateDeliveryPreApproval = async (req, res, next) => {
         validFrom: approval.validFrom,
         validTill: approval.validTill,
         validityLabel,
-        isSilentDelivery: approval.isSilentDelivery,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
       },
     });
   } catch (error) {

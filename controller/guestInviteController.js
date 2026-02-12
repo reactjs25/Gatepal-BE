@@ -547,7 +547,7 @@ const createGroupInvite = async (req, res, next) => {
         id: String(authUser._id),
         name: authUser.fullName || null,
       },
-      isPrivateInvite: invite.isPrivateInvite,
+      isPrivateInvite: Boolean(invite.isPrivateInvite),
       guests: invite.guests.map((g) => ({
         name: g.name,
         countryCode: g.countryCode,
@@ -654,7 +654,7 @@ const createFrequentInvite = async (req, res, next) => {
         id: String(authUser._id),
         name: authUser.fullName || null,
       },
-      isPrivateInvite: invite.isPrivateInvite,
+      isPrivateInvite: Boolean(invite.isPrivateInvite),
       guests: invite.guests.map((g) => ({
         guestId: g.guestId,
         name: g.name,
@@ -774,7 +774,7 @@ const createQuickInvite = async (req, res, next) => {
         id: String(authUser._id),
         name: authUser.fullName || null,
       },
-      isPrivateInvite: invite.isPrivateInvite,
+      isPrivateInvite: Boolean(invite.isPrivateInvite),
       guests: invite.guests.map((g) => ({
         guestId: g.guestId,
         name: g.name,
@@ -951,7 +951,7 @@ const updateGuestInviteForMember = async (req, res, next) => {
           id: String(authUser._id),
           name: authUser.fullName || null,
         },
-        isPrivateInvite: invite.isPrivateInvite,
+        isPrivateInvite: Boolean(invite.isPrivateInvite),
         guests: invite.guests.map((g) => ({
           guestId: g.guestId,
           name: g.name,

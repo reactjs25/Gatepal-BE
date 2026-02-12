@@ -281,7 +281,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
           name: member?.fullName || authUser.fullName || null,
         },
         validityLabel,
-        isPrivateInvite: approval.isPrivateInvite,
+        isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });
   } catch (error) {
@@ -430,7 +430,7 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
         validFrom: approval.validFrom,
         validTill: approval.validTill,
         validityLabel,
-        isPrivateInvite: approval.isPrivateInvite,
+        isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });
   } catch (error) {
