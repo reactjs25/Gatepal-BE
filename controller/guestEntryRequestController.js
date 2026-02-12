@@ -125,7 +125,7 @@ const STATUS_FILTERS = {
   approved: ['approved'],
   inside_society: ['entered'],
   entered: ['entered'],
-  left_society: ['rejected', 'cancelled', 'expired', 'left', 'wrong_entry'],
+  left_society: ['left'],
   rejected: ['rejected'],
   denied: ['rejected'],
   cancelled: ['cancelled'],
