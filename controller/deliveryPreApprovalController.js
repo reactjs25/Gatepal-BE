@@ -534,12 +534,10 @@ const cancelDeliveryPreApproval = async (req, res, next) => {
     }
 
     const activeEntry = await GuestEntryRequest.findOne({
+      requestId: approval.preApprovalId,
       societyId: unitDoc.societyId,
-      wingNameLower: unitDoc.wingNameLower,
-      unitNumberLower: unitDoc.unitNumberLower,
       visitorType: 'delivery_executive',
       status: 'entered',
-      ...(approval.companyName ? { visitorCompanyName: approval.companyName } : {}),
     }).lean();
     if (activeEntry) {
       return next(createHttpError('Cannot cancel pre-approval while visitor is inside society.', 409));
