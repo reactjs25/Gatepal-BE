@@ -1,14 +1,36 @@
 const Vehicle = require('../../model/vehicleSchema');
+const Society = require('../../model/societySchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { buildCanonicalUnitId, assertUnitAccess } = require('../../utils/unitAccess');
 
 const ALLOWED_TYPES = new Set(['Two-Wheeler', 'Four-Wheeler', 'Other']);
-const MAX_VEHICLES_BY_TYPE = {
-  'Two-Wheeler': 2,
-  'Four-Wheeler': 2,
-  Other: 3,
+
+// Default limits if society has no vehicleLimits configured
+const DEFAULT_VEHICLE_LIMITS = {
+  twoWheelersPerUnit: 2,
+  fourWheelersPerUnit: 2,
+  otherVehiclesPerUnit: 3,
+};
+
+const getVehicleLimitsForSociety = async (societyId) => {
+  const society = await Society.findById(societyId, 'vehicleLimits').lean();
+  if (!society || !society.vehicleLimits) {
+    return DEFAULT_VEHICLE_LIMITS;
+  }
+  return {
+    twoWheelersPerUnit: society.vehicleLimits.twoWheelersPerUnit ?? DEFAULT_VEHICLE_LIMITS.twoWheelersPerUnit,
+    fourWheelersPerUnit: society.vehicleLimits.fourWheelersPerUnit ?? DEFAULT_VEHICLE_LIMITS.fourWheelersPerUnit,
+    otherVehiclesPerUnit: society.vehicleLimits.otherVehiclesPerUnit ?? DEFAULT_VEHICLE_LIMITS.otherVehiclesPerUnit,
+  };
+};
+
+const getMaxForVehicleType = (vehicleType, limits) => {
+  if (vehicleType === 'Two-Wheeler') return limits.twoWheelersPerUnit;
+  if (vehicleType === 'Four-Wheeler') return limits.fourWheelersPerUnit;
+  if (vehicleType === 'Other') return limits.otherVehiclesPerUnit;
+  return 0;
 };
 
 
@@ -32,16 +54,25 @@ const validateVehiclePayload = (payload = {}) => {
   return { vehicleType, name, vehicleNumber: rawNumber || undefined, isElectric };
 };
 
-const assertVehicleTypeLimit = async ({ unitId, vehicleType, excludeVehicleId }) => {
-  const max = MAX_VEHICLES_BY_TYPE[vehicleType];
-  if (!max) return;
+const assertVehicleTypeLimit = async ({ unitId, vehicleType, excludeVehicleId, societyId }) => {
+  const limits = await getVehicleLimitsForSociety(societyId);
+  const max = getMaxForVehicleType(vehicleType, limits);
+  
+  // If max is 0, no vehicles of this type are allowed
+  if (max === 0) {
+    throw createHttpError(`${vehicleType} vehicles are not allowed in this society.`, 400);
+  }
+  
   const query = { unitId, vehicleType, deletedAt: null };
   if (excludeVehicleId) {
     query.vehicleId = { $ne: excludeVehicleId };
   }
   const count = await Vehicle.countDocuments(query);
   if (count >= max) {
-    throw createHttpError(`Maximum ${max} ${vehicleType} vehicles allowed per unit.`, 400);
+    throw createHttpError(
+      `You have reached the maximum limit of ${max} ${vehicleType} vehicle${max !== 1 ? 's' : ''} per unit. Please remove an existing vehicle to add a new one.`,
+      400
+    );
   }
 };
 
@@ -82,7 +113,11 @@ const addVehicle = async (req, res, next) => {
     }
 
     try {
-      await assertVehicleTypeLimit({ unitId: canonicalUnitId, vehicleType: validated.vehicleType });
+      await assertVehicleTypeLimit({
+        unitId: canonicalUnitId,
+        vehicleType: validated.vehicleType,
+        societyId: unitDoc.societyId,
+      });
     } catch (e) {
       return next(e);
     }
@@ -194,6 +229,7 @@ const editVehicle = async (req, res, next) => {
         unitId: canonicalUnitId,
         vehicleType: validated.vehicleType,
         excludeVehicleId: vehicleId,
+        societyId: unitDoc.societyId,
       });
     } catch (e) {
       return next(e);
