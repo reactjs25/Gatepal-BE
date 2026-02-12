@@ -1,10 +1,10 @@
-const { ACTION_TYPES, ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
+const { ACTION_TYPES, VISITOR_TYPES, ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 
 const getActionReasons = async (req, res, next) => {
   try {
-    const { actionType } = req.query;
+    const { actionType, visitorType } = req.query;
 
     if (!actionType) {
       throw createHttpError('actionType query parameter is required.', 400);
@@ -17,8 +17,21 @@ const getActionReasons = async (req, res, next) => {
       );
     }
 
-    const reasons = ACTION_REASONS[actionType].map((name) => ({
-      id: name.toLowerCase().replace(/\s+/g, '_'),
+    if (!visitorType) {
+      throw createHttpError('visitorType query parameter is required.', 400);
+    }
+
+    if (!VISITOR_TYPES.includes(visitorType)) {
+      throw createHttpError(
+        `Invalid visitorType. Must be one of: ${VISITOR_TYPES.join(', ')}`,
+        400
+      );
+    }
+
+    const reasonsList = ACTION_REASONS[actionType]?.[visitorType] || [];
+
+    const reasons = reasonsList.map((name) => ({
+      id: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_|_$)/g, ''),
       name,
     }));
 
