@@ -11,6 +11,33 @@ const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const ALLOWED_CATEGORIES = new Set(['adult', 'child']);
 const FAMILY_LIST_CACHE_TTL_MS = 20000;
 const familyListCache = new Map();
+const FAMILY_CACHE_SCOPES = ['', 'self', 'others', 'all'];
+
+const invalidateFamilyCacheForUnits = async ({ authUserId, unitDocs }) => {
+  if (!authUserId || !Array.isArray(unitDocs) || unitDocs.length === 0) return;
+
+  const groupedUnitIds = new Set();
+  const uniqueGroups = new Set();
+
+  for (const unitDoc of unitDocs) {
+    if (!unitDoc || !unitDoc.societyId || !unitDoc.wingNameLower || !unitDoc.unitNumberLower) continue;
+    uniqueGroups.add(`${String(unitDoc.societyId)}|${unitDoc.wingNameLower}|${unitDoc.unitNumberLower}`);
+  }
+
+  for (const key of uniqueGroups) {
+    const [societyId, wingNameLower, unitNumberLower] = key.split('|');
+    const peers = await MemberUnit.find({ societyId, wingNameLower, unitNumberLower }).select('_id').lean();
+    for (const peer of peers) {
+      groupedUnitIds.add(String(peer._id));
+    }
+  }
+
+  for (const unitId of groupedUnitIds) {
+    for (const scope of FAMILY_CACHE_SCOPES) {
+      familyListCache.delete(`${String(authUserId)}:${unitId}:${scope}`);
+    }
+  }
+};
 
 const getFamilyDisplayStatus = ({ category, status }) => {
   return category === 'child' ? 'No access for child' : status;
@@ -543,7 +570,8 @@ const deleteFamilyMember = async (req, res, next) => {
         return next(createHttpError('Forbidden: you do not own this unit.', 403));
       }
 
-      
+      await MemberUnit.deleteMany({ _id: { $in: overlapping.map((unit) => unit._id) } });
+      await invalidateFamilyCacheForUnits({ authUserId: authUser._id, unitDocs: overlapping });
       return sendSuccessResponse(res, 200, 'Family member deleted successfully.');
     }
 
@@ -554,6 +582,7 @@ const deleteFamilyMember = async (req, res, next) => {
     }
 
     await doc.deleteOne();
+    await invalidateFamilyCacheForUnits({ authUserId: authUser._id, unitDocs: [unitDoc] });
 
     return sendSuccessResponse(res, 200, 'Family member deleted successfully.');
   } catch (error) {
