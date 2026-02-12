@@ -1874,10 +1874,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           validityLabel,
           isPreApproval: true,
           isSilentDelivery: doc.visitorType === 'delivery_executive' ? Boolean(doc.isSilentDelivery) : null,
-          isPrivateInvite:
-            doc.visitorType === 'taxi_vehicle_driver' || doc.visitorType === 'other_visitor'
-              ? Boolean(doc.isPrivateInvite)
-              : null,
+          isPrivateInvite: Boolean(doc.isPrivateInvite),
           _sortAt: doc.createdAt || doc.validFrom || doc.validTill || null,
         };
       };
@@ -2508,10 +2505,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           isPreApproval: true,
           isSilentDelivery:
             preDoc.visitorType === 'delivery_executive' ? Boolean(preDoc.isSilentDelivery) : null,
-          isPrivateInvite:
-            preDoc.visitorType === 'taxi_vehicle_driver' || preDoc.visitorType === 'other_visitor'
-              ? Boolean(preDoc.isPrivateInvite)
-              : null,
+          isPrivateInvite: Boolean(preDoc.isPrivateInvite),
           cancelledReason: normalizeString(preDoc.cancelledReason) || null,
           cancelledDescription: normalizeString(preDoc.cancelledDescription) || null,
           cancelledAt: preDoc.cancelledAt ? toISTDateTimeLabel(preDoc.cancelledAt) : null,
@@ -2603,7 +2597,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           category: 'Guest',
           visitorType: 'Guest',
           inviteType: guestInvite.type,
-          isPrivateInvite: guestInvite.isPrivateInvite || false,
+          isPrivateInvite: Boolean(guestInvite.isPrivateInvite),
           requestedOn: guestInvite.createdAt ? toISTDateTimeLabel(guestInvite.createdAt) : null,
           validityLabel,
           unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },

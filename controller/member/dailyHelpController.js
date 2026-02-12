@@ -274,7 +274,7 @@ const searchApprovedSocietyDailyHelp = async (req, res, next) => {
     let societyId;
 
     if (authUser.role === 'guard') {
-      // For guards the param is a societyId, not a unitId
+      
       if (!paramId) return next(createHttpError('societyId path parameter is required.', 400));
       if (!mongoose.Types.ObjectId.isValid(paramId)) return next(createHttpError('Invalid societyId format.', 400));
 

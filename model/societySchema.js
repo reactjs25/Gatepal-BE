@@ -81,6 +81,12 @@ const engagementSchema = new mongoose.Schema({
     total: { type: Number, required: true },
 });
 
+const vehicleLimitsSchema = new mongoose.Schema({
+    twoWheelersPerUnit: { type: Number, default: 0, min: 0 },
+    fourWheelersPerUnit: { type: Number, default: 0, min: 0 },
+    otherVehiclesPerUnit: { type: Number, default: 0, min: 0 },
+});
+
 const societySchema = new mongoose.Schema(
     {
         societyName: { type: String, required: true },
@@ -98,6 +104,7 @@ const societySchema = new mongoose.Schema(
         exitGates: [gateSchema],
         societyAdmins: [societyAdminSchema],
         engagement: engagementSchema,
+        vehicleLimits: vehicleLimitsSchema,
         
         lastContractExpiryNotificationAt: { type: Date, default: null },
         lastAppInactiveNotificationAt: { type: Date, default: null },

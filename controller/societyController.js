@@ -72,6 +72,7 @@ const createSociety = async (req, res, next) => {
       exitGates,
       societyAdmins,
       engagement: engagementInput,
+      vehicleLimits: vehicleLimitsInput,
     } = req.body;
 
     const engagement = engagementInput || {};
@@ -117,6 +118,7 @@ const createSociety = async (req, res, next) => {
         gst: totals.gst,
         total: totals.total,
       },
+      vehicleLimits: vehicleLimitsInput,
     });
 
     await newSociety.save();
@@ -176,9 +178,13 @@ const getSocietyById = async (req, res, next) => {
 const updateSocietyById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { engagement, societyAdmins, ...rest } = req.body;
+    const { engagement, societyAdmins, vehicleLimits, ...rest } = req.body;
 
     const updates = { ...rest };
+
+    if (vehicleLimits) {
+      updates.vehicleLimits = vehicleLimits;
+    }
 
     if (engagement) {
       const totals = computeEngagementTotals(engagement);
