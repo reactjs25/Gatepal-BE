@@ -6,6 +6,7 @@ const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
+const { ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
 const { toISTDateTimeLabelNoComma } = require('../utils/dateTime');
 
 const normalizeOption = (value) =>
@@ -14,6 +15,16 @@ const normalizeOption = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_');
+
+const canonicalizeEnumReason = (reasonInput, allowedReasons) => {
+  const raw = normalizeString(reasonInput);
+  if (!raw) return null;
+  const needle = raw.toLowerCase();
+  const match = (Array.isArray(allowedReasons) ? allowedReasons : []).find(
+    (r) => normalizeString(r).toLowerCase() === needle
+  );
+  return match || null;
+};
 
 const normalizeCompanyId = (value) =>
   (value || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -458,7 +469,13 @@ const cancelDeliveryPreApproval = async (req, res, next) => {
     if (!preApprovalId) return next(createHttpError('preApprovalId is required.', 400));
     if (!unitId) return next(createHttpError('unitId is required.', 400));
     if (!reason) return next(createHttpError('reason is required.', 400));
-    if (reason.toLowerCase() === 'other' && !description) {
+
+    const allowedReasons = ACTION_REASONS?.DELETE_PRE_APPROVAL?.delivery_executive || [];
+    const canonicalReason = canonicalizeEnumReason(reason, allowedReasons);
+    if (!canonicalReason) {
+      return next(createHttpError(`Invalid reason. Allowed: ${(allowedReasons || []).join(', ')}.`, 400));
+    }
+    if (canonicalReason.toLowerCase() === 'other' && !description) {
       return next(createHttpError('description is required when reason is other.', 400));
     }
 
@@ -529,8 +546,8 @@ const cancelDeliveryPreApproval = async (req, res, next) => {
     }
 
     approval.status = 'cancelled';
-    approval.cancelledReason = reason;
-    approval.cancelledDescription = description || null;
+    approval.cancelledReason = canonicalReason;
+    approval.cancelledDescription = canonicalReason.toLowerCase() === 'other' ? (description || null) : null;
     approval.cancelledAt = new Date();
     approval.cancelledByUserId = authUser._id;
     await approval.save();

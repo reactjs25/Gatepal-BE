@@ -13,6 +13,7 @@ const OtherVisitorPreApproval = require('../model/otherVisitorPreApprovalSchema'
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { normalizeString } = require('../utils/strings');
+const { ACTION_REASONS, normalizeVisitorType } = require('../utils/enums/actionReasonEnums');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
@@ -142,6 +143,53 @@ const normalizeOption = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_');
+
+const canonicalizeEnumReason = (reasonInput, allowedReasons) => {
+  const raw = normalizeString(reasonInput);
+  if (!raw) return null;
+  const needle = raw.toLowerCase();
+  const match = (Array.isArray(allowedReasons) ? allowedReasons : []).find(
+    (r) => normalizeString(r).toLowerCase() === needle
+  );
+  return match || null;
+};
+
+const getAllowedActionReasons = (actionType, visitorType) => {
+  const vt = normalizeVisitorType(visitorType) || 'guest';
+  const reasons = ACTION_REASONS?.[actionType]?.[vt];
+  return Array.isArray(reasons) ? reasons : [];
+};
+
+const LEGACY_WRONG_ENTRY_REASON_MAP = {
+  guest: {
+    unknown_visitor: 'This was not my visitor',
+    did_not_invite: 'This was not my visitor',
+    fraudulent: 'Entry details were incorrect',
+    wrong_flat: 'Guest came to the wrong flat',
+    other: 'Other',
+  },
+  delivery_executive: {
+    unknown_visitor: 'This is not my order',
+    did_not_invite: 'This is not my order',
+    fraudulent: 'Entry details were incorrect',
+    wrong_flat: 'Wrong delivery entry was recorded',
+    other: 'Other',
+  },
+  taxi_vehicle_driver: {
+    unknown_visitor: 'This is not my taxi',
+    did_not_invite: 'This is not my taxi',
+    fraudulent: 'Entry details were incorrect',
+    wrong_flat: 'Wrong taxi entry was recorded',
+    other: 'Other',
+  },
+  other_visitor: {
+    unknown_visitor: 'This was not my booking',
+    did_not_invite: 'This was not my booking',
+    fraudulent: 'Entry details were incorrect',
+    wrong_flat: 'Wrong entry was recorded',
+    other: 'Other',
+  },
+};
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -2328,6 +2376,31 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           companyName: doc.visitorCompanyName,
         });
 
+        const wrongEntryReasonRaw = doc.wrongEntryReason || null;
+        const rejectedReasonRaw = doc.rejectedReason || null;
+
+        let wrongEntryReasonOut = null;
+        if (wrongEntryReasonRaw) {
+          const visitorTypeKey = normalizeVisitorType(doc.visitorType) || 'guest';
+          const allowedReasons = getAllowedActionReasons('WRONG_ENTRY', visitorTypeKey);
+          wrongEntryReasonOut = canonicalizeEnumReason(wrongEntryReasonRaw, allowedReasons);
+          if (!wrongEntryReasonOut) {
+            const legacyKey = normalizeOption(wrongEntryReasonRaw);
+            const mapped = LEGACY_WRONG_ENTRY_REASON_MAP?.[visitorTypeKey]?.[legacyKey] || null;
+            wrongEntryReasonOut = mapped ? canonicalizeEnumReason(mapped, allowedReasons) : null;
+          }
+          if (!wrongEntryReasonOut) {
+            wrongEntryReasonOut = wrongEntryReasonRaw;
+          }
+        }
+
+        let rejectedReasonOut = null;
+        if (rejectedReasonRaw) {
+          const visitorTypeKey = normalizeVisitorType(doc.visitorType) || 'guest';
+          const allowedReasons = getAllowedActionReasons('DENY_ENTRY', visitorTypeKey);
+          rejectedReasonOut = canonicalizeEnumReason(rejectedReasonRaw, allowedReasons) || rejectedReasonRaw;
+        }
+
         return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully.', {
           data: {
             requestId: doc.requestId,
@@ -2378,11 +2451,11 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             vehicleNumber: doc.vehicleNumber || null,
             
             isWrongEntry: doc.isWrongEntry || false,
-            wrongEntryReason: doc.wrongEntryReason || null,
+            wrongEntryReason: wrongEntryReasonOut,
             wrongEntryDescription: doc.wrongEntryDescription || null,
             wrongEntryMarkedAt: doc.wrongEntryMarkedAt ? toISTDateTimeLabel(doc.wrongEntryMarkedAt) : null,
             wrongEntryNotifier,
-            rejectedReason: doc.rejectedReason || null,
+            rejectedReason: rejectedReasonOut,
             rejectedDescription: doc.rejectedDescription || null,
           },
         });
@@ -2468,6 +2541,15 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         companyName: preDoc.companyName,
       });
 
+      const preCancelledReasonRaw = normalizeString(preDoc.cancelledReason) || null;
+      let preCancelledReasonOut = null;
+      if (preCancelledReasonRaw) {
+        const visitorTypeKey = normalizeVisitorType(preDoc.visitorType) || 'guest';
+        const allowedReasons = getAllowedActionReasons('DELETE_PRE_APPROVAL', visitorTypeKey);
+        preCancelledReasonOut =
+          canonicalizeEnumReason(preCancelledReasonRaw, allowedReasons) || preCancelledReasonRaw;
+      }
+
       return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully.', {
         data: {
           requestId: preDoc.preApprovalId,
@@ -2506,7 +2588,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           isSilentDelivery:
             preDoc.visitorType === 'delivery_executive' ? Boolean(preDoc.isSilentDelivery) : false,
           isPrivateInvite: Boolean(preDoc.isPrivateInvite),
-          cancelledReason: normalizeString(preDoc.cancelledReason) || null,
+          cancelledReason: preCancelledReasonOut,
           cancelledDescription: normalizeString(preDoc.cancelledDescription) || null,
           cancelledAt: preDoc.cancelledAt ? toISTDateTimeLabel(preDoc.cancelledAt) : null,
         },
@@ -2533,6 +2615,12 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         : null;
       const cancelledByUser = guestInvite.cancelledByUserId
         ? await User.findById(guestInvite.cancelledByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
+        : null;
+
+      const inviteCancelledReasonRaw = normalizeString(guestInvite.cancelledReason) || null;
+      const inviteAllowedReasons = getAllowedActionReasons('DELETE_PRE_APPROVAL', 'guest');
+      const inviteCancelledReasonOut = inviteCancelledReasonRaw
+        ? canonicalizeEnumReason(inviteCancelledReasonRaw, inviteAllowedReasons) || inviteCancelledReasonRaw
         : null;
 
       let guests = (guestInvite.guests || []).map((g) => ({
@@ -2611,7 +2699,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           guests,
           maxEntries: guestInvite.type === 'frequent' ? null : guestInvite.maxEntries,
           usedEntries: Array.isArray(guestInvite.entryLogs) ? guestInvite.entryLogs.length : 0,
-          cancelledReason: normalizeString(guestInvite.cancelledReason) || null,
+          cancelledReason: inviteCancelledReasonOut,
           cancelledDescription: normalizeString(guestInvite.cancelledDescription) || null,
           cancelledAt: guestInvite.cancelledAt ? toISTDateTimeLabel(guestInvite.cancelledAt) : null,
           cancelledBy: cancelledByUser
@@ -2654,9 +2742,6 @@ const decideGuestEntryRequest = async (req, res, next) => {
     const description = normalizeString(req.body?.description);
     if (decision === 'reject') {
       if (!reason) return next(createHttpError('reason is required for rejection.', 400));
-      if (reason.toLowerCase() === 'other' && !description) {
-        return next(createHttpError('description is required when reason is other.', 400));
-      }
     }
 
     let unitDoc;
@@ -2695,11 +2780,25 @@ const decideGuestEntryRequest = async (req, res, next) => {
       doc.rejectedReason = null;
       doc.rejectedDescription = null;
     } else {
+      const allowedReasons = getAllowedActionReasons('DENY_ENTRY', doc.visitorType || 'guest');
+      const canonicalReason = canonicalizeEnumReason(reason, allowedReasons);
+      if (!canonicalReason) {
+        return next(
+          createHttpError(
+            `Invalid reason. Allowed: ${(allowedReasons || []).join(', ')}.`,
+            400
+          )
+        );
+      }
+      if (canonicalReason.toLowerCase() === 'other' && !description) {
+        return next(createHttpError('description is required when reason is other.', 400));
+      }
+
       doc.status = 'rejected';
       doc.rejectedByUserId = authUser._id;
       doc.rejectedAt = new Date();
-      doc.rejectedReason = reason;
-      doc.rejectedDescription = description;
+      doc.rejectedReason = canonicalReason;
+      doc.rejectedDescription = canonicalReason.toLowerCase() === 'other' ? description : null;
     }
 
     await doc.save();
@@ -3385,14 +3484,6 @@ const allowGuestExitForMember = async (req, res, next) => {
   }
 };
 
-const WRONG_ENTRY_REASONS = [
-  'unknown_visitor',
-  'did_not_invite',
-  'fraudulent',
-  'wrong_flat',
-  'other',
-];
-
 const markWrongEntryForMember = async (req, res, next) => {
   try {
     const authUser = req.appUser;
@@ -3403,20 +3494,12 @@ const markWrongEntryForMember = async (req, res, next) => {
 
     const unitId = normalizeString(req.body?.unitId);
     const requestId = normalizeString(req.body?.requestId);
-    const reason = normalizeOption(req.body?.reason);
+    const reason = normalizeString(req.body?.reason);
     const description = normalizeString(req.body?.description);
 
     if (!unitId) return next(createHttpError('unitId is required.', 400));
     if (!requestId) return next(createHttpError('requestId is required.', 400));
     if (!reason) return next(createHttpError('reason is required.', 400));
-
-    if (!WRONG_ENTRY_REASONS.includes(reason)) {
-      return next(createHttpError(`Invalid reason. Allowed: ${WRONG_ENTRY_REASONS.join(', ')}.`, 400));
-    }
-
-    if (reason === 'other' && !description) {
-      return next(createHttpError('Description is required when reason is "other".', 400));
-    }
 
     let unitDoc;
     try {
@@ -3440,6 +3523,26 @@ const markWrongEntryForMember = async (req, res, next) => {
       return next(createHttpError('Wrong entry can only be marked for visitors who have entered the society.', 409));
     }
 
+    const visitorTypeKey = normalizeVisitorType(doc.visitorType) || 'guest';
+    const allowedReasons = getAllowedActionReasons('WRONG_ENTRY', visitorTypeKey);
+
+    let canonicalReason = canonicalizeEnumReason(reason, allowedReasons);
+    if (!canonicalReason) {
+      const legacyKey = normalizeOption(reason);
+      const mapped = LEGACY_WRONG_ENTRY_REASON_MAP?.[visitorTypeKey]?.[legacyKey] || null;
+      canonicalReason = mapped ? canonicalizeEnumReason(mapped, allowedReasons) : null;
+    }
+
+    if (!canonicalReason) {
+      return next(
+        createHttpError(`Invalid reason. Allowed: ${(allowedReasons || []).join(', ')}.`, 400)
+      );
+    }
+
+    if (canonicalReason.toLowerCase() === 'other' && !description) {
+      return next(createHttpError('Description is required when reason is "other".', 400));
+    }
+
     if (doc.isWrongEntry) {
       return sendSuccessResponse(res, 200, 'This visitor is already marked as wrong entry.', {
         data: { requestId: doc.requestId, isWrongEntry: true, status: 'wrong_entry' },
@@ -3448,8 +3551,8 @@ const markWrongEntryForMember = async (req, res, next) => {
 
     
     doc.isWrongEntry = true;
-    doc.wrongEntryReason = reason;
-    doc.wrongEntryDescription = reason === 'other' ? description : null;
+    doc.wrongEntryReason = canonicalReason;
+    doc.wrongEntryDescription = canonicalReason.toLowerCase() === 'other' ? description : null;
     doc.wrongEntryMarkedByMemberId = authUser._id;
     doc.wrongEntryMarkedAt = new Date();
     doc.status = 'wrong_entry';
@@ -3502,7 +3605,7 @@ const markWrongEntryForMember = async (req, res, next) => {
       ...(exitNotifier ? { exitNotifier } : {}),
       wrongEntryMarkedAt: toISTDateTimeLabel(doc.wrongEntryMarkedAt),
       wrongEntryNotifier: { name: authUser.fullName || 'Member' },
-      wrongEntryReason: reason,
+      wrongEntryReason: canonicalReason,
       wrongEntryDescription: doc.wrongEntryDescription || null,
     };
 

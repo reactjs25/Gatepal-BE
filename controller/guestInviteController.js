@@ -12,6 +12,7 @@ const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
+const { ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
 const {
   normalizeCountryCode,
   normalizeDigits,
@@ -26,6 +27,16 @@ const escapeRegex = (value) => (value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$
 
 const normalizeCompanyId = (name) =>
   (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const canonicalizeEnumReason = (reasonInput, allowedReasons) => {
+  const raw = normalizeString(reasonInput);
+  if (!raw) return null;
+  const needle = raw.toLowerCase();
+  const match = (Array.isArray(allowedReasons) ? allowedReasons : []).find(
+    (r) => normalizeString(r).toLowerCase() === needle
+  );
+  return match || null;
+};
 
 const resolveVisitorCompanyLogo = async (visitorType, companyName) => {
   const trimmed = (companyName || '').toString().trim();
@@ -989,7 +1000,13 @@ const cancelGuestInviteForMember = async (req, res, next) => {
     if (!inviteId) return next(createHttpError('inviteId is required.', 400));
     if (!unitId) return next(createHttpError('unitId is required.', 400));
     if (!reason) return next(createHttpError('reason is required.', 400));
-    if (reason.toLowerCase() === 'other' && !description) {
+
+    const allowedReasons = ACTION_REASONS?.DELETE_PRE_APPROVAL?.guest || [];
+    const canonicalReason = canonicalizeEnumReason(reason, allowedReasons);
+    if (!canonicalReason) {
+      return next(createHttpError(`Invalid reason. Allowed: ${(allowedReasons || []).join(', ')}.`, 400));
+    }
+    if (canonicalReason.toLowerCase() === 'other' && !description) {
       return next(createHttpError('description is required when reason is other.', 400));
     }
 
@@ -1017,8 +1034,8 @@ const cancelGuestInviteForMember = async (req, res, next) => {
     }
 
     invite.status = 'cancelled';
-    invite.cancelledReason = reason;
-    invite.cancelledDescription = description || null;
+    invite.cancelledReason = canonicalReason;
+    invite.cancelledDescription = canonicalReason.toLowerCase() === 'other' ? (description || null) : null;
     invite.cancelledAt = new Date();
     invite.cancelledByUserId = authUser._id;
     await invite.save();
