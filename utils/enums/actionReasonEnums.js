@@ -2,6 +2,28 @@ const ACTION_TYPES = ['WRONG_ENTRY', 'DENY_ENTRY', 'DELETE_PRE_APPROVAL'];
 
 const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
 
+
+
+const VISITOR_TYPE_DISPLAY_MAP = {
+  'Guest': 'guest',
+  'Delivery Executive': 'delivery_executive',
+  'Taxi': 'taxi_vehicle_driver',
+  'Taxi Vehicle Driver': 'taxi_vehicle_driver',
+  'Other Visitor': 'other_visitor',
+};
+
+
+
+
+
+
+const normalizeVisitorType = (visitorType) => {
+  if (VISITOR_TYPES.includes(visitorType)) {
+    return visitorType;
+  }
+  return VISITOR_TYPE_DISPLAY_MAP[visitorType] || null;
+};
+
 const ACTION_REASONS = {
   DENY_ENTRY: {
     guest: [
@@ -143,5 +165,7 @@ const ACTION_REASONS = {
 module.exports = {
   ACTION_TYPES,
   VISITOR_TYPES,
+  VISITOR_TYPE_DISPLAY_MAP,
+  normalizeVisitorType,
   ACTION_REASONS,
 };
