@@ -407,7 +407,7 @@ const findGuestInviteApproval = async ({ societyId, unitId, guestName, phoneDigi
       validTill: { $gte: now },
       guests: { $exists: true },
     },
-    { invitedByUserId: 1, type: 1, guests: 1 }
+    { invitedByUserId: 1, type: 1, isPrivateInvite: 1, guests: 1 }
   )
     .sort({ validFrom: -1 })
     .limit(20)
@@ -425,6 +425,18 @@ const findGuestInviteApproval = async ({ societyId, unitId, guestName, phoneDigi
     if (matched) return invite;
   }
   return null;
+};
+
+const resolveRecipientUserIds = ({ visitorType, autoApproved, preApproval, defaultRecipientUserIds }) => {
+  if (
+    visitorType === 'guest' &&
+    autoApproved &&
+    Boolean(preApproval?.isPrivateInvite) &&
+    preApproval?.invitedByUserId
+  ) {
+    return [preApproval.invitedByUserId];
+  }
+  return defaultRecipientUserIds;
 };
 
 const resolvePreApprovalForUnit = async ({
@@ -1374,7 +1386,12 @@ const createGuestEntryRequest = async (req, res, next) => {
           approvedByUserId: autoApproved ? preApproval.invitedByUserId : null,
           approvedAt: autoApproved ? now : null,
           expiresAt: autoApproved ? null : expiresAt,
-          recipientUserIds: recipientsByUnit.get(targetUnit),
+          recipientUserIds: resolveRecipientUserIds({
+            visitorType,
+            autoApproved,
+            preApproval,
+            defaultRecipientUserIds: recipientsByUnit.get(targetUnit),
+          }),
         });
       })
     );
@@ -3803,7 +3820,12 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
           approvedByUserId: autoApproved && preApproval?.invitedByUserId ? preApproval.invitedByUserId : null,
           approvedAt: autoApproved ? now : null,
           expiresAt,
-          recipientUserIds: recipientsByUnit.get(targetUnit),
+          recipientUserIds: resolveRecipientUserIds({
+            visitorType,
+            autoApproved,
+            preApproval,
+            defaultRecipientUserIds: recipientsByUnit.get(targetUnit),
+          }),
         });
       })
     );
