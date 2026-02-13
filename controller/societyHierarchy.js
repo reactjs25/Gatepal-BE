@@ -58,7 +58,23 @@ const sortByName = (collection = []) =>
 
 const getRegistrationHierarchy = async (req, res, next) => {
     try {
-        const societies = await Society.find({}, 'societyName societyPin country city structure status').lean();
+        const { societyId } = req.query || {};
+        let societies = [];
+
+        if (societyId) {
+            const society = await Society.findById(
+                societyId,
+                'societyName societyPin country city structure status'
+            ).lean();
+
+            if (!society) {
+                throw createHttpError('Society not found.', 404);
+            }
+
+            societies = [society];
+        } else {
+            societies = await Society.find({}, 'societyName societyPin country city structure status').lean();
+        }
 
         const countryMap = new Map();
 
@@ -104,6 +120,9 @@ const getRegistrationHierarchy = async (req, res, next) => {
             },
         });
     } catch (error) {
+        if (error?.name === 'CastError' && error?.path === '_id') {
+            return next(createHttpError('Society not found.', 404));
+        }
         next(setErrorDefaults(error, 'Failed to fetch registration hierarchy'));
     }
 };
