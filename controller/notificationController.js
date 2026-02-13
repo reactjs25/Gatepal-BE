@@ -19,6 +19,41 @@ const getSocietyAdminId = (req) => {
   return req.appUser?.linkedSocietyAdminId;
 };
 
+const formatNotificationCreatedOn = (dateValue) => {
+  if (!dateValue) return '';
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const dayDiff = Math.round((startOfToday - startOfDate) / (24 * 60 * 60 * 1000));
+
+  const timePart = date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  if (dayDiff === 0) {
+    return `Today, ${timePart}`;
+  }
+
+  if (dayDiff === 1) {
+    return `Yesterday, ${timePart}`;
+  }
+
+  const datePart = date.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+  return `${datePart}, ${timePart}`;
+};
+
 
 
 
@@ -137,6 +172,7 @@ const getNotifications = async (req, res, next) => {
       type: n.type,
       isRead: n.isRead,
       createdAt: n.createdAt,
+      createdOn: formatNotificationCreatedOn(n.createdAt),
       data: n.data || {},
     }));
 
