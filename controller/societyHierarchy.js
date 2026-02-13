@@ -25,6 +25,32 @@ const getCountryCityOptions = async (req, res) => {
     });
 };
 
+const COUNTRY_FLAG_CODE_OVERRIDES = {
+    UK: 'GB',
+};
+
+const getCountryFlagCode = (countryCode = '') =>
+    (COUNTRY_FLAG_CODE_OVERRIDES[String(countryCode).toUpperCase()] || String(countryCode).toUpperCase()).trim();
+
+const getCountryFlags = async (req, res) => {
+    const countries = countryCityData
+        .map((country) => {
+            const countryCode = (country.countryCode || '').toUpperCase().trim();
+            const flagCode = getCountryFlagCode(countryCode);
+
+            return {
+                countryCode,
+                countryName: country.countryName || '',
+                flagUrl: flagCode ? `https://flagcdn.com/w160/${flagCode.toLowerCase()}.png` : '',
+            };
+        })
+        .sort((a, b) => a.countryName.localeCompare(b.countryName, undefined, { sensitivity: 'base' }));
+
+    return sendSuccessResponse(res, 200, 'Country flags fetched successfully.', {
+        data: countries,
+    });
+};
+
 
 
 const mapUnits = (units = []) =>
@@ -333,6 +359,7 @@ const notifyMissingLocation = async (req, res, next) => {
 
 module.exports = {
     getCountryCityOptions,
+    getCountryFlags,
     getRegistrationHierarchy,
     notifyMissingLocation,
 };
