@@ -50,6 +50,16 @@ const filterRecipientsByPreference = async (userIds, eventType) => {
     .map((u) => u._id);
 };
 
+const shouldNotifyGuardByPreference = async (guardUserId, eventType) => {
+  if (!guardUserId) return false;
+
+  const preferenceField = eventType === 'approval' ? 'notifyOnApproval' : 'notifyOnDenial';
+  const guard = await User.findById(guardUserId, { [preferenceField]: 1 }).lean();
+
+  if (!guard) return false;
+  return guard[preferenceField] !== false;
+};
+
 
 const getNotificationContent = (doc, action) => {
   const visitorType = doc.visitorType || 'guest';
@@ -2805,23 +2815,31 @@ const decideGuestEntryRequest = async (req, res, next) => {
 
     
     if (doc.createdByGuardId) {
-      console.log(`[GuestEntryRequest] Sending ${decision} notification to guard:`, doc.createdByGuardId);
-      const notification = getNotificationContent(doc, decision === 'approve' ? 'approved' : 'denied');
-      sendToUser(
+      const guardShouldBeNotified = await shouldNotifyGuardByPreference(
         doc.createdByGuardId,
-        notification.title,
-        notification.body,
-        {
-          type: decision === 'approve' ? 'guest_entry_approved' : 'guest_entry_rejected',
-          requestId: doc.requestId,
-          visitorType: doc.visitorType || 'guest',
-          status: decision === 'approve' ? 'approved' : 'rejected',
-        }
-      ).then((result) => {
-        console.log(`[GuestEntryRequest] ${decision} notification result:`, result);
-      }).catch((err) => {
-        console.error(`[GuestEntryRequest] Failed to send ${decision} notification to guard:`, err.message);
-      });
+        decision === 'approve' ? 'approval' : 'denial'
+      );
+      if (guardShouldBeNotified) {
+        console.log(`[GuestEntryRequest] Sending ${decision} notification to guard:`, doc.createdByGuardId);
+        const notification = getNotificationContent(doc, decision === 'approve' ? 'approved' : 'denied');
+        sendToUser(
+          doc.createdByGuardId,
+          notification.title,
+          notification.body,
+          {
+            type: decision === 'approve' ? 'guest_entry_approved' : 'guest_entry_rejected',
+            requestId: doc.requestId,
+            visitorType: doc.visitorType || 'guest',
+            status: decision === 'approve' ? 'approved' : 'rejected',
+          }
+        ).then((result) => {
+          console.log(`[GuestEntryRequest] ${decision} notification result:`, result);
+        }).catch((err) => {
+          console.error(`[GuestEntryRequest] Failed to send ${decision} notification to guard:`, err.message);
+        });
+      } else {
+        console.log(`[GuestEntryRequest] Guard ${decision} preference disabled, skipping notification.`);
+      }
     } else {
       console.log('[GuestEntryRequest] No createdByGuardId found, skipping notification');
     }
@@ -3457,24 +3475,29 @@ const allowGuestExitForMember = async (req, res, next) => {
     
     const guardOnDuty = await findGuardOnDuty(doc.societyId);
     if (guardOnDuty) {
-      const { title, body } = getNotificationContent(doc, 'member_exit');
-      sendToUser(
-        guardOnDuty._id,
-        title,
-        body,
-        {
-          type: 'guest_exit',
-          requestId: doc.requestId,
-          visitorType: doc.visitorType,
-          guestName: doc.guestName,
-          wingName: doc.wingName,
-          unitNumber: doc.unitNumber,
-          status: 'left',
-          markedByMember: 'true',
-        }
-      ).catch((err) => {
-        console.error('[MemberExit] Failed to send exit notification to guard:', err.message);
-      });
+      const guardShouldBeNotified = await shouldNotifyGuardByPreference(guardOnDuty._id, 'denial');
+      if (guardShouldBeNotified) {
+        const { title, body } = getNotificationContent(doc, 'member_exit');
+        sendToUser(
+          guardOnDuty._id,
+          title,
+          body,
+          {
+            type: 'guest_exit',
+            requestId: doc.requestId,
+            visitorType: doc.visitorType,
+            guestName: doc.guestName,
+            wingName: doc.wingName,
+            unitNumber: doc.unitNumber,
+            status: 'left',
+            markedByMember: 'true',
+          }
+        ).catch((err) => {
+          console.error('[MemberExit] Failed to send exit notification to guard:', err.message);
+        });
+      } else {
+        console.log('[MemberExit] Guard denial preference disabled, skipping notification.');
+      }
     }
 
     const payload = await buildExitResponse(doc);

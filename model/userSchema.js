@@ -285,6 +285,14 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    notifyOnApproval: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnDenial: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );

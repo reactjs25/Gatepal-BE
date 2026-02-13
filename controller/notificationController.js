@@ -328,11 +328,18 @@ const getNotificationPreferences = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
+    const isGuard = authUser.role === 'guard';
+
     return sendSuccessResponse(res, 200, 'Notification preferences fetched successfully.', {
-      data: {
-        notifyOnEntry: authUser.notifyOnEntry !== false,
-        notifyOnExit: authUser.notifyOnExit !== false,
-      },
+      data: isGuard
+        ? {
+            notifyOnApproval: authUser.notifyOnApproval !== false,
+            notifyOnDenial: authUser.notifyOnDenial !== false,
+          }
+        : {
+            notifyOnEntry: authUser.notifyOnEntry !== false,
+            notifyOnExit: authUser.notifyOnExit !== false,
+          },
     });
   } catch (error) {
     return next(error);
@@ -346,31 +353,53 @@ const updateNotificationPreferences = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const { notifyOnEntry, notifyOnExit } = req.body;
-
-    if (notifyOnEntry === undefined && notifyOnExit === undefined) {
-      throw createHttpError('At least one preference (notifyOnEntry or notifyOnExit) is required.', 400);
-    }
+    const isGuard = authUser.role === 'guard';
+    const {
+      notifyOnEntry,
+      notifyOnExit,
+      notifyOnApproval,
+      notifyOnDenial,
+    } = req.body;
 
     const updates = {};
-    if (notifyOnEntry !== undefined) {
-      updates.notifyOnEntry = Boolean(notifyOnEntry);
-    }
-    if (notifyOnExit !== undefined) {
-      updates.notifyOnExit = Boolean(notifyOnExit);
+    if (isGuard) {
+      if (notifyOnApproval === undefined && notifyOnDenial === undefined) {
+        throw createHttpError('At least one preference (notifyOnApproval or notifyOnDenial) is required.', 400);
+      }
+
+      if (notifyOnApproval !== undefined) {
+        updates.notifyOnApproval = Boolean(notifyOnApproval);
+      }
+      if (notifyOnDenial !== undefined) {
+        updates.notifyOnDenial = Boolean(notifyOnDenial);
+      }
+    } else {
+      if (notifyOnEntry === undefined && notifyOnExit === undefined) {
+        throw createHttpError('At least one preference (notifyOnEntry or notifyOnExit) is required.', 400);
+      }
+
+      if (notifyOnEntry !== undefined) {
+        updates.notifyOnEntry = Boolean(notifyOnEntry);
+      }
+      if (notifyOnExit !== undefined) {
+        updates.notifyOnExit = Boolean(notifyOnExit);
+      }
     }
 
-    const updatedUser = await User.findByIdAndUpdate(
-      authUser._id,
-      { $set: updates },
-      { new: true }
-    ).select('notifyOnEntry notifyOnExit');
+    const updatedUser = await User.findByIdAndUpdate(authUser._id, { $set: updates }, { new: true }).select(
+      'notifyOnEntry notifyOnExit notifyOnApproval notifyOnDenial'
+    );
 
     return sendSuccessResponse(res, 200, 'Notification preferences updated successfully.', {
-      data: {
-        notifyOnEntry: updatedUser.notifyOnEntry !== false,
-        notifyOnExit: updatedUser.notifyOnExit !== false,
-      },
+      data: isGuard
+        ? {
+            notifyOnApproval: updatedUser.notifyOnApproval !== false,
+            notifyOnDenial: updatedUser.notifyOnDenial !== false,
+          }
+        : {
+            notifyOnEntry: updatedUser.notifyOnEntry !== false,
+            notifyOnExit: updatedUser.notifyOnExit !== false,
+          },
     });
   } catch (error) {
     return next(error);
