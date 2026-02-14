@@ -8,6 +8,8 @@ const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
+const { sendToSocietyMembers } = require('../../utils/pushNotificationService');
+const { getNotificationMessage } = require('../../utils/notificationMessages');
 
 const SOCIETY_RULE_CATEGORIES = [
   { key: 'general', label: 'General' },
@@ -200,6 +202,33 @@ const createSocietyRule = async (req, res, next) => {
 
     const category = findCategoryByKey(doc.categoryKey);
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
+
+    // Send push notification to all society members and guards
+    const categoryLabel = category ? category.label : doc.categoryKey;
+    sendToSocietyMembers(
+      society._id,
+      'New Society Rule',
+      `New rule added: ${categoryLabel}`,
+      {
+        type: 'society_rule',
+        ruleId: doc.ruleId,
+        categoryKey: doc.categoryKey,
+        societyId: String(society._id),
+      },
+      {
+        roles: ['member', 'guard'],
+        localizedContentResolver: ({ languageCode }) =>
+          getNotificationMessage(
+            'society_rule_new',
+            {
+              categoryLabel,
+            },
+            languageCode
+          ),
+      }
+    ).catch((err) => {
+      console.error('[SocietyRule] Failed to send push notification:', err.message);
+    });
 
     return sendSuccessResponse(res, 201, 'Society rule created successfully.', {
       data: {
@@ -574,6 +603,33 @@ const updateSocietyRuleById = async (req, res, next) => {
 
     const category = findCategoryByKey(doc.categoryKey);
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
+
+    // Send push notification to all society members and guards about the update
+    const categoryLabel = category ? category.label : doc.categoryKey;
+    sendToSocietyMembers(
+      society._id,
+      'Society Rule Updated',
+      `Rule updated: ${categoryLabel}`,
+      {
+        type: 'society_rule',
+        ruleId: doc.ruleId,
+        categoryKey: doc.categoryKey,
+        societyId: String(society._id),
+      },
+      {
+        roles: ['member', 'guard'],
+        localizedContentResolver: ({ languageCode }) =>
+          getNotificationMessage(
+            'society_rule_updated',
+            {
+              categoryLabel,
+            },
+            languageCode
+          ),
+      }
+    ).catch((err) => {
+      console.error('[SocietyRule] Failed to send push notification:', err.message);
+    });
 
     return sendSuccessResponse(res, 200, 'Society rule updated successfully.', {
       data: {

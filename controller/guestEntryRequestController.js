@@ -177,6 +177,19 @@ const getNotificationContent = (doc, action, languageCode = 'en') => {
             ? `યુનિટ સભ્યે ${guestName} ને સોસાયટીમાંથી બહાર તરીકે માર્ક કર્યું છે.`
             : `Unit member has marked ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}' as left the society.`,
       };
+    case 'wrong_entry':
+      return {
+        title: lang === 'hi'
+          ? `${titlePrefix} गलत प्रवेश, ${doc.wingName}${doc.unitNumber}`
+          : lang === 'gu'
+            ? `${titlePrefix} ખોટો પ્રવેશ, ${doc.wingName}${doc.unitNumber}`
+            : `${titlePrefix} Wrong Entry, ${doc.wingName}${doc.unitNumber}`,
+        body: lang === 'hi'
+          ? `यूनिट सदस्य ने ${guestName} को गलत प्रवेश के रूप में चिह्नित किया है।`
+          : lang === 'gu'
+            ? `યુનિટ સભ્યે ${guestName} ને ખોટા પ્રવેશ તરીકે માર્ક કર્યું છે.`
+            : `Unit member has marked ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}' as wrong entry.`,
+      };
     default:
       return { title: '', body: '' };
   }
@@ -3563,14 +3576,26 @@ const allowGuestExitForMember = async (req, res, next) => {
     doc.entryLeftAt = new Date();
     await doc.save();
 
-    
+    // Notify the guard who allowed entry, or the guard who created the request, or the on-duty guard
+    const guardToNotify = doc.entryAllowedByGuardId || doc.createdByGuardId;
     const guardOnDuty = await findGuardOnDuty(doc.societyId);
-    if (guardOnDuty) {
-      const guardShouldBeNotified = await shouldNotifyGuardByPreference(guardOnDuty._id, 'denial');
+    
+    // Collect unique guard IDs to notify
+    const guardsToNotify = new Set();
+    if (guardToNotify) {
+      guardsToNotify.add(String(guardToNotify));
+    }
+    if (guardOnDuty && guardOnDuty._id) {
+      guardsToNotify.add(String(guardOnDuty._id));
+    }
+
+    for (const guardId of guardsToNotify) {
+      const guardShouldBeNotified = await shouldNotifyGuardByPreference(guardId, 'denial');
       if (guardShouldBeNotified) {
+        console.log('[MemberExit] Sending exit notification to guard:', guardId);
         const { title, body } = getNotificationContent(doc, 'member_exit');
         sendToUser(
-          guardOnDuty._id,
+          guardId,
           title,
           body,
           {
@@ -3590,8 +3615,12 @@ const allowGuestExitForMember = async (req, res, next) => {
           console.error('[MemberExit] Failed to send exit notification to guard:', err.message);
         });
       } else {
-        console.log('[MemberExit] Guard denial preference disabled, skipping notification.');
+        console.log('[MemberExit] Guard denial preference disabled, skipping notification for guard:', guardId);
       }
+    }
+    
+    if (guardsToNotify.size === 0) {
+      console.log('[MemberExit] No guard found to notify (no entry guard, no creator guard, no on-duty guard).');
     }
 
     const payload = await buildExitResponse(doc);
@@ -3674,6 +3703,37 @@ const markWrongEntryForMember = async (req, res, next) => {
     doc.wrongEntryMarkedAt = new Date();
     doc.status = 'wrong_entry';
     await doc.save();
+
+    // Notify the guard who allowed entry about the wrong entry
+    const guardToNotify = doc.entryAllowedByGuardId || doc.createdByGuardId;
+    if (guardToNotify) {
+      const guardShouldBeNotified = await shouldNotifyGuardByPreference(guardToNotify, 'denial');
+      if (guardShouldBeNotified) {
+        console.log('[GuestEntryRequest] Sending wrong entry notification to guard:', guardToNotify);
+        const notification = getNotificationContent(doc, 'wrong_entry');
+        sendToUser(
+          guardToNotify,
+          notification.title,
+          notification.body,
+          {
+            type: 'guest_wrong_entry',
+            requestId: doc.requestId,
+            visitorType: doc.visitorType || 'guest',
+            guestName: doc.guestName,
+            wingName: doc.wingName,
+            unitNumber: doc.unitNumber,
+            status: 'wrong_entry',
+            markedByMember: 'true',
+          },
+          {
+            localizedContentResolver: ({ languageCode }) =>
+              getNotificationContent(doc, 'wrong_entry', languageCode),
+          }
+        ).catch((err) => {
+          console.error('[GuestEntryRequest] Failed to send wrong entry notification to guard:', err.message);
+        });
+      }
+    }
 
     const labels = toVisitorLabels(doc.visitorType || 'guest');
 

@@ -194,7 +194,7 @@ const createAnnouncement = async (req, res, next) => {
         societyId: String(society._id),
       },
       {
-        roles: ['member'],
+        roles: ['member', 'guard'],
         localizedContentResolver: ({ languageCode }) =>
           getNotificationMessage(
             'announcement_new',

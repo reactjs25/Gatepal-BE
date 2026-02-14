@@ -44,6 +44,7 @@ const getNotificationMessage = (key, params = {}, languageCode = 'en') => {
   const venue = params.venue || '';
   const announcementTitle = params.announcementTitle || '';
   const timeText = params.timeText || '';
+  const categoryLabel = params.categoryLabel || '';
 
   const byLang = {
     en: {
@@ -86,6 +87,14 @@ const getNotificationMessage = (key, params = {}, languageCode = 'en') => {
         title: `App Inactive - ${societyName}`,
         body: 'There is a payment overdue from your society and hence the app is inactive. Please renew your contract to restore access.',
       },
+      society_rule_new: {
+        title: 'New Society Rule',
+        body: `New rule added: ${categoryLabel}`,
+      },
+      society_rule_updated: {
+        title: 'Society Rule Updated',
+        body: `Rule updated: ${categoryLabel}`,
+      },
     },
     hi: {
       test_notification: {
@@ -127,6 +136,14 @@ const getNotificationMessage = (key, params = {}, languageCode = 'en') => {
         title: `ऐप निष्क्रिय - ${societyName}`,
         body: 'आपकी सोसाइटी का भुगतान लंबित होने के कारण ऐप निष्क्रिय है। एक्सेस बहाल करने के लिए कॉन्ट्रैक्ट रिन्यू करें।',
       },
+      society_rule_new: {
+        title: 'नया सोसाइटी नियम',
+        body: `नया नियम जोड़ा गया: ${categoryLabel}`,
+      },
+      society_rule_updated: {
+        title: 'सोसाइटी नियम अपडेट',
+        body: `नियम अपडेट किया गया: ${categoryLabel}`,
+      },
     },
     gu: {
       test_notification: {
@@ -167,6 +184,14 @@ const getNotificationMessage = (key, params = {}, languageCode = 'en') => {
       app_inactive: {
         title: `એપ નિષ્ક્રિય - ${societyName}`,
         body: 'તમારી સોસાયટીનું પેમેન્ટ બાકી હોવાથી એપ નિષ્ક્રિય છે. એક્સેસ ફરી મેળવવા કરાર રિન્યુ કરો.',
+      },
+      society_rule_new: {
+        title: 'નવો સોસાયટી નિયમ',
+        body: `નવો નિયમ ઉમેરાયો: ${categoryLabel}`,
+      },
+      society_rule_updated: {
+        title: 'સોસાયટી નિયમ અપડેટ',
+        body: `નિયમ અપડેટ કરાયો: ${categoryLabel}`,
       },
     },
   };

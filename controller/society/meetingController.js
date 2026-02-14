@@ -289,7 +289,7 @@ const createMeeting = async (req, res, next) => {
         societyId: String(society._id),
       },
       {
-        roles: ['member'],
+        roles: ['member', 'guard'],
         localizedContentResolver: ({ languageCode }) =>
           getNotificationMessage(
             'meeting_scheduled',
