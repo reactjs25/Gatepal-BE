@@ -11,6 +11,7 @@ const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 const { toDateOnly, toISTDateLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { sendToUser } = require('../../utils/pushNotificationService');
+const { getNotificationMessage } = require('../../utils/notificationMessages');
 
 const MONTH_LABELS = [
   'January',
@@ -947,6 +948,14 @@ const verifyMaintenance = async (req, res, next) => {
           maintenanceId: doc.maintenanceId,
           month: doc.month,
           year: String(doc.year),
+        },
+        {
+          localizedContentResolver: ({ languageCode }) =>
+            getNotificationMessage(
+              'maintenance_verified',
+              { month: doc.month, year: String(doc.year) },
+              languageCode
+            ),
         }
       ).catch((err) => {
         console.error('[Maintenance] Failed to send verification notification:', err.message);
@@ -1058,6 +1067,14 @@ const rejectMaintenance = async (req, res, next) => {
           month: doc.month,
           year: String(doc.year),
           reason: reasonCanonical,
+        },
+        {
+          localizedContentResolver: ({ languageCode }) =>
+            getNotificationMessage(
+              'maintenance_rejected',
+              { month: doc.month, year: String(doc.year), reason: reasonDisplay },
+              languageCode
+            ),
         }
       ).catch((err) => {
         console.error('[Maintenance] Failed to send rejection notification:', err.message);

@@ -9,6 +9,7 @@ const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateLabel, toISTTimeLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 const { sendToSocietyMembers } = require('../../utils/pushNotificationService');
+const { getNotificationMessage } = require('../../utils/notificationMessages');
 
 const resolveAdminSociety = async (authUser) => {
   if (!authUser) throw createHttpError('Unauthorized.', 401);
@@ -287,7 +288,19 @@ const createMeeting = async (req, res, next) => {
         meetingId: doc.meetingId,
         societyId: String(society._id),
       },
-      { roles: ['member'] }
+      {
+        roles: ['member'],
+        localizedContentResolver: ({ languageCode }) =>
+          getNotificationMessage(
+            'meeting_scheduled',
+            {
+              meetingDateLabel: dateLabel,
+              meetingTimeLabel: timeLabel,
+              venue: validated.venue,
+            },
+            languageCode
+          ),
+      }
     ).catch((err) => {
       console.error('[Meeting] Failed to send push notification:', err.message);
     });

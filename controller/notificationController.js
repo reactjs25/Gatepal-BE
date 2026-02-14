@@ -3,6 +3,12 @@ const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const createHttpError = require('../utils/httpError');
 const { sendToUser, sendToSocietyAdmin } = require('../utils/pushNotificationService');
+const {
+  normalizeLanguageCode,
+  getLanguageLocale,
+  getRelativeDayLabel,
+  getNotificationMessage,
+} = require('../utils/notificationMessages');
 
 
 
@@ -19,7 +25,7 @@ const getSocietyAdminId = (req) => {
   return req.appUser?.linkedSocietyAdminId;
 };
 
-const formatNotificationCreatedOn = (dateValue) => {
+const formatNotificationCreatedOn = (dateValue, preferredLanguage = 'en') => {
   if (!dateValue) return '';
 
   const date = new Date(dateValue);
@@ -32,21 +38,19 @@ const formatNotificationCreatedOn = (dateValue) => {
 
   const dayDiff = Math.round((startOfToday - startOfDate) / (24 * 60 * 60 * 1000));
 
-  const timePart = date.toLocaleTimeString('en-US', {
+  const locale = getLanguageLocale(preferredLanguage);
+  const dayLabel = getRelativeDayLabel(preferredLanguage, dayDiff);
+  const timePart = date.toLocaleTimeString(locale, {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   });
 
-  if (dayDiff === 0) {
-    return `Today, ${timePart}`;
+  if (dayLabel) {
+    return `${dayLabel}, ${timePart}`;
   }
 
-  if (dayDiff === 1) {
-    return `Yesterday, ${timePart}`;
-  }
-
-  const datePart = date.toLocaleDateString('en-US', {
+  const datePart = date.toLocaleDateString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -80,7 +84,10 @@ const sendTestNotification = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const { title = 'Test Notification', body = 'This is a test push notification from GatePal!', type = 'general' } = req.body;
+    const userLanguage = normalizeLanguageCode(authUser.preferredLanguage || 'en');
+    const defaultMessage = getNotificationMessage('test_notification', {}, userLanguage);
+    const { title = defaultMessage.title, body = defaultMessage.body, type = 'general' } = req.body;
+    const useLocalizedTemplate = req.body.title === undefined && req.body.body === undefined;
 
     let result;
     let targetId;
@@ -96,7 +103,13 @@ const sendTestNotification = async (req, res, next) => {
           type,
           testNotification: 'true',
           timestamp: new Date().toISOString(),
-        }
+        },
+        useLocalizedTemplate
+          ? {
+              localizedContentResolver: ({ languageCode }) =>
+                getNotificationMessage('test_notification', {}, languageCode),
+            }
+          : {}
       );
     } else {
       
@@ -109,7 +122,13 @@ const sendTestNotification = async (req, res, next) => {
           type,
           testNotification: 'true',
           timestamp: new Date().toISOString(),
-        }
+        },
+        useLocalizedTemplate
+          ? {
+              localizedContentResolver: ({ languageCode }) =>
+                getNotificationMessage('test_notification', {}, languageCode),
+            }
+          : {}
       );
     }
 
@@ -165,6 +184,7 @@ const getNotifications = async (req, res, next) => {
       Notification.countDocuments(unreadQuery),
     ]);
 
+    const preferredLanguage = normalizeLanguageCode(authUser.preferredLanguage || 'en');
     const formattedNotifications = notifications.map((n) => ({
       id: String(n._id),
       title: n.title,
@@ -172,7 +192,7 @@ const getNotifications = async (req, res, next) => {
       type: n.type,
       isRead: n.isRead,
       createdAt: n.createdAt,
-      createdOn: formatNotificationCreatedOn(n.createdAt),
+      createdOn: formatNotificationCreatedOn(n.createdAt, preferredLanguage),
       data: n.data || {},
     }));
 

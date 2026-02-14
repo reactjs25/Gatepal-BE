@@ -19,6 +19,7 @@ const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'ot
 const ONBOARDING_FLOWS = ['member', 'guard', 'visitor'];
 const INTENDED_ROLE_TYPES = ['member', 'society_admin', 'guard', 'visitor'];
 const ONBOARDING_STATUS_TYPES = ['not_started', 'in_progress', 'completed'];
+const { SUPPORTED_LANGUAGE_CODES } = require('../utils/enums/languageEnums');
 
 const userSchema = new mongoose.Schema(
   {
@@ -292,6 +293,12 @@ const userSchema = new mongoose.Schema(
     notifyOnDenial: {
       type: Boolean,
       default: true,
+    },
+    preferredLanguage: {
+      type: String,
+      enum: SUPPORTED_LANGUAGE_CODES,
+      default: 'en',
+      trim: true,
     },
   },
   { timestamps: true }

@@ -8,6 +8,7 @@ const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require(
 const { generateUserAuthToken } = require('../utils/authToken');
 const { findSocietyAdminByPhone } = require('../utils/societyAdminUtils');
 const { sendSuccessResponse } = require('../utils/response');
+const { isSupportedLanguageCode } = require('../utils/enums/languageEnums');
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10);
@@ -544,6 +545,73 @@ const removeFcmToken = async (req, res, next) => {
   }
 };
 
+const getPreferences = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      throw createHttpError('Unauthorized.', 401);
+    }
+
+    const user = await User.findById(authUser._id).select('preferredLanguage');
+    if (!user) {
+      throw createHttpError('User not found.', 404);
+    }
+
+    return sendSuccessResponse(res, 200, 'Preferences fetched successfully.', {
+      data: {
+        preferredLanguage: user.preferredLanguage || 'en',
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to fetch preferences'));
+  }
+};
+
+const updatePreferences = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      throw createHttpError('Unauthorized.', 401);
+    }
+
+    const { preferredLanguage } = req.body;
+
+    if (typeof preferredLanguage !== 'string' || !preferredLanguage.trim()) {
+      throw createHttpError('preferredLanguage is required.', 400);
+    }
+
+    const normalizedLanguageCode = preferredLanguage.trim().toLowerCase();
+    if (!isSupportedLanguageCode(normalizedLanguageCode)) {
+      throw createHttpError('Unsupported preferredLanguage value.', 400);
+    }
+
+    const user = await User.findByIdAndUpdate(
+      authUser._id,
+      {
+        $set: {
+          preferredLanguage: normalizedLanguageCode,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select('preferredLanguage');
+
+    if (!user) {
+      throw createHttpError('User not found.', 404);
+    }
+
+    return sendSuccessResponse(res, 200, 'Preferences updated successfully.', {
+      data: {
+        preferredLanguage: user.preferredLanguage,
+      },
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to update preferences'));
+  }
+};
+
 module.exports = {
   login,
   requestPasswordOtp,
@@ -551,6 +619,8 @@ module.exports = {
   resetPassword,
   registerFcmToken,
   removeFcmToken,
+  getPreferences,
+  updatePreferences,
 };
 
 

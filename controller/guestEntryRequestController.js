@@ -21,6 +21,7 @@ const { normalizeCountryCode, normalizeDigits, normalizePhoneDigits, isTenDigitP
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { toISTDateLabel, toISTDateTimeLabel, toISTDateTimeLabelNoComma, toISTTimeLabel } = require('../utils/dateTime');
 const { sendToUsers, sendToUser } = require('../utils/pushNotificationService');
+const { normalizeLanguageCode } = require('../utils/notificationMessages');
 
 const VISITOR_TYPE_LABELS = {
   guest: { category: 'Guest', visitorType: 'Guest' },
@@ -61,31 +62,37 @@ const shouldNotifyGuardByPreference = async (guardUserId, eventType) => {
 };
 
 
-const getNotificationContent = (doc, action) => {
+const getNotificationContent = (doc, action, languageCode = 'en') => {
+  const lang = normalizeLanguageCode(languageCode);
   const visitorType = doc.visitorType || 'guest';
   const guestName = doc.guestName;
   const companyName = doc.visitorCompanyName;
   const wingUnit = `${doc.wingName} ${doc.unitNumber}`;
-  const gateName = doc.gateName || 'the gate';
+  const gateName = doc.gateName || (lang === 'hi' ? 'गेट' : lang === 'gu' ? 'ગેટ' : 'the gate');
 
   
   const titlePrefix = {
-    guest: 'Guest',
-    delivery_executive: 'Delivery',
-    taxi_vehicle_driver: 'Taxi',
-    other_visitor: 'Visitor',
-  }[visitorType] || 'Guest';
+    en: { guest: 'Guest', delivery_executive: 'Delivery', taxi_vehicle_driver: 'Taxi', other_visitor: 'Visitor' },
+    hi: { guest: 'मेहमान', delivery_executive: 'डिलीवरी', taxi_vehicle_driver: 'टैक्सी', other_visitor: 'विज़िटर' },
+    gu: { guest: 'મહેમાન', delivery_executive: 'ડિલિવરી', taxi_vehicle_driver: 'ટેક્સી', other_visitor: 'મુલાકાતી' },
+  }[lang][visitorType] || (lang === 'en' ? 'Guest' : lang === 'hi' ? 'मेहमान' : 'મહેમાન');
 
   
   let visitorLabel;
   if (companyName) {
-    visitorLabel = `${guestName} from ${companyName}`;
+    visitorLabel =
+      lang === 'hi'
+        ? `${companyName} से ${guestName}`
+        : lang === 'gu'
+          ? `${companyName}માંથી ${guestName}`
+          : `${guestName} from ${companyName}`;
   } else if (visitorType === 'delivery_executive') {
-    visitorLabel = `Delivery executive ${guestName}`;
+    visitorLabel =
+      lang === 'hi' ? `डिलीवरी एग्जीक्यूटिव ${guestName}` : lang === 'gu' ? `ડિલિવરી એક્ઝિક્યુટિવ ${guestName}` : `Delivery executive ${guestName}`;
   } else if (visitorType === 'taxi_vehicle_driver') {
-    visitorLabel = `Taxi driver ${guestName}`;
+    visitorLabel = lang === 'hi' ? `टैक्सी ड्राइवर ${guestName}` : lang === 'gu' ? `ટેક્સી ડ્રાઇવર ${guestName}` : `Taxi driver ${guestName}`;
   } else if (visitorType === 'other_visitor') {
-    visitorLabel = `Visitor ${guestName}`;
+    visitorLabel = lang === 'hi' ? `विज़िटर ${guestName}` : lang === 'gu' ? `મુલાકાતી ${guestName}` : `Visitor ${guestName}`;
   } else {
     visitorLabel = guestName;
   }
@@ -94,33 +101,81 @@ const getNotificationContent = (doc, action) => {
   switch (action) {
     case 'approval':
       return {
-        title: `${titlePrefix} Approval - ${wingUnit}`,
-        body: `${visitorLabel} is waiting for your approval to enter the society.`,
+        title: lang === 'hi'
+          ? `${titlePrefix} स्वीकृति - ${wingUnit}`
+          : lang === 'gu'
+            ? `${titlePrefix} મંજૂરી - ${wingUnit}`
+            : `${titlePrefix} Approval - ${wingUnit}`,
+        body: lang === 'hi'
+          ? `${visitorLabel} सोसाइटी में प्रवेश के लिए आपकी स्वीकृति का इंतजार कर रहे हैं।`
+          : lang === 'gu'
+            ? `${visitorLabel} સોસાયટીમાં પ્રવેશ માટે તમારી મંજૂરીની રાહ જોઈ રહ્યા છે.`
+            : `${visitorLabel} is waiting for your approval to enter the society.`,
       };
     case 'entry':
       return {
-        title: `${titlePrefix} Entry - ${wingUnit}`,
-        body: `${visitorLabel} has entered society through ${gateName}.`,
+        title: lang === 'hi'
+          ? `${titlePrefix} प्रवेश - ${wingUnit}`
+          : lang === 'gu'
+            ? `${titlePrefix} પ્રવેશ - ${wingUnit}`
+            : `${titlePrefix} Entry - ${wingUnit}`,
+        body: lang === 'hi'
+          ? `${visitorLabel} ${gateName} से सोसाइटी में प्रवेश कर चुके हैं।`
+          : lang === 'gu'
+            ? `${visitorLabel} ${gateName} દ્વારા સોસાયટીમાં પ્રવેશી ગયા છે.`
+            : `${visitorLabel} has entered society through ${gateName}.`,
       };
     case 'exit':
       return {
-        title: `${titlePrefix} Left - ${wingUnit}`,
-        body: `${visitorLabel} has left your society through ${gateName}.`,
+        title: lang === 'hi'
+          ? `${titlePrefix} बाहर गए - ${wingUnit}`
+          : lang === 'gu'
+            ? `${titlePrefix} બહાર ગયા - ${wingUnit}`
+            : `${titlePrefix} Left - ${wingUnit}`,
+        body: lang === 'hi'
+          ? `${visitorLabel} ${gateName} से आपकी सोसाइटी से निकल चुके हैं।`
+          : lang === 'gu'
+            ? `${visitorLabel} ${gateName} દ્વારા તમારી સોસાયટીમાંથી નીકળી ગયા છે.`
+            : `${visitorLabel} has left your society through ${gateName}.`,
       };
     case 'approved':
       return {
-        title: `${titlePrefix} Approved, ${doc.wingName}${doc.unitNumber}`,
-        body: `You may allow ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}' to enter the society.`,
+        title: lang === 'hi'
+          ? `${titlePrefix} मंजूर, ${doc.wingName}${doc.unitNumber}`
+          : lang === 'gu'
+            ? `${titlePrefix} મંજૂર, ${doc.wingName}${doc.unitNumber}`
+            : `${titlePrefix} Approved, ${doc.wingName}${doc.unitNumber}`,
+        body: lang === 'hi'
+          ? `आप ${guestName} को सोसाइटी में प्रवेश की अनुमति दे सकते हैं।`
+          : lang === 'gu'
+            ? `તમે ${guestName} ને સોસાયટીમાં પ્રવેશ કરવાની મંજૂરી આપી શકો છો.`
+            : `You may allow ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}' to enter the society.`,
       };
     case 'denied':
       return {
-        title: `${titlePrefix} Denied, ${doc.wingName}${doc.unitNumber}`,
-        body: `Unit member has denied entry from the ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}'.`,
+        title: lang === 'hi'
+          ? `${titlePrefix} अस्वीकृत, ${doc.wingName}${doc.unitNumber}`
+          : lang === 'gu'
+            ? `${titlePrefix} નકાર્યું, ${doc.wingName}${doc.unitNumber}`
+            : `${titlePrefix} Denied, ${doc.wingName}${doc.unitNumber}`,
+        body: lang === 'hi'
+          ? `यूनिट सदस्य ने ${guestName} के प्रवेश को अस्वीकार कर दिया है।`
+          : lang === 'gu'
+            ? `યુનિટ સભ્યે ${guestName} નો પ્રવેશ નકારી દીધો છે.`
+            : `Unit member has denied entry from the ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}'.`,
       };
     case 'member_exit':
       return {
-        title: `${titlePrefix} Left, ${doc.wingName}${doc.unitNumber}`,
-        body: `Unit member has marked ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}' as left the society.`,
+        title: lang === 'hi'
+          ? `${titlePrefix} बाहर गए, ${doc.wingName}${doc.unitNumber}`
+          : lang === 'gu'
+            ? `${titlePrefix} બહાર ગયા, ${doc.wingName}${doc.unitNumber}`
+            : `${titlePrefix} Left, ${doc.wingName}${doc.unitNumber}`,
+        body: lang === 'hi'
+          ? `यूनिट सदस्य ने ${guestName} को सोसाइटी से बाहर मार्क कर दिया है।`
+          : lang === 'gu'
+            ? `યુનિટ સભ્યે ${guestName} ને સોસાયટીમાંથી બહાર તરીકે માર્ક કર્યું છે.`
+            : `Unit member has marked ${visitorType === 'guest' ? 'guest' : visitorType.replace('_', ' ')} '${guestName}' as left the society.`,
       };
     default:
       return { title: '', body: '' };
@@ -1431,6 +1486,9 @@ const createGuestEntryRequest = async (req, res, next) => {
             requestId: doc.requestId,
             visitorType: doc.visitorType || 'guest',
             status: 'pending',
+          },
+          {
+            localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'approval', languageCode),
           }
         ).catch((err) => {
           console.error('[GuestEntryRequest] Failed to send push notification:', err.message);
@@ -2848,6 +2906,10 @@ const decideGuestEntryRequest = async (req, res, next) => {
             requestId: doc.requestId,
             visitorType: doc.visitorType || 'guest',
             status: decision === 'approve' ? 'approved' : 'rejected',
+          },
+          {
+            localizedContentResolver: ({ languageCode }) =>
+              getNotificationContent(doc, decision === 'approve' ? 'approved' : 'denied', languageCode),
           }
         ).then((result) => {
           console.log(`[GuestEntryRequest] ${decision} notification result:`, result);
@@ -2943,6 +3005,9 @@ const allowGuestEntry = async (req, res, next) => {
                 requestId: d.requestId,
                 visitorType: d.visitorType || 'guest',
                 status: 'entered',
+              },
+              {
+                localizedContentResolver: ({ languageCode }) => getNotificationContent(d, 'entry', languageCode),
               }
             ).catch((err) => {
               console.error('[GuestEntryRequest] Failed to send batch entry notification:', err.message);
@@ -3011,6 +3076,9 @@ const allowGuestEntry = async (req, res, next) => {
             requestId: doc.requestId,
             visitorType: doc.visitorType || 'guest',
             status: 'entered',
+          },
+          {
+            localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'entry', languageCode),
           }
         ).catch((err) => {
           console.error('[GuestEntryRequest] Failed to send entry notification to members:', err.message);
@@ -3216,6 +3284,9 @@ const allowGuestExit = async (req, res, next) => {
                 requestId: d.requestId,
                 visitorType: d.visitorType || 'guest',
                 status: 'left',
+              },
+              {
+                localizedContentResolver: ({ languageCode }) => getNotificationContent(d, 'exit', languageCode),
               }
             ).catch((err) => {
               console.error('[GuestEntryRequest] Failed to send batch exit notification:', err.message);
@@ -3275,6 +3346,9 @@ const allowGuestExit = async (req, res, next) => {
             requestId: doc.requestId,
             visitorType: doc.visitorType || 'guest',
             status: 'left',
+          },
+          {
+            localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'exit', languageCode),
           }
         ).catch((err) => {
           console.error('[GuestEntryRequest] Failed to send exit notification to members:', err.message);
@@ -3508,6 +3582,9 @@ const allowGuestExitForMember = async (req, res, next) => {
             unitNumber: doc.unitNumber,
             status: 'left',
             markedByMember: 'true',
+          },
+          {
+            localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'member_exit', languageCode),
           }
         ).catch((err) => {
           console.error('[MemberExit] Failed to send exit notification to guard:', err.message);
@@ -3846,6 +3923,9 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
             requestId: doc.requestId,
             visitorType: visitorType || 'guest',
             status: 'pending',
+          },
+          {
+            localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'approval', languageCode),
           }
         ).catch((err) => {
           console.error('[OnboardedVisitorEntry] Failed to send push notification:', err.message);

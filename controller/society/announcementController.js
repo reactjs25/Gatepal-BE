@@ -10,6 +10,7 @@ const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 const { sendToSocietyMembers } = require('../../utils/pushNotificationService');
+const { getNotificationMessage } = require('../../utils/notificationMessages');
 
 const MONTH_LABELS = [
   'January',
@@ -192,7 +193,17 @@ const createAnnouncement = async (req, res, next) => {
         announcementId: doc.announcementId,
         societyId: String(society._id),
       },
-      { roles: ['member'] }
+      {
+        roles: ['member'],
+        localizedContentResolver: ({ languageCode }) =>
+          getNotificationMessage(
+            'announcement_new',
+            {
+              announcementTitle: validated.title,
+            },
+            languageCode
+          ),
+      }
     ).catch((err) => {
       console.error('[Announcement] Failed to send push notification:', err.message);
     });

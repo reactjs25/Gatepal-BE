@@ -1,6 +1,7 @@
 
 const Society = require('../model/societySchema');
 const { sendScheduledAdminNotification } = require('../utils/pushNotificationService');
+const { getNotificationMessage } = require('../utils/notificationMessages');
 
 const isContractExpired = (endDate) => {
   if (!endDate) return false;
@@ -95,6 +96,14 @@ const runAppInactiveJob = async () => {
             },
             societyId: society._id,
             societyName: society.societyName,
+            localizedContentResolver: ({ languageCode }) =>
+              getNotificationMessage(
+                'app_inactive',
+                {
+                  societyName: society.societyName,
+                },
+                languageCode
+              ),
           });
 
           totalNotifications++;

@@ -10,6 +10,7 @@ const User = require('../model/userSchema');
 const Maintenance = require('../model/maintenanceSchema');
 const MaintenanceReminderTracking = require('../model/maintenanceReminderTrackingSchema');
 const { sendScheduledNotification, sendScheduledAdminNotification } = require('../utils/pushNotificationService');
+const { getNotificationMessage } = require('../utils/notificationMessages');
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -223,6 +224,18 @@ const runMaintenanceReminderJob = async () => {
               },
               societyId: society._id,
               societyName: society.societyName,
+              localizedContentResolver: ({ languageCode }) =>
+                getNotificationMessage(
+                  'maintenance_due',
+                  {
+                    societyName: society.societyName,
+                    month,
+                    year: String(year),
+                    daysLeft: daysUntilDue,
+                    dueDate: String(society.maintenanceDueDate),
+                  },
+                  languageCode
+                ),
             });
           }
 
@@ -242,6 +255,18 @@ const runMaintenanceReminderJob = async () => {
               },
               societyId: society._id,
               societyName: society.societyName,
+              localizedContentResolver: ({ languageCode }) =>
+                getNotificationMessage(
+                  'maintenance_due',
+                  {
+                    societyName: society.societyName,
+                    month,
+                    year: String(year),
+                    daysLeft: daysUntilDue,
+                    dueDate: String(society.maintenanceDueDate),
+                  },
+                  languageCode
+                ),
             });
           }
 

@@ -4,6 +4,7 @@ const User = require('../model/userSchema');
 const Maintenance = require('../model/maintenanceSchema');
 const MaintenanceReminderTracking = require('../model/maintenanceReminderTrackingSchema');
 const { sendScheduledNotification, sendScheduledAdminNotification } = require('../utils/pushNotificationService');
+const { getNotificationMessage } = require('../utils/notificationMessages');
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -185,6 +186,17 @@ const runMaintenanceOverdueJob = async () => {
               },
               societyId: society._id,
               societyName: society.societyName,
+              localizedContentResolver: ({ languageCode }) =>
+                getNotificationMessage(
+                  'maintenance_overdue',
+                  {
+                    societyName: society.societyName,
+                    month,
+                    year: String(year),
+                    daysOverdue: daysAfterDue,
+                  },
+                  languageCode
+                ),
             });
           }
 
@@ -203,6 +215,17 @@ const runMaintenanceOverdueJob = async () => {
               },
               societyId: society._id,
               societyName: society.societyName,
+              localizedContentResolver: ({ languageCode }) =>
+                getNotificationMessage(
+                  'maintenance_overdue',
+                  {
+                    societyName: society.societyName,
+                    month,
+                    year: String(year),
+                    daysOverdue: daysAfterDue,
+                  },
+                  languageCode
+                ),
             });
           }
 
