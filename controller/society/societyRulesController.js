@@ -236,7 +236,7 @@ const createSocietyRule = async (req, res, next) => {
         societyId: String(doc.societyId),
 
         categoryKey: doc.categoryKey,
-        categoryLabel: category ? category.label : doc.categoryKey,
+        categoryLabel,
         contentHtml: doc.contentHtml,
         photos: Array.isArray(doc.photos) ? doc.photos : [],
         attachments: doc.attachments || [],
@@ -605,11 +605,11 @@ const updateSocietyRuleById = async (req, res, next) => {
     const { createdOn, updatedOn } = buildCreatedAndUpdatedOn(doc);
 
     // Send push notification to all society members and guards about the update
-    const categoryLabel = category ? category.label : doc.categoryKey;
+    const resolvedCategoryLabel = category ? category.label : doc.categoryKey;
     sendToSocietyMembers(
       society._id,
       'Society Rule Updated',
-      `Rule updated: ${categoryLabel}`,
+      `Rule updated: ${resolvedCategoryLabel}`,
       {
         type: 'society_rule',
         ruleId: doc.ruleId,
@@ -622,7 +622,7 @@ const updateSocietyRuleById = async (req, res, next) => {
           getNotificationMessage(
             'society_rule_updated',
             {
-              categoryLabel,
+              categoryLabel: resolvedCategoryLabel,
             },
             languageCode
           ),
@@ -637,7 +637,7 @@ const updateSocietyRuleById = async (req, res, next) => {
         societyId: String(doc.societyId),
 
         categoryKey: doc.categoryKey,
-        categoryLabel: category ? category.label : doc.categoryKey,
+        categoryLabel: resolvedCategoryLabel,
         contentHtml: doc.contentHtml,
         photos: Array.isArray(doc.photos) ? doc.photos : [],
         attachments: doc.attachments || [],
