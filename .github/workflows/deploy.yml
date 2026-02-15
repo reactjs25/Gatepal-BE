@@ -18,7 +18,33 @@ jobs:
         with:
           host: 13.61.14.14
           username: ubuntu
-          key: ${{ secrets.EC2_KEY }}
+          key: -----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEAyFWtjUfuf1oOu2LO1EJA4XYsioZ4wbbZzhEiT8CPIrM5u04J
+UIZW3C6ayo9tSV50eIlYj9sSIxcaP1B8MreSQ2cHsoHrrggDDNH6/TOjEAGVpVZD
+KMl7pRjpldBhQ7Bx7Ogwa3Rzi9qMOAF1myDJ6ZBQAk971lZlA+MeJ2G+kE3p2fbG
+IKzYJFcSA6uQ2GPa4fGtng3T1uIxtD8mSlEZ0iwAkbg4LnMHodPPy8MrqtcbhutE
+82jfB0xM9hh3FBdiA1xnnVgMsa2fibE8c9gnBwayK6KGkrwKOrdXoI/xlhFZzBw7
+XdfGvcpjnVP6uH7K4cGKf4ZLobcBvOcYF5kvhQIDAQABAoIBAEoN8ePB7VXCUqPO
+OKqZ+yXc60Yhw03Ia+cSyl40zjSDkBm/FQ5hOoaV675pGnr+oYtVKhmzX5b9GUTC
+WcbduQGVenDwOdDRQV9h16f1iJeIHmtJ4fWX1U8IUICC0RGWjeaHRi7Sk0vlc+PY
+FkNL8ZeXMxxHiX2H3jt7n0/rf+gTXSIwqrZzAKTFRiH9N2BExjxyNjEyCu2Ayqau
+O3RgMKJ2yiFoJqV7c8UZRm4KXJMyiwpjFT7tY2n0NhBPZ+nHEocJxFOUoorMwavh
+3YavSUbR85Mv5ROTvF7c3bciXxzBcYZZe4RrSutgiWEgt/hvPK/pPH3s9VFIS7ei
+2+F0H0ECgYEA9UnlbttPsDRfjlBMH6nvHB/4h7DVl39poufvmNNbqjy1bfjpHRK1
+etJZDWA8CTOOe9eSxm0Yoa2ZBBZlmBE9Ug3FsP4YEubNWufuO27K4AWG9xpUFe+J
+cNd8lvQYHy/PgD2qCCVLTIl6HbE3A4uGQEAR6bf6Qx4V5XO0Qp7ltDkCgYEA0RU8
+uFmn5YO9Jy6yzXWXsit9/eIkjvB8gh+B2dEJdeVmNVmoHM2QRGCZDMcdmr77CYQK
+R65Vy1vcKIL88c7kqyXAL4RrmH79eIKHtRQMdBr5VVtzgb2gy0eHzWAb3SUYILJd
+IW1FMsNmDfu6+ahG3+V8WhgTFuzcd1q75SDzja0CgYEA3Wf6ZPopEA/2QOtSCzLE
+1ko1d6Wy5rDnlVht+TCvCRcLXVzUbp24mkjMgTpgdp3G+xo3LkzDcwzTldDxmzXU
+eABedcilyknzCx9W9uam0Ver39gwFizFjsmzeD6Ul3H8hvEiTX/8W/Wr+KlB0z1Z
+zR0IDkM27uZ1NUwfZhMvnGECgYBj6sk8tCPHTACd8/QgubyHub8ZD/Q2lvh5WsM8
+K2hg/gKtJi5vrVDvTFZ3w8QDCpd/QamD/e0kJL7+YTKuABhJLd49FwQwOSe6am6d
++3nEFovm3bBCZTOtUX61h+No+GwiW/qjmcuC6dwgfJcq7d8I6mtVxsGAqCrnouW+
+JtQddQKBgFxO3qbeBsk6WWb4/Tub6Z2PWsBM39aDDasR3h1zuEwn7FqkiK3r5VEC
+qKcayit2E4d/LCqsYDk5mvAGE+vm2bYX+6yKNrnKiH3Krnac0s0BVsIaGzrugKqA
+nJ9h8k+YSpMvqAaBZeVw1V7OQyQTG+x2cOS8yZw+Y/OpwSRaZopb
+-----END RSA PRIVATE KEY-----
           script: |
             cd /gatepal/Gatepal-BE
             git pull origin main
