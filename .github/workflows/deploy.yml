@@ -16,8 +16,8 @@ jobs:
       - name: Deploy to server
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
+          host: 13.61.14.14
+          username: ubuntu
           key: ${{ secrets.EC2_KEY }}
           script: |
             cd /gatepal/Gatepal-BE
