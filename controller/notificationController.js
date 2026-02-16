@@ -11,6 +11,32 @@ const {
   getNotificationMessage,
 } = require('../utils/notificationMessages');
 
+const SOCIETY_RULE_CATEGORY_LABELS = {
+  general: 'General',
+  parking_vehicles: 'Parking & Vehicles',
+  security_safety: 'Security & Safety',
+  cleanliness: 'Cleanliness',
+  amenities_usage: 'Amenities Usage',
+  events_celebrations: 'Events & Celebrations',
+  pets_animals: 'Pets & Animals',
+  construction_renovation: 'Construction & Renovation',
+  maintenance: 'Maintenance',
+  legal_compliance: 'Legal & Compliance',
+  rent_pg: 'Rent & P.G.',
+  other: 'Other',
+};
+
+const getSocietyRuleCategoryLabel = (notification = {}) => {
+  const data = notification.data || {};
+  const categoryKey = (data.categoryKey || '').toString().trim().toLowerCase();
+
+  if (!categoryKey) {
+    return '';
+  }
+
+  return SOCIETY_RULE_CATEGORY_LABELS[categoryKey] || data.categoryLabel || categoryKey;
+};
+
 
 
 
@@ -220,6 +246,7 @@ const getNotifications = async (req, res, next) => {
       title: n.title,
       body: n.body,
       type: n.type,
+      categoryLabel: n.type === 'society_rule' ? getSocietyRuleCategoryLabel(n) : '',
       isRead: n.isRead,
       createdAt: n.createdAt,
       createdOn: formatNotificationCreatedOn(n.createdAt, preferredLanguage),
