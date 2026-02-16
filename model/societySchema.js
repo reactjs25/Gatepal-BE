@@ -20,9 +20,9 @@ const gateSchema = new mongoose.Schema({
 const societyAdminSchema = new mongoose.Schema(
     {
         name: { type: String, required: true, trim: true, maxlength: 150 },
-        mobile: { type: String, required: true, unique: true, minlength: 10, maxlength: 10, match: /^\d{10}$/ },
+        mobile: { type: String, required: true, minlength: 10, maxlength: 10, match: /^\d{10}$/ },
         countryCode: { type: String, trim: true, default: '+91' },
-        email: { type: String, required: true, unique: true },
+        email: { type: String, required: true },
         status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
         password: { type: String },
         resetPasswordToken: { type: String, default: null },

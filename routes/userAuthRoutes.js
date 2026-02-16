@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   login,
+  switchSociety,
   requestPasswordOtp,
   verifyOtp,
   resetPassword,
@@ -19,6 +20,7 @@ router.post('/register', registerUser);
 router.post('/register/verifyOtp', verifyRegistrationOtp);
 router.post('/onboarding', userAuthMiddleware, completeOnboarding);
 router.post('/login', login);
+router.post('/switch-society', userAuthMiddleware, switchSociety);
 router.post('/forgotPassword', requestPasswordOtp);
 router.post('/verifyOtp', verifyOtp);
 router.post('/resetPassword', resetPassword);

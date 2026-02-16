@@ -220,8 +220,13 @@ const updateVisitorProfile = async (req, res, next) => {
 
             const adminMatch = await lookupSocietyAdminByMobile(digits);
             if (adminMatch) {
-                const linkedId = user.linkedSocietyAdminId || null;
-                if (!linkedId || String(linkedId) !== String(adminMatch.adminId)) {
+                const linkedIds = new Set(
+                    [
+                        user.linkedSocietyAdminId ? String(user.linkedSocietyAdminId) : null,
+                        ...((user.linkedSocietyAdminIds || []).map((id) => String(id))),
+                    ].filter(Boolean)
+                );
+                if (!linkedIds.has(String(adminMatch.adminId))) {
                     return next(createHttpError('This phone number already exists in the system.', 409));
                 }
             }

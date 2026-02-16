@@ -10,6 +10,7 @@ const {
   getRelativeDayLabel,
   getNotificationMessage,
 } = require('../utils/notificationMessages');
+const { isSocietyAdminPrincipal } = require('../utils/adminSocietyContext');
 
 const SOCIETY_RULE_CATEGORY_LABELS = {
   general: 'General',
@@ -67,15 +68,17 @@ const formatSocietyRuleNotificationData = (notification = {}) => {
 
 
 const isSocietyAdmin = (req) => {
-  
-  return !!req.appUser?.linkedSocietyAdminId;
+  return isSocietyAdminPrincipal(req, req.appUser);
 };
 
 
 
 
 const getSocietyAdminId = (req) => {
-  return req.appUser?.linkedSocietyAdminId;
+  if (req.user?.societyAdminId) {
+    return req.user.societyAdminId;
+  }
+  return req.appUser?.linkedSocietyAdminId || null;
 };
 
 const getRequestedSocietyId = (req) => {

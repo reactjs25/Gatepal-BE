@@ -35,6 +35,12 @@ const maybeUpgradeSocietyAdmin = (user, society) => {
 
   user.role = ROLE_TYPES.SOCIETY_ADMIN;
   user.linkedSocietyAdminId = adminMatch._id;
+  user.linkedSocietyAdminIds = Array.from(
+    new Set([...(user.linkedSocietyAdminIds || []).map((id) => String(id)), String(adminMatch._id)])
+  );
+  if (!user.lastLoggedInSocietyId) {
+    user.lastLoggedInSocietyId = society._id;
+  }
   user.upgradedToSocietyAdminAt = new Date();
 
   return {

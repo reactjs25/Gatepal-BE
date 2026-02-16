@@ -7,7 +7,7 @@ const User = require('../../model/userSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { countryCityData } = require('../../utils/countryCityData');
-const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
 const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 
 const findStateName = (countryName, cityName) => {
@@ -95,28 +95,43 @@ const getMemberProfile = async (req, res, next) => {
       }
     }
 
-    const effectiveRole = req.user?.effectiveRole || user.role;
-    let adminSocietyId = null;
+    const adminSocietyIds = new Set();
 
-    if (effectiveRole === 'society_admin') {
-      if (req.user?.societyId) {
-        adminSocietyId = String(req.user.societyId);
-      } else if (user.adminSocietyId) {
-        adminSocietyId = String(user.adminSocietyId);
-      } else if (user.linkedSocietyAdminId) {
-        const society = await Society.findOne({ 'societyAdmins._id': user.linkedSocietyAdminId }).lean();
-        if (society) {
-          adminSocietyId = String(society._id);
-        }
-      }
-
-      if (!adminSocietyId) {
-        const match = await lookupSocietyAdminByMobile(user.phoneNumber || '');
-        if (match && match.societyId) {
-          adminSocietyId = String(match.societyId);
-        }
-      }
+    // Include currently active admin context from token (if any).
+    if (req.user?.effectiveRole === 'society_admin' && req.user?.societyId) {
+      adminSocietyIds.add(String(req.user.societyId));
     }
+
+    // Include all societies linked through stored admin IDs.
+    const linkedAdminIds = Array.from(
+      new Set(
+        [
+          req.user?.societyAdminId,
+          user.linkedSocietyAdminId,
+          ...((user.linkedSocietyAdminIds || []).map((id) => String(id))),
+        ]
+          .filter(Boolean)
+          .map((id) => String(id))
+      )
+    );
+
+    if (linkedAdminIds.length > 0) {
+      const linkedAdminSocieties = await Society.find(
+        { 'societyAdmins._id': { $in: linkedAdminIds } },
+        { _id: 1 }
+      ).lean();
+      linkedAdminSocieties.forEach((societyDoc) => {
+        adminSocietyIds.add(String(societyDoc._id));
+      });
+    }
+
+    // Include all societies where this phone exists as a society admin.
+    const phoneAdminMatches = await lookupSocietyAdminsByMobile(user.phoneNumber || '');
+    phoneAdminMatches.forEach((match) => {
+      if (match?.societyId) {
+        adminSocietyIds.add(String(match.societyId));
+      }
+    });
 
     return sendSuccessResponse(res, 200, 'Member profile fetched successfully.', {
       data: {
@@ -129,7 +144,7 @@ const getMemberProfile = async (req, res, next) => {
         units: unitsFromDb.map((u) => {
           const s = societyMap[String(u.societyId)] || null;
           const societyRole =
-            s && adminSocietyId && String(s._id) === adminSocietyId && effectiveRole === 'society_admin'
+            s && adminSocietyIds.has(String(s._id))
               ? 'society_admin'
               : 'member';
 
@@ -219,8 +234,11 @@ const updateMemberProfile = async (req, res, next) => {
 
       const adminMatch = await lookupSocietyAdminByMobile(digits);
       if (adminMatch) {
-        const linkedId = user.linkedSocietyAdminId || null;
-        if (!linkedId || String(linkedId) !== String(adminMatch.adminId)) {
+        const linkedIds = new Set([
+          ...(user.linkedSocietyAdminId ? [String(user.linkedSocietyAdminId)] : []),
+          ...((user.linkedSocietyAdminIds || []).map((id) => String(id))),
+        ]);
+        if (!linkedIds.has(String(adminMatch.adminId))) {
           return next(createHttpError('This phone number already exists in the system.', 409));
         }
       }

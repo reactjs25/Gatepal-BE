@@ -4,7 +4,10 @@ const User = require('../../model/userSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
-const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const {
+  isSocietyAdminPrincipal,
+  resolveAdminSocietyFromContext,
+} = require('../../utils/adminSocietyContext');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
@@ -33,25 +36,8 @@ const findCategoryByKey = (key) => {
   return SOCIETY_RULE_CATEGORIES.find((c) => c.key === canonical) || null;
 };
 
-const resolveAdminSociety = async (authUser) => {
-  if (!authUser) throw createHttpError('Unauthorized.', 401);
-  if (authUser.adminSocietyId) {
-    const society = await Society.findById(authUser.adminSocietyId).lean();
-    if (!society) throw createHttpError('Society not found.', 404);
-    return society;
-  }
-  const linkedId = authUser.linkedSocietyAdminId || null;
-  if (linkedId) {
-    const society = await Society.findOne({ 'societyAdmins._id': linkedId }).lean();
-    if (!society) throw createHttpError('Society not found.', 404);
-    return society;
-  }
-  const match = await lookupSocietyAdminByMobile(authUser.phoneNumber || '');
-  if (!match) throw createHttpError('Society not found.', 404);
-  const society = await Society.findById(match.societyId).lean();
-  if (!society) throw createHttpError('Society not found.', 404);
-  return society;
-};
+const resolveAdminSociety = async (req, authUser) =>
+  resolveAdminSocietyFromContext({ req, authUser });
 
 const validateSocietyRulePayload = (payload = {}, options = {}) => {
   const isPartial = !!options.isPartial;
@@ -163,11 +149,11 @@ const createSocietyRule = async (req, res, next) => {
       return next(createHttpError('Unauthorized.', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
+    if (!isSocietyAdminPrincipal(req, authUser)) {
       return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     let validated;
     try {
@@ -265,16 +251,17 @@ const getSocietyRules = async (req, res, next) => {
         ''
     );
     const viewAs = viewAsRaw.toLowerCase();
-    const isMemberView = authUser.role === 'member' || viewAs === 'member';
-    const isGuardView = authUser.role === 'guard';
+    const effectiveRole = req.user?.effectiveRole || authUser.role;
+    const isMemberView = effectiveRole === 'member' || viewAs === 'member';
+    const isGuardView = effectiveRole === 'guard';
 
     let societyId = null;
 
     if (
-      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      isSocietyAdminPrincipal(req, authUser) &&
       !isMemberView
     ) {
-      const society = await resolveAdminSociety(authUser);
+      const society = await resolveAdminSociety(req, authUser);
       societyId = society._id;
     } else if (isGuardView) {
       const societyIdCandidate = normalizeString(
@@ -429,16 +416,17 @@ const getSocietyRuleById = async (req, res, next) => {
         ''
     );
     const viewAs = viewAsRaw.toLowerCase();
-    const isMemberView = authUser.role === 'member' || viewAs === 'member';
-    const isGuardView = authUser.role === 'guard';
+    const effectiveRole = req.user?.effectiveRole || authUser.role;
+    const isMemberView = effectiveRole === 'member' || viewAs === 'member';
+    const isGuardView = effectiveRole === 'guard';
 
     let societyId = null;
 
     if (
-      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      isSocietyAdminPrincipal(req, authUser) &&
       !isMemberView
     ) {
-      const society = await resolveAdminSociety(authUser);
+      const society = await resolveAdminSociety(req, authUser);
       societyId = society._id;
     } else if (isGuardView) {
       const societyIdCandidate = normalizeString(
@@ -556,11 +544,11 @@ const updateSocietyRuleById = async (req, res, next) => {
       return next(createHttpError('Unauthorized.', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
+    if (!isSocietyAdminPrincipal(req, authUser)) {
       return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const ruleId = normalizeString(
       ((req.body || {}).ruleId) || ((req.params && req.params.ruleId) || '')
@@ -659,11 +647,11 @@ const deleteSocietyRuleById = async (req, res, next) => {
       return next(createHttpError('Unauthorized.', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
+    if (!isSocietyAdminPrincipal(req, authUser)) {
       return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const ruleId = normalizeString(
       ((req.body || {}).ruleId) || ((req.params && req.params.ruleId) || '')
@@ -704,11 +692,11 @@ const getSocietyRuleCategories = async (req, res, next) => {
       return next(createHttpError('Unauthorized.', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
+    if (!isSocietyAdminPrincipal(req, authUser)) {
       return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const rules = await SocietyRule.find({
       societyId: society._id,
@@ -767,16 +755,17 @@ const getSocietyRuleCategoriesForMember = async (req, res, next) => {
         ''
     );
     const viewAs = viewAsRaw.toLowerCase();
-    const isMemberView = authUser.role === 'member' || viewAs === 'member';
-    const isGuardView = authUser.role === 'guard';
+    const effectiveRole = req.user?.effectiveRole || authUser.role;
+    const isMemberView = effectiveRole === 'member' || viewAs === 'member';
+    const isGuardView = effectiveRole === 'guard';
 
     let societyId = null;
 
     if (
-      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      isSocietyAdminPrincipal(req, authUser) &&
       !isMemberView
     ) {
-      const society = await resolveAdminSociety(authUser);
+      const society = await resolveAdminSociety(req, authUser);
       societyId = society._id;
     } else if (isGuardView) {
       

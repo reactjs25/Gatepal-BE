@@ -22,6 +22,10 @@ const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { toISTDateLabel, toISTDateTimeLabel, toISTDateTimeLabelNoComma, toISTTimeLabel } = require('../utils/dateTime');
 const { sendToUsers, sendToUser } = require('../utils/pushNotificationService');
 const { normalizeLanguageCode } = require('../utils/notificationMessages');
+const {
+  isSocietyAdminPrincipal,
+  resolveAdminSocietyFromContext,
+} = require('../utils/adminSocietyContext');
 
 const VISITOR_TYPE_LABELS = {
   guest: { category: 'Guest', visitorType: 'Guest' },
@@ -574,22 +578,12 @@ const resolveExistingVisitorPhoto = async ({ phoneDigits, visitorType }) => {
   return null;
 };
 
-const resolveAdminSocietyId = async (authUser) => {
+const resolveAdminSocietyId = async (req, authUser) => {
   if (!authUser) {
     throw createHttpError('Unauthorized.', 401);
   }
-  if (authUser.adminSocietyId) {
-    return authUser.adminSocietyId;
-  }
-  if (authUser.societyId) {
-    return authUser.societyId;
-  }
-  const digits = normalizeDigits(authUser.phoneNumber || '');
-  const match = digits ? await lookupSocietyAdminByMobile(digits) : null;
-  if (!match?.societyId) {
-    throw createHttpError('Society not found.', 404);
-  }
-  return match.societyId;
+  const society = await resolveAdminSocietyFromContext({ req, authUser });
+  return society._id;
 };
 
 const requireGuardOnDuty = (authUser) => {
@@ -2188,11 +2182,11 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
   try {
     const authUser = req.appUser;
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
+    if (!isSocietyAdminPrincipal(req, authUser)) {
       return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
-    const societyId = await resolveAdminSocietyId(authUser);
+    const societyId = await resolveAdminSocietyId(req, authUser);
     const statusKey = normalizeOption(req.body?.status ?? req.body?.statusKey ?? req.body?.statusFilter ?? 'all');
     const visitorTypeRaw = req.body?.visitorType ?? req.body?.visitorTypeKey;
     const dateFilter = normalizeOption(req.body?.dateFilter ?? req.body?.range ?? req.body?.period ?? 'today');

@@ -195,6 +195,17 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       default: null,
     },
+    linkedSocietyAdminIds: {
+      type: [{
+        type: mongoose.Schema.Types.ObjectId,
+      }],
+      default: [],
+    },
+    lastLoggedInSocietyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Society',
+      default: null,
+    },
     upgradedToSocietyAdminAt: {
       type: Date,
       default: null,

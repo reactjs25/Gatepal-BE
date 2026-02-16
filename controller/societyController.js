@@ -82,7 +82,7 @@ const createSociety = async (req, res, next) => {
       : undefined;
 
     if (normalizedSocietyAdmins?.length > 0) {
-      await ensureAdminListIsUnique(normalizedSocietyAdmins);
+      await ensureAdminListIsUnique(normalizedSocietyAdmins, { skipDbCheck: true });
     }
 
     const requestedPin =
@@ -197,7 +197,7 @@ const updateSocietyById = async (req, res, next) => {
 
     if (Array.isArray(societyAdmins) && societyAdmins.length > 0) {
       const normalizedSocietyAdmins = normalizeIncomingAdmins(societyAdmins);
-      await ensureAdminListIsUnique(normalizedSocietyAdmins, { excludeSocietyId: id });
+      await ensureAdminListIsUnique(normalizedSocietyAdmins, { skipDbCheck: true });
       updates.societyAdmins = normalizedSocietyAdmins;
     }
 

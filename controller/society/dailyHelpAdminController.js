@@ -10,46 +10,37 @@ const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { normalizeDigits, normalizeCountryCode } = require('../../utils/phoneNumber');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const {
+  isSocietyAdminPrincipal,
+  resolveAdminSocietyFromContext,
+} = require('../../utils/adminSocietyContext');
  
 
-const assertAdminAccessForDailyHelp = async ({ authUser, dailyHelp }) => {
+const assertAdminAccessForDailyHelp = async ({ req, authUser, dailyHelp }) => {
   if (!authUser) throw createHttpError('Unauthorized.', 401);
-  const effectiveRole = (authUser.role === 'society_admin' || (authUser.linkedSocietyAdminId ? 'society_admin' : ''));
-  const isAdmin = effectiveRole === 'society_admin' || !!authUser.linkedSocietyAdminId;
+  const isAdmin = isSocietyAdminPrincipal(req, authUser);
   if (!isAdmin) throw createHttpError('Only society admins can perform this action.', 403);
 
   const society = await Society.findById(dailyHelp.societyId).lean();
   if (!society) throw createHttpError('Society not found.', 404);
 
   const digits = normalizeDigits(authUser.phoneNumber || '');
-  const linkedId = authUser.linkedSocietyAdminId || null;
+  const linkedIds = new Set(
+    [
+      authUser.linkedSocietyAdminId ? String(authUser.linkedSocietyAdminId) : null,
+      ...((authUser.linkedSocietyAdminIds || []).map((id) => String(id))),
+    ].filter(Boolean)
+  );
   const hasPrivilege = (society.societyAdmins || []).some((a) => {
-    if (linkedId) return String(a._id) === String(linkedId);
+    if (linkedIds.size > 0) return linkedIds.has(String(a._id));
     return normalizeDigits(a.mobile || '') === digits;
   });
   if (!hasPrivilege) throw createHttpError('Forbidden: admin does not belong to this society.', 403);
   return society;
 };
 
-const resolveAdminSociety = async (authUser) => {
-  if (!authUser) throw createHttpError('Unauthorized.', 401);
-  if (authUser.adminSocietyId) {
-    const society = await Society.findById(authUser.adminSocietyId).lean();
-    if (!society) throw createHttpError('Society not found.', 404);
-    return society;
-  }
-  const linkedId = authUser.linkedSocietyAdminId || null;
-  if (linkedId) {
-    const society = await Society.findOne({ 'societyAdmins._id': linkedId }).lean();
-    if (!society) throw createHttpError('Society not found.', 404);
-    return society;
-  }
-  const match = await lookupSocietyAdminByMobile(authUser.phoneNumber || '');
-  if (!match) throw createHttpError('Society not found.', 404);
-  const society = await Society.findById(match.societyId).lean();
-  if (!society) throw createHttpError('Society not found.', 404);
-  return society;
-};
+const resolveAdminSociety = async (req, authUser) =>
+  resolveAdminSocietyFromContext({ req, authUser });
 
 const mapUiStatusToCanonical = (value) => {
   let v = normalizeString(value).toLowerCase();
@@ -128,7 +119,7 @@ const DAILY_HELP_REJECT_REASON_CODES = new Set(
 const listSocietyDailyHelp = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const statusCanonical = mapUiStatusToCanonical((req.query || {}).status || 'pending');
     const category = normalizeString((req.query || {}).category);
@@ -229,7 +220,7 @@ const listSocietyDailyHelp = async (req, res, next) => {
 const addSocietyDailyHelp = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const { category, name, countryCode, phoneNumber, imageUrl, complianceConfirmed } = req.body || {};
     const nm = toTitleCaseName(name);
@@ -342,7 +333,7 @@ const getSocietyDailyHelpProfileById = async (req, res, next) => {
     const doc = await DailyHelp.findById(dailyHelpId).lean();
     if (!doc) return next(createHttpError('Daily help not found.', 404));
 
-    await assertAdminAccessForDailyHelp({ authUser, dailyHelp: doc });
+      await assertAdminAccessForDailyHelp({ req, authUser, dailyHelp: doc });
 
     const assignmentQuery = { dailyHelpId: doc._id };
     if (statusCanonical) assignmentQuery.status = statusCanonical;
@@ -442,7 +433,7 @@ const approveDailyHelp = async (req, res, next) => {
     const doc = await DailyHelp.findById(dailyHelpId);
     if (!doc) return next(createHttpError('Daily help not found.', 404));
 
-    await assertAdminAccessForDailyHelp({ authUser, dailyHelp: doc });
+    await assertAdminAccessForDailyHelp({ req, authUser, dailyHelp: doc });
 
     if (name !== undefined) {
       const nm = normalizeString(name);
@@ -565,7 +556,7 @@ const rejectDailyHelp = async (req, res, next) => {
     const doc = await DailyHelp.findById(dailyHelpId);
     if (!doc) return next(createHttpError('Daily help not found.', 404));
 
-    await assertAdminAccessForDailyHelp({ authUser, dailyHelp: doc });
+    await assertAdminAccessForDailyHelp({ req, authUser, dailyHelp: doc });
 
     if (name !== undefined) {
       const nm = normalizeString(name);
@@ -676,7 +667,7 @@ const removeDailyHelpFromSociety = async (req, res, next) => {
     const doc = await DailyHelp.findById(dailyHelpId);
     if (!doc) return next(createHttpError('Daily help not found.', 404));
 
-    await assertAdminAccessForDailyHelp({ authUser, dailyHelp: doc });
+    await assertAdminAccessForDailyHelp({ req, authUser, dailyHelp: doc });
 
     if (doc.status === 'REMOVED') {
       return sendSuccessResponse(res, 200, 'Daily help already removed from society.', {
@@ -710,7 +701,7 @@ const removeDailyHelpFromSociety = async (req, res, next) => {
 const getDailyHelpCategories = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    await resolveAdminSociety(authUser);
+    await resolveAdminSociety(req, authUser);
 
     const categories = DAILY_HELP_CATEGORIES.map((c) => ({
       id: c.id,
@@ -766,7 +757,7 @@ const editSocietyDailyHelpProfile = async (req, res, next) => {
     const doc = await DailyHelp.findById(dailyHelpId);
     if (!doc) return next(createHttpError('Daily help not found.', 404));
 
-    await assertAdminAccessForDailyHelp({ authUser, dailyHelp: doc });
+    await assertAdminAccessForDailyHelp({ req, authUser, dailyHelp: doc });
 
     const updates = {};
 

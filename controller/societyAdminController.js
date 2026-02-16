@@ -66,7 +66,7 @@ const createSocietyAdmin = async (req, res, next) => {
         mobile: normalizedMobile,
         rawMobile: mobile,
       },
-      {}
+      { scopeSocietyId: societyId }
     );
 
     society.societyAdmins.push({ name, email: normalizedEmail, mobile: normalizedMobile });
@@ -77,6 +77,12 @@ const createSocietyAdmin = async (req, res, next) => {
 
     if (matchedUser) {
       matchedUser.linkedSocietyAdminId = newAdmin._id;
+      matchedUser.linkedSocietyAdminIds = Array.from(
+        new Set([...(matchedUser.linkedSocietyAdminIds || []).map((id) => String(id)), String(newAdmin._id)])
+      );
+      if (!matchedUser.lastLoggedInSocietyId) {
+        matchedUser.lastLoggedInSocietyId = society._id;
+      }
       matchedUser.upgradedToSocietyAdminAt = new Date();
       await matchedUser.save();
 
@@ -174,7 +180,7 @@ const updateSocietyAdmin = async (req, res, next) => {
           email: normalizedEmail,
           rawEmail: email,
         },
-        { excludeSocietyId: societyId, excludeAdminId: adminId }
+        { scopeSocietyId: societyId, excludeAdminId: adminId }
       );
       admin.email = normalizedEmail;
     }
@@ -186,7 +192,7 @@ const updateSocietyAdmin = async (req, res, next) => {
           mobile: normalizedMobile,
           rawMobile: mobile,
         },
-        { excludeSocietyId: societyId, excludeAdminId: adminId }
+        { scopeSocietyId: societyId, excludeAdminId: adminId }
       );
       admin.mobile = normalizedMobile;
     }

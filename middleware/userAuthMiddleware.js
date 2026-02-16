@@ -31,20 +31,14 @@ const userAuthMiddleware = async (req, res, next) => {
       }
 
       if (!society || !admin) {
-        society = await Society.findOne({ 'societyAdmins._id': decoded.id });
-        if (!society) {
-          return next(createHttpError('Unauthorized: society not found', 401));
-        }
-        admin = society.societyAdmins.id(decoded.id);
-        if (!admin) {
-          return next(createHttpError('Unauthorized: admin not found', 401));
-        }
+        return next(createHttpError('Unauthorized: invalid society admin context', 401));
       }
 
       const digits = normalizeDigits(admin.mobile || '');
       const linkedUser = await User.findOne({
         $or: [
           { linkedSocietyAdminId: admin._id },
+          { linkedSocietyAdminIds: admin._id },
           { phoneNumber: digits },
         ],
       });
@@ -58,12 +52,17 @@ const userAuthMiddleware = async (req, res, next) => {
         role: linkedUser.role,
         phoneNumber: linkedUser.phoneNumber,
         effectiveRole: 'society_admin',
+        societyAdminId: admin._id,
         scope: 'app_user',
         societyId: society._id,
       };
       req.appUser = linkedUser;
       req.appUser.adminSocietyId = society._id;
       req.appUser.linkedSocietyAdminId = admin._id;
+      req.appUser.linkedSocietyAdminIds = Array.from(
+        new Set([...(req.appUser.linkedSocietyAdminIds || []).map((id) => String(id)), String(admin._id)])
+      );
+      req.appUser.lastLoggedInSocietyId = society._id;
       return next();
     }
 

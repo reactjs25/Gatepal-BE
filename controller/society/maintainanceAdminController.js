@@ -7,7 +7,7 @@ const User = require('../../model/userSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
-const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const { resolveAdminSocietyFromContext } = require('../../utils/adminSocietyContext');
 const { toDateOnly, toISTDateLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { sendToUser } = require('../../utils/pushNotificationService');
@@ -256,25 +256,8 @@ const buildMaintenanceReceiptPdf = async ({
     doc.end();
   });
 
-const resolveAdminSociety = async (authUser) => {
-  if (!authUser) throw createHttpError('Unauthorized.', 401);
-  if (authUser.adminSocietyId) {
-    const society = await Society.findById(authUser.adminSocietyId).lean();
-    if (!society) throw createHttpError('Society not found.', 404);
-    return society;
-  }
-  const linkedId = authUser.linkedSocietyAdminId || null;
-  if (linkedId) {
-    const society = await Society.findOne({ 'societyAdmins._id': linkedId }).lean();
-    if (!society) throw createHttpError('Society not found.', 404);
-    return society;
-  }
-  const match = await lookupSocietyAdminByMobile(authUser.phoneNumber || '');
-  if (!match) throw createHttpError('Society not found.', 404);
-  const society = await Society.findById(match.societyId).lean();
-  if (!society) throw createHttpError('Society not found.', 404);
-  return society;
-};
+const resolveAdminSociety = async (req, authUser) =>
+  resolveAdminSocietyFromContext({ req, authUser });
 
 const toCanonicalMonth = (value) => {
   const v = normalizeString(value).toLowerCase();
@@ -310,7 +293,7 @@ const toCanonicalMonthLabel = (value) => {
 const getMaintenanceYearlySummary = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const year = Math.round(Number((req.body && req.body.year) || (req.query && req.query.year) || new Date().getFullYear()));
     if (!Number.isFinite(year) || String(year).length !== 4) {
@@ -466,7 +449,7 @@ const getMaintenanceYearlySummary = async (req, res, next) => {
 const getMaintenanceSummaryByMonth = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const monthRaw = (req.body && req.body.month) || '';
     const month = toCanonicalMonth(monthRaw);
@@ -567,7 +550,7 @@ const getMaintenanceSummaryByMonth = async (req, res, next) => {
 const listUploadedMaintenanceByMonth = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const monthRaw = (req.body && req.body.month) || '';
     const month = toCanonicalMonth(monthRaw);
@@ -828,7 +811,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
 const verifyMaintenance = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const maintenanceId = normalizeString((req.body && req.body.maintenanceId) || '');
     if (!maintenanceId) return next(createHttpError('maintenanceId is required.', 400));
@@ -1001,7 +984,7 @@ const verifyMaintenance = async (req, res, next) => {
 const rejectMaintenance = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const maintenanceId = normalizeString((req.body && req.body.maintenanceId) || '');
     if (!maintenanceId) return next(createHttpError('maintenanceId is required.', 400));
@@ -1112,7 +1095,7 @@ const rejectMaintenance = async (req, res, next) => {
 const getMaintenanceRejectReasonCategories = async (req, res, next) => {
   try {
     const authUser = req.appUser;
-    await resolveAdminSociety(authUser);
+    await resolveAdminSociety(req, authUser);
 
     const categories = MAINTENANCE_REJECT_REASON_CATEGORIES.map((name) => ({
       id: name.toLowerCase().replace(/\s+/g, '_'),

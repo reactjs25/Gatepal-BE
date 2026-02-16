@@ -350,7 +350,7 @@ const getUnitDashboard = async (req, res, next) => {
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
     const societyId = unitDoc.societyId;
 
-    const societyAdminId = authUser.linkedSocietyAdminId || null;
+    const societyAdminId = req.user?.societyAdminId || authUser.linkedSocietyAdminId || null;
     
     const [familyCount, vehicleCount, petCount, announcementDocs, meetingDocs, ruleDocs, maintenanceDocs, userNotificationCount, adminNotificationCount] = await Promise.all([
       FamilyMember.countDocuments({ unitId: unitDoc._id }),

@@ -5,7 +5,10 @@ const MemberUnit = require('../../model/memberUnitSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
-const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const {
+  isSocietyAdminPrincipal,
+  resolveAdminSocietyFromContext,
+} = require('../../utils/adminSocietyContext');
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
@@ -27,25 +30,8 @@ const MONTH_LABELS = [
   'December',
 ];
 
-const resolveAdminSociety = async (authUser) => {
-  if (!authUser) throw createHttpError('Unauthorized.', 401);
-  if (authUser.adminSocietyId) {
-    const society = await Society.findById(authUser.adminSocietyId).lean();
-    if (!society) throw createHttpError('Society not found.', 404);
-    return society;
-  }
-  const linkedId = authUser.linkedSocietyAdminId || null;
-  if (linkedId) {
-    const society = await Society.findOne({ 'societyAdmins._id': linkedId }).lean();
-    if (!society) throw createHttpError('Society not found.', 404);
-    return society;
-  }
-  const match = await lookupSocietyAdminByMobile(authUser.phoneNumber || '');
-  if (!match) throw createHttpError('Society not found.', 404);
-  const society = await Society.findById(match.societyId).lean();
-  if (!society) throw createHttpError('Society not found.', 404);
-  return society;
-};
+const resolveAdminSociety = async (req, authUser) =>
+  resolveAdminSocietyFromContext({ req, authUser });
 
 const validateAnnouncementPayload = (payload = {}, options = {}) => {
   const isPartial = !!options.isPartial;
@@ -159,11 +145,11 @@ const createAnnouncement = async (req, res, next) => {
       return next(createHttpError('Unauthorized.', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
+    if (!isSocietyAdminPrincipal(req, authUser)) {
       return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     let validated;
     try {
@@ -241,16 +227,17 @@ const getAnnouncements = async (req, res, next) => {
         ''
     );
     const viewAs = viewAsRaw.toLowerCase();
-    const isMemberView = authUser.role === 'member' || viewAs === 'member';
-    const isGuardView = authUser.role === 'guard';
+    const effectiveRole = req.user?.effectiveRole || authUser.role;
+    const isMemberView = effectiveRole === 'member' || viewAs === 'member';
+    const isGuardView = effectiveRole === 'guard';
 
     let societyId = null;
 
     if (
-      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      isSocietyAdminPrincipal(req, authUser) &&
       !isMemberView
     ) {
-      const society = await resolveAdminSociety(authUser);
+      const society = await resolveAdminSociety(req, authUser);
       societyId = society._id;
     } else if (isGuardView) {
       
@@ -386,8 +373,9 @@ const getAnnouncementById = async (req, res, next) => {
         ''
     );
     const viewAs = viewAsRaw.toLowerCase();
-    const isMemberView = authUser.role === 'member' || viewAs === 'member';
-    const isGuardView = authUser.role === 'guard';
+    const effectiveRole = req.user?.effectiveRole || authUser.role;
+    const isMemberView = effectiveRole === 'member' || viewAs === 'member';
+    const isGuardView = effectiveRole === 'guard';
 
     const announcementId = normalizeString(
       (req.body && req.body.announcementId) ||
@@ -403,10 +391,10 @@ const getAnnouncementById = async (req, res, next) => {
     let doc = null;
 
     if (
-      (authUser.adminSocietyId || authUser.linkedSocietyAdminId || authUser.role === 'society_admin') &&
+      isSocietyAdminPrincipal(req, authUser) &&
       !isMemberView
     ) {
-      const society = await resolveAdminSociety(authUser);
+      const society = await resolveAdminSociety(req, authUser);
       societyId = society._id;
     } else if (isGuardView) {
       
@@ -500,11 +488,11 @@ const updateAnnouncementById = async (req, res, next) => {
       return next(createHttpError('Unauthorized.', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
+    if (!isSocietyAdminPrincipal(req, authUser)) {
       return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const announcementId = normalizeString(
       ((req.body || {}).announcementId) ||
@@ -574,11 +562,11 @@ const deleteAnnouncementById = async (req, res, next) => {
       return next(createHttpError('Unauthorized.', 401));
     }
 
-    if (authUser.role !== 'society_admin' && !authUser.linkedSocietyAdminId) {
+    if (!isSocietyAdminPrincipal(req, authUser)) {
       return next(createHttpError('Only society admins can perform this action.', 403));
     }
 
-    const society = await resolveAdminSociety(authUser);
+    const society = await resolveAdminSociety(req, authUser);
 
     const announcementId = normalizeString(
       ((req.body || {}).announcementId) ||

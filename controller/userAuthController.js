@@ -1,18 +1,58 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
+const mongoose = require('mongoose');
 const User = require('../model/userSchema');
 const { generateNumericOtp } = require('../utils/otpService');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ROLE_TYPES, normalizeRole, APP_USER_ROLES } = require('../utils/userRoleUtils');
 const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require('../utils/phoneNumber');
 const { generateUserAuthToken } = require('../utils/authToken');
-const { findSocietyAdminByPhone } = require('../utils/societyAdminUtils');
+const { findSocietyAdminsByPhone } = require('../utils/societyAdminUtils');
 const { sendSuccessResponse } = require('../utils/response');
 const { isSupportedLanguageCode } = require('../utils/enums/languageEnums');
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10);
 const PASSWORD_RESET_TOKEN_TTL = parseInt(process.env.PASSWORD_RESET_TOKEN_TTL || '3600000', 10);
+
+const pickActiveAdminContext = ({ contexts = [], lastLoggedInSocietyId }) => {
+  if (!Array.isArray(contexts) || contexts.length === 0) {
+    return null;
+  }
+
+  const activeContexts = contexts.filter((ctx) => ctx?.admin?.status !== 'Inactive');
+  const candidatePool = activeContexts.length > 0 ? activeContexts : contexts;
+  const preferredSocietyId = lastLoggedInSocietyId ? String(lastLoggedInSocietyId) : null;
+
+  if (preferredSocietyId) {
+    const preferred = candidatePool.find((ctx) => String(ctx.society?._id) === preferredSocietyId);
+    if (preferred) {
+      return preferred;
+    }
+  }
+
+  return candidatePool[0] || null;
+};
+
+const toAdminSociety = (context) => ({
+  societyId: context.society?._id,
+  societyName: context.society?.societyName,
+  adminId: context.admin?._id,
+  adminStatus: context.admin?.status || null,
+});
+
+const mapAdminSocieties = (contexts = []) => contexts.map((ctx) => toAdminSociety(ctx));
+
+const applyAdminContext = (principal, context) => {
+  if (!principal || !context) {
+    return;
+  }
+
+  principal.activeAdminContext = context;
+  principal.doc = context.admin;
+  principal.society = context.society;
+  principal.save = () => context.society.save();
+};
 
 const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   const normalizedRole = normalizeRole(role);
@@ -25,17 +65,36 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
 
   const normalizedCountryCode = normalizeCountryCode(countryCode);
 
-  const match = await findSocietyAdminByPhone(digitsOnly);
+  const adminContexts = await findSocietyAdminsByPhone(digitsOnly);
 
-  if (match) {
-    return {
+  if (adminContexts.length) {
+    let linkedUser = await User.findOne({ phoneNumber: digitsOnly });
+    if (!linkedUser && rawPhone && rawPhone !== digitsOnly) {
+      linkedUser = await User.findOne({ phoneNumber: rawPhone });
+    }
+
+    const activeContext = pickActiveAdminContext({
+      contexts: adminContexts,
+      lastLoggedInSocietyId: linkedUser?.lastLoggedInSocietyId || null,
+    });
+
+    if (!activeContext) {
+      return null;
+    }
+
+    const principal = {
       type: ROLE_TYPES.SOCIETY_ADMIN,
       role: ROLE_TYPES.SOCIETY_ADMIN,
       countryCode: normalizedCountryCode,
-      doc: match.admin,
-      society: match.society,
-      save: () => match.society.save(),
+      adminContexts,
+      linkedUser,
+      doc: activeContext.admin,
+      society: activeContext.society,
+      activeAdminContext: activeContext,
+      save: () => activeContext.society.save(),
     };
+
+    return principal;
   }
 
   if (APP_USER_ROLES.has(normalizedRole)) {
@@ -117,6 +176,11 @@ const mapPrincipalResponse = (principal) => {
     status: principal.doc.status,
     societyId: principal.society?._id,
     societyName: principal.society?.societyName,
+    activeSociety: principal.activeAdminContext
+      ? toAdminSociety(principal.activeAdminContext)
+      : null,
+    availableSocieties: mapAdminSocieties(principal.adminContexts || []),
+    lastLoggedInSocietyId: principal.linkedUser?.lastLoggedInSocietyId || principal.society?._id || null,
   };
 };
 
@@ -185,35 +249,59 @@ const login = async (req, res, next) => {
     if (principal.type === 'user') {
       isPasswordValid = await principal.doc.comparePassword(password);
     } else {
-      const adminDoc = principal.doc;
-      const adminHasPassword = Boolean(adminDoc.password);
+      const contexts = principal.adminContexts || [];
+      const linkedUser = principal.linkedUser;
+      let matchedContext = null;
 
-      if (adminHasPassword) {
-        isPasswordValid = await bcrypt.compare(password, adminDoc.password || '');
-      } else {
-        const digits = normalizeDigits(adminDoc.mobile || '');
-        const fallbackUser = await User.findOne({ phoneNumber: digits });
+      if (linkedUser) {
+        isPasswordValid = await linkedUser.comparePassword(password);
+        if (isPasswordValid) {
+          matchedContext = pickActiveAdminContext({
+            contexts,
+            lastLoggedInSocietyId: linkedUser.lastLoggedInSocietyId || null,
+          }) || contexts[0] || null;
+        }
+      }
 
-        if (fallbackUser) {
-          isPasswordValid = await bcrypt.compare(password, fallbackUser.password || '');
+      if (!isPasswordValid) {
+        for (const context of contexts) {
+          const adminDoc = context.admin;
+          const adminHasPassword = Boolean(adminDoc.password);
+          let contextValid = false;
 
-          if (isPasswordValid) {
-            if (!adminDoc.password) {
-              adminDoc.password = fallbackUser.password;
-              await principal.save();
-            }
-
-            if (!fallbackUser.linkedSocietyAdminId) {
-              fallbackUser.linkedSocietyAdminId = adminDoc._id;
-              if (!fallbackUser.upgradedToSocietyAdminAt) {
-                fallbackUser.upgradedToSocietyAdminAt = new Date();
-              }
-              await fallbackUser.save();
+          if (adminHasPassword) {
+            contextValid = await bcrypt.compare(password, adminDoc.password || '');
+          } else if (linkedUser) {
+            contextValid = await bcrypt.compare(password, linkedUser.password || '');
+            if (contextValid) {
+              adminDoc.password = linkedUser.password;
+              await context.society.save();
             }
           }
-        } else {
-          isPasswordValid = await bcrypt.compare(password, adminDoc.password || '');
+
+          if (contextValid) {
+            isPasswordValid = true;
+            matchedContext = context;
+            break;
+          }
         }
+      }
+
+      if (isPasswordValid && matchedContext) {
+        applyAdminContext(principal, matchedContext);
+      }
+
+      if (isPasswordValid && linkedUser) {
+        const linkedAdminIds = contexts.map((ctx) => String(ctx.admin._id));
+        linkedUser.linkedSocietyAdminId = principal.doc._id;
+        linkedUser.linkedSocietyAdminIds = Array.from(
+          new Set([...(linkedUser.linkedSocietyAdminIds || []).map((id) => String(id)), ...linkedAdminIds])
+        );
+        linkedUser.lastLoggedInSocietyId = principal.society?._id || null;
+        if (!linkedUser.upgradedToSocietyAdminAt) {
+          linkedUser.upgradedToSocietyAdminAt = new Date();
+        }
+        await linkedUser.save();
       }
     }
 
@@ -313,6 +401,81 @@ const login = async (req, res, next) => {
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to login'));
+  }
+};
+
+const switchSociety = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) {
+      throw createHttpError('Unauthorized.', 401);
+    }
+
+    const effectiveRole = req.user?.effectiveRole || authUser.role;
+    if (
+      effectiveRole !== ROLE_TYPES.SOCIETY_ADMIN &&
+      !authUser.linkedSocietyAdminId &&
+      !(Array.isArray(authUser.linkedSocietyAdminIds) && authUser.linkedSocietyAdminIds.length > 0)
+    ) {
+      throw createHttpError('Forbidden: only society admins can switch society context.', 403);
+    }
+
+    const requestedSocietyId = req.body?.societyId;
+    if (!requestedSocietyId || !mongoose.Types.ObjectId.isValid(requestedSocietyId)) {
+      throw createHttpError('A valid societyId is required.', 400);
+    }
+
+    const contexts = await findSocietyAdminsByPhone(authUser.phoneNumber || '');
+    if (!contexts.length) {
+      throw createHttpError('No society admin mapping found for this user.', 404);
+    }
+
+    const targetContext = contexts.find(
+      (ctx) => String(ctx.society?._id) === String(requestedSocietyId)
+    );
+
+    if (!targetContext) {
+      throw createHttpError('You are not mapped as an admin for this society.', 403);
+    }
+
+    if (targetContext.admin?.status === 'Inactive') {
+      throw createHttpError('Your society admin account is inactive for the selected society.', 403);
+    }
+
+    const adminIds = contexts.map((ctx) => String(ctx.admin._id));
+    authUser.linkedSocietyAdminId = targetContext.admin._id;
+    authUser.linkedSocietyAdminIds = Array.from(
+      new Set([...(authUser.linkedSocietyAdminIds || []).map((id) => String(id)), ...adminIds])
+    );
+    authUser.lastLoggedInSocietyId = targetContext.society._id;
+    if (!authUser.upgradedToSocietyAdminAt) {
+      authUser.upgradedToSocietyAdminAt = new Date();
+    }
+    await authUser.save();
+
+    const token = generateUserAuthToken({
+      id: targetContext.admin._id,
+      role: ROLE_TYPES.SOCIETY_ADMIN,
+      extraClaims: { societyId: targetContext.society._id },
+    });
+
+    return sendSuccessResponse(res, 200, 'Society switched successfully.', {
+      data: {
+        id: targetContext.admin._id,
+        role: ROLE_TYPES.SOCIETY_ADMIN,
+        phoneNumber: targetContext.admin.mobile,
+        countryCode: targetContext.admin.countryCode || authUser.countryCode,
+        status: targetContext.admin.status,
+        societyId: targetContext.society._id,
+        societyName: targetContext.society.societyName,
+        activeSociety: toAdminSociety(targetContext),
+        availableSocieties: mapAdminSocieties(contexts),
+        lastLoggedInSocietyId: authUser.lastLoggedInSocietyId,
+      },
+      token,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to switch society context'));
   }
 };
 
@@ -614,6 +777,7 @@ const updatePreferences = async (req, res, next) => {
 
 module.exports = {
   login,
+  switchSociety,
   requestPasswordOtp,
   verifyOtp,
   resetPassword,
