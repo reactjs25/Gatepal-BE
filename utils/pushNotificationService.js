@@ -405,18 +405,30 @@ const sendToTopic = async (topic, title, body, data = {}) => {
 const getSocietyAdminTokensByPhone = async (phoneNumber) => {
   try {
     if (!phoneNumber) return [];
-    
-    const society = await Society.findOne(
+
+    const societies = await Society.find(
       { 'societyAdmins.mobile': phoneNumber },
-      { 'societyAdmins.$': 1 }
+      { societyAdmins: 1 }
     ).lean();
 
-    if (!society || !society.societyAdmins || society.societyAdmins.length === 0) {
+    if (!Array.isArray(societies) || societies.length === 0) {
       return [];
     }
 
-    const admin = society.societyAdmins[0];
-    return (admin.fcmTokens || []).map((t) => t.token).filter(Boolean);
+    const tokenSet = new Set();
+    societies.forEach((society) => {
+      const admins = Array.isArray(society?.societyAdmins) ? society.societyAdmins : [];
+      admins
+        .filter((admin) => admin?.mobile === phoneNumber)
+        .forEach((admin) => {
+          const tokens = Array.isArray(admin?.fcmTokens) ? admin.fcmTokens : [];
+          tokens.forEach((entry) => {
+            if (entry?.token) tokenSet.add(entry.token);
+          });
+        });
+    });
+
+    return Array.from(tokenSet);
   } catch (error) {
     console.error('[PushNotification] Failed to get society admin tokens by phone:', error.message);
     return [];
@@ -703,6 +715,10 @@ const removeInvalidToken = async (token) => {
       { 'fcmTokens.token': token },
       { $pull: { fcmTokens: { token } } }
     );
+    await Society.updateMany(
+      { 'societyAdmins.fcmTokens.token': token },
+      { $pull: { 'societyAdmins.$[].fcmTokens': { token } } }
+    );
     console.log('[PushNotification] Removed invalid token');
   } catch (error) {
     console.error('[PushNotification] Failed to remove invalid token:', error.message);
@@ -714,6 +730,10 @@ const removeInvalidTokens = async (tokens) => {
     await User.updateMany(
       { 'fcmTokens.token': { $in: tokens } },
       { $pull: { fcmTokens: { token: { $in: tokens } } } }
+    );
+    await Society.updateMany(
+      { 'societyAdmins.fcmTokens.token': { $in: tokens } },
+      { $pull: { 'societyAdmins.$[].fcmTokens': { token: { $in: tokens } } } }
     );
     console.log(`[PushNotification] Removed ${tokens.length} invalid tokens`);
   } catch (error) {

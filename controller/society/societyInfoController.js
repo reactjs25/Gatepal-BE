@@ -94,6 +94,34 @@ const resolveSocietyForSocietyInfo = async (authUser, req) => {
         return { society, unitDoc };
     }
 
+    const adminUnitIdCandidate = normalizeString(
+        (req && req.body && (req.body.unitId || req.body.id)) ||
+        (req && req.params && (req.params.unitId || req.params.id)) ||
+        (req && req.query && (req.query.unitId || req.query.id)) ||
+        ''
+    );
+
+    if (adminUnitIdCandidate) {
+        if (!mongoose.Types.ObjectId.isValid(adminUnitIdCandidate)) {
+            throw createHttpError('Invalid unitId.', 400);
+        }
+
+        const adminUnitDoc = await MemberUnit.findById(adminUnitIdCandidate, { societyId: 1 }).lean();
+        if (!adminUnitDoc) {
+            throw createHttpError('Unit not found.', 404);
+        }
+
+        await assertAdminAccessToSociety({
+            req,
+            authUser,
+            societyId: adminUnitDoc.societyId,
+        });
+
+        const society = await Society.findById(adminUnitDoc.societyId).lean();
+        if (!society) throw createHttpError('Society not found.', 404);
+        return { society, unitDoc: null };
+    }
+
     const society = await resolveAdminSociety(req, authUser);
     return { society, unitDoc: null };
 };
@@ -843,8 +871,6 @@ const updateSocietyResidentUnit = async (req, res, next) => {
             return next(createHttpError('Only society admins can perform this action.', 403));
         }
 
-        const society = await resolveAdminSociety(req, authUser);
-
         const unitIdCandidate = normalizeString(
             (req.params && (req.params.unitId || req.params.id)) ||
             (req.body && req.body.unitId) ||
@@ -865,8 +891,16 @@ const updateSocietyResidentUnit = async (req, res, next) => {
         if (!unitDoc) {
             return next(createHttpError('Unit not found.', 404));
         }
-        if (String(unitDoc.societyId) !== String(society._id)) {
-            return next(createHttpError('Unit does not belong to this society.', 403));
+
+        await assertAdminAccessToSociety({
+            req,
+            authUser,
+            societyId: unitDoc.societyId,
+        });
+
+        const society = await Society.findById(unitDoc.societyId).lean();
+        if (!society) {
+            return next(createHttpError('Society not found.', 404));
         }
 
         const { wing, unit } = findWingAndUnit(society, wingName, unitNumber);

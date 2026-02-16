@@ -54,6 +54,31 @@ const applyAdminContext = (principal, context) => {
   principal.save = () => context.society.save();
 };
 
+const upsertFcmToken = ({ tokenList, fcmToken, normalizedDeviceType, deviceId }) => {
+  const list = Array.isArray(tokenList) ? tokenList : [];
+  const existingTokenIndex = list.findIndex((t) => t.token === fcmToken);
+  if (existingTokenIndex !== -1) {
+    list[existingTokenIndex].deviceType = normalizedDeviceType;
+    list[existingTokenIndex].deviceId = deviceId || null;
+    list[existingTokenIndex].createdAt = new Date();
+  } else {
+    list.push({
+      token: fcmToken,
+      deviceType: normalizedDeviceType,
+      deviceId: deviceId || null,
+      createdAt: new Date(),
+    });
+  }
+
+  if (list.length > 5) {
+    return list
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 5);
+  }
+
+  return list;
+};
+
 const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   const normalizedRole = normalizeRole(role);
   const rawPhone = normalizePhoneNumber(String(phoneNumber || ''));
@@ -361,36 +386,34 @@ const login = async (req, res, next) => {
 
       if (principal.type === ROLE_TYPES.SOCIETY_ADMIN) {
         const admin = principal.doc;
+        const linkedUser = principal.linkedUser || null;
 
-        if (!admin.fcmTokens) {
-          admin.fcmTokens = [];
-        }
-
-        const existingTokenIndex = admin.fcmTokens.findIndex(
-          (t) => t.token === fcmToken
-        );
-
-        if (existingTokenIndex !== -1) {
-          admin.fcmTokens[existingTokenIndex].deviceType = normalizedDeviceType;
-          admin.fcmTokens[existingTokenIndex].deviceId = deviceId || null;
-          admin.fcmTokens[existingTokenIndex].createdAt = new Date();
-        } else {
-          admin.fcmTokens.push({
-            token: fcmToken,
-            deviceType: normalizedDeviceType,
-            deviceId: deviceId || null,
-            createdAt: new Date(),
-          });
-
-          if (admin.fcmTokens.length > 5) {
-            admin.fcmTokens = admin.fcmTokens
-              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-              .slice(0, 5);
-          }
-        }
+        admin.fcmTokens = upsertFcmToken({
+          tokenList: admin.fcmTokens,
+          fcmToken,
+          normalizedDeviceType,
+          deviceId,
+        });
 
         if (principal.save) {
           await principal.save();
+        }
+
+        // Mirror token to linked app-user document so member-targeted notifications
+        // are still deliverable when login resolves through society-admin identity.
+        if (linkedUser) {
+          await User.updateMany(
+            { _id: { $ne: linkedUser._id }, 'fcmTokens.token': fcmToken },
+            { $pull: { fcmTokens: { token: fcmToken } } }
+          );
+
+          linkedUser.fcmTokens = upsertFcmToken({
+            tokenList: linkedUser.fcmTokens,
+            fcmToken,
+            normalizedDeviceType,
+            deviceId,
+          });
+          await linkedUser.save();
         }
       }
     }

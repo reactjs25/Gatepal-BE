@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const Meeting = require('../../model/meetingSchema');
 const Society = require('../../model/societySchema');
 const User = require('../../model/userSchema');
+const MemberUnit = require('../../model/memberUnitSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
@@ -11,11 +13,70 @@ const {
 const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { toISTDateLabel, toISTTimeLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
+const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
 const { sendToSocietyMembers } = require('../../utils/pushNotificationService');
 const { getNotificationMessage } = require('../../utils/notificationMessages');
 
-const resolveAdminSociety = async (req, authUser) =>
-  resolveAdminSocietyFromContext({ req, authUser });
+const resolveAdminSociety = async (req, authUser) => {
+  const unitIdCandidate = normalizeString(
+    (req.body && req.body.unitId) ||
+      (req.params && (req.params.unitId || req.params.id)) ||
+      (req.query && (req.query.unitId || req.query.id)) ||
+      ''
+  );
+
+  if (unitIdCandidate) {
+    if (!mongoose.Types.ObjectId.isValid(unitIdCandidate)) {
+      throw createHttpError('Invalid unitId.', 400);
+    }
+    const unitDoc = await MemberUnit.findById(unitIdCandidate, { societyId: 1 }).lean();
+    if (!unitDoc) {
+      throw createHttpError('Unit not found.', 404);
+    }
+    await assertAdminAccessToSociety({ req, authUser, societyId: unitDoc.societyId });
+    const society = await Society.findById(unitDoc.societyId).lean();
+    if (!society) {
+      throw createHttpError('Society not found.', 404);
+    }
+    return society;
+  }
+
+  return resolveAdminSocietyFromContext({ req, authUser });
+};
+
+const assertAdminAccessToSociety = async ({ req, authUser, societyId }) => {
+  const linkedAdminIds = Array.from(
+    new Set(
+      [
+        req?.user?.societyAdminId,
+        authUser?.linkedSocietyAdminId,
+        ...((authUser?.linkedSocietyAdminIds || []).map((id) => String(id))),
+      ]
+        .filter(Boolean)
+        .map((id) => String(id))
+    )
+  );
+
+  if (linkedAdminIds.length > 0) {
+    const allowed = await Society.exists({
+      _id: societyId,
+      'societyAdmins._id': { $in: linkedAdminIds },
+    });
+    if (allowed) {
+      return;
+    }
+  }
+
+  const phoneMatches = await lookupSocietyAdminsByMobile(authUser?.phoneNumber || '');
+  const hasPhoneMappedAccess = phoneMatches.some(
+    (match) => String(match.societyId) === String(societyId)
+  );
+  if (hasPhoneMappedAccess) {
+    return;
+  }
+
+  throw createHttpError('Forbidden: you are not mapped as admin for this society.', 403);
+};
 
 const parseMeetingDateTime = (meetingDate, meetingStartingFrom) => {
   if (!meetingDate || !meetingStartingFrom) return null;
@@ -323,8 +384,26 @@ const getMeetings = async (req, res, next) => {
       isSocietyAdminPrincipal(req, authUser) &&
       !isMemberView
     ) {
-      const society = await resolveAdminSociety(req, authUser);
-      societyId = society._id;
+      const unitIdCandidate = normalizeString(
+        (req.body && req.body.unitId) ||
+          (req.params && (req.params.unitId || req.params.id)) ||
+          (req.query && (req.query.unitId || req.query.id)) ||
+          ''
+      );
+      if (unitIdCandidate) {
+        if (!mongoose.Types.ObjectId.isValid(unitIdCandidate)) {
+          return next(createHttpError('Invalid unitId.', 400));
+        }
+        const unitDoc = await MemberUnit.findById(unitIdCandidate, { societyId: 1 }).lean();
+        if (!unitDoc) {
+          return next(createHttpError('Unit not found.', 404));
+        }
+        await assertAdminAccessToSociety({ req, authUser, societyId: unitDoc.societyId });
+        societyId = unitDoc.societyId;
+      } else {
+        const society = await resolveAdminSociety(req, authUser);
+        societyId = society._id;
+      }
     } else if (isGuardView) {
       
       const societyIdCandidate = normalizeString(
@@ -432,8 +511,26 @@ const getMeetingById = async (req, res, next) => {
       isSocietyAdminPrincipal(req, authUser) &&
       !isMemberView
     ) {
-      const society = await resolveAdminSociety(req, authUser);
-      societyId = society._id;
+      const unitIdCandidate = normalizeString(
+        (req.body && req.body.unitId) ||
+          (req.params && (req.params.unitId || req.params.id)) ||
+          (req.query && (req.query.unitId || req.query.id)) ||
+          ''
+      );
+      if (unitIdCandidate) {
+        if (!mongoose.Types.ObjectId.isValid(unitIdCandidate)) {
+          return next(createHttpError('Invalid unitId.', 400));
+        }
+        const unitDoc = await MemberUnit.findById(unitIdCandidate, { societyId: 1 }).lean();
+        if (!unitDoc) {
+          return next(createHttpError('Unit not found.', 404));
+        }
+        await assertAdminAccessToSociety({ req, authUser, societyId: unitDoc.societyId });
+        societyId = unitDoc.societyId;
+      } else {
+        const society = await resolveAdminSociety(req, authUser);
+        societyId = society._id;
+      }
     } else if (isGuardView) {
       
       const societyIdCandidate = normalizeString(

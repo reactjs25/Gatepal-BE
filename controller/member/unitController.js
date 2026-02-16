@@ -15,6 +15,7 @@ const { normalizeString } = require('../../utils/strings');
 const { toCanonicalOccupantType, toCanonicalOccupancyStatus, mapUiToCanonicalOccupancy } = require('../../utils/enums/memberEnums');
 const { assertUnitAccess, buildCanonicalUnitId } = require('../../utils/unitAccess');
 const { toISTDateLabel, toISTTimeLabel } = require('../../utils/dateTime');
+const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
 
 const OCCUPANT_TYPES = new Set([
   'unit_owner',
@@ -350,7 +351,16 @@ const getUnitDashboard = async (req, res, next) => {
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
     const societyId = unitDoc.societyId;
 
-    const societyAdminId = req.user?.societyAdminId || authUser.linkedSocietyAdminId || null;
+    let societyAdminId = req.user?.societyAdminId || authUser.linkedSocietyAdminId || null;
+    if (!societyAdminId) {
+      const adminMatches = await lookupSocietyAdminsByMobile(authUser.phoneNumber || '');
+      const matchedForUnitSociety = adminMatches.find(
+        (match) => String(match.societyId) === String(societyId)
+      );
+      if (matchedForUnitSociety?.adminId) {
+        societyAdminId = matchedForUnitSociety.adminId;
+      }
+    }
     
     const [familyCount, vehicleCount, petCount, announcementDocs, meetingDocs, ruleDocs, maintenanceDocs, userNotificationCount, adminNotificationCount] = await Promise.all([
       FamilyMember.countDocuments({ unitId: unitDoc._id }),
