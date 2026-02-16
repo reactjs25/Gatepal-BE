@@ -37,6 +37,32 @@ const getSocietyRuleCategoryLabel = (notification = {}) => {
   return SOCIETY_RULE_CATEGORY_LABELS[categoryKey] || data.categoryLabel || categoryKey;
 };
 
+const formatSocietyRuleNotificationData = (notification = {}) => {
+  const sourceData =
+    notification && notification.data && typeof notification.data === 'object' && !Array.isArray(notification.data)
+      ? notification.data
+      : {};
+
+  const categoryLabel = getSocietyRuleCategoryLabel(notification);
+  if (!categoryLabel) {
+    return sourceData;
+  }
+
+  const { categoryKey, categoryLabel: _existingCategoryLabel, ...restData } = sourceData;
+  if (categoryKey === undefined) {
+    return {
+      ...restData,
+      categoryLabel,
+    };
+  }
+
+  return {
+    categoryKey,
+    categoryLabel,
+    ...restData,
+  };
+};
+
 
 
 
@@ -246,11 +272,10 @@ const getNotifications = async (req, res, next) => {
       title: n.title,
       body: n.body,
       type: n.type,
-      categoryLabel: n.type === 'society_rule' ? getSocietyRuleCategoryLabel(n) : '',
       isRead: n.isRead,
       createdAt: n.createdAt,
       createdOn: formatNotificationCreatedOn(n.createdAt, preferredLanguage),
-      data: n.data || {},
+      data: n.type === 'society_rule' ? formatSocietyRuleNotificationData(n) : n.data || {},
     }));
 
     return sendSuccessResponse(res, 200, 'Notifications fetched successfully.', {
