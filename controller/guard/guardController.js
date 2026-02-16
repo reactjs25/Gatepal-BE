@@ -2,6 +2,7 @@ const validator = require('validator');
 const Society = require('../../model/societySchema');
 const User = require('../../model/userSchema');
 const GuardDutyLog = require('../../model/guardDutyLogSchema');
+const Notification = require('../../model/notificationSchema');
 const DailyHelp = require('../../model/dailyHelpSchema');
 const DailyHelpAssignment = require('../../model/dailyHelpAssignmentSchema');
 const MemberUnit = require('../../model/memberUnitSchema');
@@ -258,6 +259,30 @@ const getGuardProfile = async (req, res, next) => {
       ? await Society.find({ _id: { $in: societyIds } }).lean()
       : [];
 
+    const unreadCountsBySocietyRaw = societyIds.length
+      ? await Notification.aggregate([
+          {
+            $match: {
+              userId: user._id,
+              isRead: false,
+              societyId: { $in: societyIds },
+            },
+          },
+          {
+            $group: {
+              _id: '$societyId',
+              count: { $sum: 1 },
+            },
+          },
+        ])
+      : [];
+
+    const unreadCountBySociety = unreadCountsBySocietyRaw.reduce((acc, row) => {
+      if (!row?._id) return acc;
+      acc[String(row._id)] = row.count;
+      return acc;
+    }, {});
+
     const societies = societiesFromDb.map((society) => {
       const guardSociety = guardSocietyById.get(String(society._id)) || null;
       const dutyGateId = guardSociety?.dutyGateId ? String(guardSociety.dutyGateId) : null;
@@ -283,6 +308,7 @@ const getGuardProfile = async (req, res, next) => {
         societyId: String(society._id),
         societyName: society.societyName,
         societyPin: society.societyPin,
+        notificationCount: unreadCountBySociety[String(society._id)] || 0,
         gates,
       };
     });

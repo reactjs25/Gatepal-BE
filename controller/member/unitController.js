@@ -360,8 +360,8 @@ const getUnitDashboard = async (req, res, next) => {
       Meeting.find({ societyId, deletedAt: null }).sort({ createdAt: -1 }).lean(),
       SocietyRule.find({ societyId, deletedAt: null }).lean(),
       Maintenance.find({ unitId: canonicalUnitId, deletedAt: null }).lean(),
-      Notification.countDocuments({ userId: authUser._id, isRead: false }),
-      societyAdminId ? Notification.countDocuments({ societyAdminId, isRead: false }) : Promise.resolve(0),
+      Notification.countDocuments({ userId: authUser._id, isRead: false, societyId }),
+      societyAdminId ? Notification.countDocuments({ societyAdminId, isRead: false, societyId }) : Promise.resolve(0),
     ]);
 
     const unreadNotificationCount = userNotificationCount + adminNotificationCount;

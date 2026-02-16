@@ -29,6 +29,19 @@ const COUNTRY_FLAG_CODE_OVERRIDES = {
     UK: 'GB',
 };
 
+const COUNTRY_DIAL_CODE_MAP = {
+    AE: '+971',
+    AU: '+61',
+    CA: '+1',
+    DE: '+49',
+    FR: '+33',
+    IN: '+91',
+    JP: '+81',
+    SG: '+65',
+    UK: '+44',
+    US: '+1',
+};
+
 const getCountryFlagCode = (countryCode = '') =>
     (COUNTRY_FLAG_CODE_OVERRIDES[String(countryCode).toUpperCase()] || String(countryCode).toUpperCase()).trim();
 
@@ -41,6 +54,7 @@ const getCountryFlags = async (req, res) => {
             return {
                 countryCode,
                 countryName: country.countryName || '',
+                dialCode: COUNTRY_DIAL_CODE_MAP[countryCode] || '',
                 flagUrl: flagCode ? `https://flagcdn.com/w160/${flagCode.toLowerCase()}.png` : '',
             };
         })

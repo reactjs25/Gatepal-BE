@@ -1,7 +1,8 @@
 const Notification = require('../model/notificationSchema');
+const { isValidObjectId } = require('mongoose');
 const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
-const createHttpError = require('../utils/httpError');
+const { createHttpError } = require('../utils/httpError');
 const { sendToUser, sendToSocietyAdmin } = require('../utils/pushNotificationService');
 const {
   normalizeLanguageCode,
@@ -23,6 +24,19 @@ const isSocietyAdmin = (req) => {
 
 const getSocietyAdminId = (req) => {
   return req.appUser?.linkedSocietyAdminId;
+};
+
+const getRequestedSocietyId = (req) => {
+  const rawSocietyId = (req.query?.societyId || req.body?.societyId || '').toString().trim();
+  if (!rawSocietyId) {
+    return null;
+  }
+
+  if (!isValidObjectId(rawSocietyId)) {
+    throw createHttpError('Invalid societyId.', 400);
+  }
+
+  return rawSocietyId;
 };
 
 const formatNotificationCreatedOn = (dateValue, preferredLanguage = 'en') => {
@@ -61,15 +75,16 @@ const formatNotificationCreatedOn = (dateValue, preferredLanguage = 'en') => {
 
 
 
-const getNotificationQuery = (req) => {
+const getNotificationQuery = (req, societyId = null) => {
   const userId = req.appUser._id;
   const societyAdminId = getSocietyAdminId(req);
-  
-  if (societyAdminId) {
-    return { $or: [{ userId }, { societyAdminId }] };
+  const query = societyAdminId ? { $or: [{ userId }, { societyAdminId }] } : { userId };
+
+  if (societyId) {
+    query.societyId = societyId;
   }
   
-  return { userId };
+  return query;
 };
 
 
@@ -162,7 +177,8 @@ const getNotifications = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const query = getNotificationQuery(req);
+    const selectedSocietyId = getRequestedSocietyId(req);
+    const query = getNotificationQuery(req, selectedSocietyId);
 
     if (req.query.isRead === 'true') {
       query.isRead = true;
@@ -174,15 +190,29 @@ const getNotifications = async (req, res, next) => {
       query.type = req.query.type;
     }
 
-    const unreadQuery = getNotificationQuery(req);
+    const unreadQuery = getNotificationQuery(req, selectedSocietyId);
     unreadQuery.isRead = false;
 
-    const [notifications, unreadCount] = await Promise.all([
+    const unreadBySocietyBaseQuery = getNotificationQuery(req);
+    unreadBySocietyBaseQuery.isRead = false;
+    unreadBySocietyBaseQuery.societyId = { $ne: null };
+
+    const [notifications, unreadCount, unreadCountsBySocietyRaw] = await Promise.all([
       Notification.find(query)
         .sort({ createdAt: -1 })
         .lean(),
       Notification.countDocuments(unreadQuery),
+      Notification.aggregate([
+        { $match: unreadBySocietyBaseQuery },
+        { $group: { _id: '$societyId', count: { $sum: 1 } } },
+      ]),
     ]);
+
+    const unreadCountBySociety = unreadCountsBySocietyRaw.reduce((acc, row) => {
+      if (!row?._id) return acc;
+      acc[String(row._id)] = row.count;
+      return acc;
+    }, {});
 
     const preferredLanguage = normalizeLanguageCode(authUser.preferredLanguage || 'en');
     const formattedNotifications = notifications.map((n) => ({
@@ -199,6 +229,8 @@ const getNotifications = async (req, res, next) => {
     return sendSuccessResponse(res, 200, 'Notifications fetched successfully.', {
       data: formattedNotifications,
       unreadCount,
+      unreadCountBySociety,
+      selectedSocietyId,
     });
   } catch (error) {
     return next(error);
@@ -216,13 +248,34 @@ const getUnreadCount = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const query = getNotificationQuery(req);
+    const selectedSocietyId = getRequestedSocietyId(req);
+    const query = getNotificationQuery(req, selectedSocietyId);
     query.isRead = false;
 
-    const unreadCount = await Notification.countDocuments(query);
+    const unreadBySocietyBaseQuery = getNotificationQuery(req);
+    unreadBySocietyBaseQuery.isRead = false;
+    unreadBySocietyBaseQuery.societyId = { $ne: null };
+
+    const [unreadCount, unreadCountsBySocietyRaw] = await Promise.all([
+      Notification.countDocuments(query),
+      Notification.aggregate([
+        { $match: unreadBySocietyBaseQuery },
+        { $group: { _id: '$societyId', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const unreadCountBySociety = unreadCountsBySocietyRaw.reduce((acc, row) => {
+      if (!row?._id) return acc;
+      acc[String(row._id)] = row.count;
+      return acc;
+    }, {});
 
     return sendSuccessResponse(res, 200, 'Unread count fetched successfully.', {
-      data: { unreadCount },
+      data: {
+        unreadCount,
+        unreadCountBySociety,
+        selectedSocietyId,
+      },
     });
   } catch (error) {
     return next(error);
