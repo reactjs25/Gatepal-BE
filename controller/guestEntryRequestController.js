@@ -1779,7 +1779,11 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       societyId: unitDoc.societyId,
       wingNameLower: unitDoc.wingNameLower,
       unitNumberLower: unitDoc.unitNumberLower,
-      ...(status === 'all' ? {} : { status }),
+      ...(status === 'all'
+        ? { status: { $ne: 'approved' } }
+        : status === 'approved'
+          ? { status: '__hidden_for_member__' }
+          : { status }),
     };
     if (startAt || endAt) {
       listQuery.createdAt = {};
