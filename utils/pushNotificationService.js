@@ -5,6 +5,41 @@ const Society = require('../model/societySchema');
 const Notification = require('../model/notificationSchema');
 const { normalizeLanguageCode } = require('./notificationMessages');
 
+const societyNameCache = new Map();
+
+const normalizeString = (value) => (value || '').toString().trim();
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const resolveSocietyName = async (data = {}, options = {}) => {
+  const directName = normalizeString(options.societyName || data.societyName);
+  if (directName) return directName;
+
+  const societyIdRaw = normalizeString(options.societyId || data.societyId);
+  if (!societyIdRaw || !mongoose.Types.ObjectId.isValid(societyIdRaw)) return '';
+
+  const cacheKey = String(societyIdRaw);
+  if (societyNameCache.has(cacheKey)) {
+    return societyNameCache.get(cacheKey);
+  }
+
+  const society = await Society.findById(cacheKey).select('societyName').lean();
+  const resolved = normalizeString(society?.societyName);
+  societyNameCache.set(cacheKey, resolved);
+  return resolved;
+};
+
+const appendSocietyNameToTitle = (title, societyName) => {
+  const safeTitle = normalizeString(title);
+  const safeSocietyName = normalizeString(societyName);
+  if (!safeTitle || !safeSocietyName) return safeTitle;
+
+  const alreadyIncludesSociety = new RegExp(`\\b${escapeRegex(safeSocietyName)}\\b`, 'i').test(safeTitle);
+  if (alreadyIncludesSociety) return safeTitle;
+
+  return `${safeTitle}, ${safeSocietyName}`;
+};
+
 
 
 const saveNotification = async (userId, title, body, data = {}, fcmResult = {}, options = {}) => {
@@ -170,11 +205,14 @@ const sendToSocietyAdmin = async (societyAdminId, title, body, data = {}, option
       languageCode: adminLanguageCode,
       localizedContentResolver,
     });
+    const societyName = await resolveSocietyName(data, options);
+    const finalTitle = appendSocietyNameToTitle(localizedContent.title, societyName);
+    const finalBody = localizedContent.body;
 
     if (tokens.length === 0) {
       console.log(`[PushNotification] Society admin ${societyAdminId} has no FCM tokens`);
       if (saveToDb) {
-        await saveNotification(societyAdminId, localizedContent.title, localizedContent.body, data, { success: false, error: 'No FCM tokens' }, {
+        await saveNotification(societyAdminId, finalTitle, finalBody, data, { success: false, error: 'No FCM tokens' }, {
           isSocietyAdmin: true,
           societyAdminId,
           societyId,
@@ -183,10 +221,10 @@ const sendToSocietyAdmin = async (societyAdminId, title, body, data = {}, option
       return { success: false, error: 'Society admin has no FCM tokens' };
     }
 
-    const result = await sendToMultipleDevices(tokens, localizedContent.title, localizedContent.body, data);
+    const result = await sendToMultipleDevices(tokens, finalTitle, finalBody, data);
 
     if (saveToDb) {
-      await saveNotification(societyAdminId, localizedContent.title, localizedContent.body, data, result, {
+      await saveNotification(societyAdminId, finalTitle, finalBody, data, result, {
         isSocietyAdmin: true,
         societyAdminId,
         societyId,
@@ -474,20 +512,23 @@ const sendToUser = async (userId, title, body, data = {}, options = {}) => {
       localizedContentResolver,
       user,
     });
+    const societyName = await resolveSocietyName(data, options);
+    const finalTitle = appendSocietyNameToTitle(localizedContent.title, societyName);
+    const finalBody = localizedContent.body;
 
     if (tokens.length === 0) {
       console.log(`[PushNotification] User ${userId} has no FCM tokens`);
       
       if (saveToDb) {
-        await saveNotification(userId, localizedContent.title, localizedContent.body, data, { success: false, error: 'No FCM tokens' });
+        await saveNotification(userId, finalTitle, finalBody, data, { success: false, error: 'No FCM tokens' });
       }
       return { success: false, error: 'User has no FCM tokens' };
     }
 
-    const result = await sendToMultipleDevices(tokens, localizedContent.title, localizedContent.body, data);
+    const result = await sendToMultipleDevices(tokens, finalTitle, finalBody, data);
     
     if (saveToDb) {
-      await saveNotification(userId, localizedContent.title, localizedContent.body, data, result);
+      await saveNotification(userId, finalTitle, finalBody, data, result);
     }
     
     return result;
@@ -508,6 +549,7 @@ const sendToUsers = async (userIds, title, body, data = {}, options = {}) => {
     const users = await User.find({ _id: { $in: userIds } })
       .select('_id fcmTokens phoneNumber role preferredLanguage')
       .lean();
+    const societyName = await resolveSocietyName(data, options);
     const userById = new Map(users.map((u) => [String(u._id), u]));
     const usersWithTokens = [];
 
@@ -551,11 +593,12 @@ const sendToUsers = async (userIds, title, body, data = {}, options = {}) => {
         localizedContentResolver,
         user: entry.user || null,
       });
+      const finalTitle = appendSocietyNameToTitle(localizedContent.title, societyName);
 
-      const messageKey = `${localizedContent.languageCode}::${localizedContent.title}::${localizedContent.body}`;
+      const messageKey = `${localizedContent.languageCode}::${finalTitle}::${localizedContent.body}`;
       if (!batchGroups.has(messageKey)) {
         batchGroups.set(messageKey, {
-          title: localizedContent.title,
+          title: finalTitle,
           body: localizedContent.body,
           tokens: [],
           userIds: [],
@@ -632,6 +675,7 @@ const sendToSocietyMembers = async (societyId, title, body, data = {}, options =
     }
 
     const users = await User.find(baseQuery).select('_id fcmTokens preferredLanguage').lean();
+    const societyName = await resolveSocietyName(data, { ...options, societyId });
     const userIds = users.map((u) => u._id);
     const batchGroups = new Map();
     const localizedEntries = [];
@@ -645,11 +689,12 @@ const sendToSocietyMembers = async (societyId, title, body, data = {}, options =
         localizedContentResolver,
         user,
       });
+      const finalTitle = appendSocietyNameToTitle(localizedContent.title, societyName);
 
-      const messageKey = `${localizedContent.languageCode}::${localizedContent.title}::${localizedContent.body}`;
+      const messageKey = `${localizedContent.languageCode}::${finalTitle}::${localizedContent.body}`;
       if (!batchGroups.has(messageKey)) {
         batchGroups.set(messageKey, {
-          title: localizedContent.title,
+          title: finalTitle,
           body: localizedContent.body,
           tokens: [],
           userIds: [],
@@ -771,6 +816,7 @@ const sendScheduledNotification = async (params) => {
     const users = await User.find({ _id: { $in: userIds } })
       .select('_id fcmTokens preferredLanguage')
       .lean();
+    const societyName = await resolveSocietyName(enrichedData, params);
     const batchGroups = new Map();
     const localizedEntries = [];
 
@@ -783,11 +829,12 @@ const sendScheduledNotification = async (params) => {
         localizedContentResolver,
         user,
       });
+      const finalTitle = appendSocietyNameToTitle(localizedContent.title, societyName);
 
-      const messageKey = `${localizedContent.languageCode}::${localizedContent.title}::${localizedContent.body}`;
+      const messageKey = `${localizedContent.languageCode}::${finalTitle}::${localizedContent.body}`;
       if (!batchGroups.has(messageKey)) {
         batchGroups.set(messageKey, {
-          title: localizedContent.title,
+          title: finalTitle,
           body: localizedContent.body,
           tokens: [],
           userIds: [],
@@ -886,17 +933,20 @@ const sendScheduledAdminNotification = async (params) => {
       languageCode: adminLanguageCode,
       localizedContentResolver,
     });
+    const societyName = await resolveSocietyName(enrichedData, params);
+    const finalTitle = appendSocietyNameToTitle(localizedContent.title, societyName);
+    const finalBody = localizedContent.body;
 
     let result;
     if (tokens.length === 0) {
       console.log(`[PushNotification] Society admin ${societyAdminId} has no FCM tokens for scheduled notification`);
       result = { success: false, error: 'No FCM tokens found' };
     } else {
-      result = await sendToMultipleDevices(tokens, localizedContent.title, localizedContent.body, enrichedData, { iconUrl, imageUrl });
+      result = await sendToMultipleDevices(tokens, finalTitle, finalBody, enrichedData, { iconUrl, imageUrl });
     }
 
    
-    await saveNotification(societyAdminId, localizedContent.title, localizedContent.body, {
+    await saveNotification(societyAdminId, finalTitle, finalBody, {
       ...enrichedData,
       societyName,
       iconUrl,
