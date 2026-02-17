@@ -1391,7 +1391,7 @@ const getRecentGuests = async (req, res, next) => {
         invitedByUserId: authUser._id,
         createdAt: { $gte: since },
       },
-      { guests: 1, createdAt: 1 }
+      { guests: 1, entryLogs: 1, createdAt: 1 }
     )
       .sort({ createdAt: -1 })
       .limit(200)
@@ -1408,16 +1408,24 @@ const getRecentGuests = async (req, res, next) => {
     };
 
     for (const invite of invites) {
+      if (invite?.type === 'group') continue;
       const guests = Array.isArray(invite.guests) ? invite.guests : [];
+      const entryLogs = Array.isArray(invite.entryLogs) ? invite.entryLogs : [];
       for (const g of guests) {
         if (!g) continue;
         const name = normalizeString(g.name);
         const phoneDigits = g.phoneDigits || (g.phoneNumber ? normalizeDigits(g.phoneNumber) : null);
         const key = phoneDigits || `${name.toLowerCase()}|${String(g.guestId || '')}`;
+        const guestImageFromGuest = normalizeString(g.imageUrl);
+        const latestImageLog = entryLogs
+          .filter((log) => log && log.guestId === g.guestId && normalizeString(log.imageUrl))
+          .sort((a, b) => new Date(b.scannedAt || 0).getTime() - new Date(a.scannedAt || 0).getTime())[0];
+        const imageUrl = guestImageFromGuest || normalizeString(latestImageLog?.imageUrl) || null;
         upsert(key, {
           name: name || null,
           countryCode: g.countryCode || null,
           phoneNumber: g.phoneNumber || null,
+          imageUrl,
           source: g.source || 'recent',
           lastInvitedAt: invite.createdAt,
         });
