@@ -26,6 +26,18 @@ const guestEntryRequestDraftSchema = new mongoose.Schema(
     gateName: { type: String, trim: true, default: null },
     wingName: { type: String, trim: true, required: true },
     unitNumbers: { type: [String], required: true, default: [] },
+    unitTargets: {
+      type: [
+        new mongoose.Schema(
+          {
+            wingName: { type: String, trim: true, required: true },
+            unitNumber: { type: String, trim: true, required: true },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
     guestName: { type: String, trim: true, required: true },
     guestCountryCode: { type: String, trim: true, default: '+91' },
     guestPhoneNumber: { type: String, trim: true, required: true },
