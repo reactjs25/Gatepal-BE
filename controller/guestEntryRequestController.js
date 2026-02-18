@@ -3930,12 +3930,66 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     const activeDuty = requireGuardOnDuty(authUser);
 
     const userId = normalizeString(req.body?.userId);
-    const wingName = normalizeString(req.body?.wingName ?? req.body?.wing);
+    const wingNameRaw = req.body?.wingName ?? req.body?.wing;
+    const wingNames = Array.isArray(wingNameRaw)
+      ? wingNameRaw.map((value) => normalizeString(value)).filter(Boolean)
+      : [];
+    const wingName = Array.isArray(wingNameRaw) ? '' : normalizeString(wingNameRaw);
     const unitNumberRaw = req.body?.unitNumber ?? req.body?.unit;
     const unitNumbers = Array.isArray(unitNumberRaw)
       ? unitNumberRaw.map((value) => normalizeString(value)).filter(Boolean)
       : [];
     const unitNumber = Array.isArray(unitNumberRaw) ? null : normalizeString(unitNumberRaw);
+    const unitsPayloadRaw = Array.isArray(req.body?.units) ? req.body.units : [];
+    const hasObjectUnitTargets = unitsPayloadRaw.some((item) => item && typeof item === 'object' && !Array.isArray(item));
+    const destinationFromUnits = [];
+    if (hasObjectUnitTargets) {
+      for (const item of unitsPayloadRaw) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          return next(createHttpError('Each units item must be an object with wingName and unitNumbers/unitNumber.', 400));
+        }
+
+        const normalizedWing = normalizeString(item?.wingName ?? item?.wing);
+        const unitNumbersRaw = item?.unitNumbers ?? item?.unitNumber ?? item?.unit;
+        const normalizedUnitNumbers = Array.isArray(unitNumbersRaw)
+          ? unitNumbersRaw.map((value) => normalizeString(value)).filter(Boolean)
+          : [normalizeString(unitNumbersRaw)].filter(Boolean);
+
+        if (!normalizedWing || normalizedUnitNumbers.length === 0) {
+          return next(createHttpError('Each units item must include wingName and at least one unitNumber.', 400));
+        }
+
+        for (const normalizedUnit of normalizedUnitNumbers) {
+          destinationFromUnits.push({ wingName: normalizedWing, unitNumber: normalizedUnit });
+        }
+      }
+    }
+    const destinationFromWingArrayUnits = [];
+    if (wingNames.length > 0 && unitsPayloadRaw.length > 0 && !hasObjectUnitTargets) {
+      const pushUnitsForWing = (wing, value) => {
+        const normalizedUnits = Array.isArray(value)
+          ? value.map((unit) => normalizeString(unit)).filter(Boolean)
+          : [normalizeString(value)].filter(Boolean);
+        for (const normalizedUnit of normalizedUnits) {
+          destinationFromWingArrayUnits.push({ wingName: wing, unitNumber: normalizedUnit });
+        }
+      };
+
+      if (wingNames.length === 1) {
+        for (const unitValue of unitsPayloadRaw) {
+          pushUnitsForWing(wingNames[0], unitValue);
+        }
+      } else {
+        if (unitsPayloadRaw.length !== wingNames.length) {
+          return next(
+            createHttpError('units length must match wingName length when wingName is an array.', 400)
+          );
+        }
+        wingNames.forEach((wing, index) => {
+          pushUnitsForWing(wing, unitsPayloadRaw[index]);
+        });
+      }
+    }
     const imageUrl = normalizeString(req.body?.imageUrl) || null;
     const vehicleNumber = normalizeString(req.body?.vehicleNumber).toUpperCase() || null;
     const accompanyingCountRaw = req.body?.accompanyingCount ?? req.body?.accompanyingPerson;
@@ -3943,10 +3997,6 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     const accompanyingCount = Number.isFinite(accompanyingCountNumber) && accompanyingCountNumber > 0 ? accompanyingCountNumber : 0;
 
     if (!userId) return next(createHttpError('userId is required.', 400));
-    if (!wingName) return next(createHttpError('wingName is required.', 400));
-    if (unitNumbers.length === 0 && !unitNumber) {
-      return next(createHttpError('unitNumber is required.', 400));
-    }
 
     
     const visitor = await User.findById(userId).lean();
@@ -3958,9 +4008,32 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     if (!VISITOR_TYPES.includes(visitorType)) {
       return next(createHttpError('Invalid visitor type.', 400));
     }
-    if (unitNumbers.length > 0 && visitorType !== 'delivery_executive') {
+
+    const destinations = destinationFromUnits.length > 0
+      ? destinationFromUnits
+      : (destinationFromWingArrayUnits.length > 0
+        ? destinationFromWingArrayUnits
+      : (
+        unitNumbers.length > 0
+          ? unitNumbers.map((value) => ({ wingName, unitNumber: value }))
+          : (wingName && unitNumber ? [{ wingName, unitNumber }] : [])
+      ));
+    const uniqueDestinations = [];
+    const destinationKeys = new Set();
+    for (const destination of destinations) {
+      const key = `${destination.wingName.toLowerCase()}::${destination.unitNumber.toLowerCase()}`;
+      if (destinationKeys.has(key)) continue;
+      destinationKeys.add(key);
+      uniqueDestinations.push(destination);
+    }
+    if (uniqueDestinations.length === 0) {
+      if (!wingName && wingNames.length === 0) return next(createHttpError('wingName is required.', 400));
+      return next(createHttpError('unitNumber is required.', 400));
+    }
+
+    if (uniqueDestinations.length > 1 && visitorType !== 'delivery_executive') {
       return next(
-        createHttpError('Multiple units are only supported for delivery executive.', 400)
+        createHttpError('Multiple wing/unit targets are only supported for delivery executive.', 400)
       );
     }
 
@@ -3992,21 +4065,21 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     const finalImageUrl = imageUrl || visitor.profilePhoto || null;
 
     
-    const unitsToProcess = unitNumbers.length > 0 ? unitNumbers : [unitNumber];
     const recipientsByUnit = new Map();
     const missingUnits = [];
 
-    for (const targetUnit of unitsToProcess) {
+    for (const destination of uniqueDestinations) {
+      const destinationKey = `${destination.wingName.toLowerCase()}::${destination.unitNumber.toLowerCase()}`;
       const recipientUserIds = await resolveUnitResidents({
         societyId: activeDuty.societyId,
-        wingNameLower: wingName.toLowerCase(),
-        unitNumberLower: targetUnit.toLowerCase(),
+        wingNameLower: destination.wingName.toLowerCase(),
+        unitNumberLower: destination.unitNumber.toLowerCase(),
       });
 
       if (!recipientUserIds || recipientUserIds.length === 0) {
-        missingUnits.push(targetUnit);
+        missingUnits.push(`${destination.wingName}-${destination.unitNumber}`);
       } else {
-        recipientsByUnit.set(targetUnit, recipientUserIds);
+        recipientsByUnit.set(destinationKey, recipientUserIds);
       }
     }
 
@@ -4019,32 +4092,40 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
       );
     }
 
-    const unitNumberLowers = unitsToProcess.map((u) => u.toLowerCase());
+    const unitCriteria = uniqueDestinations.map((d) => ({
+      wingNameLower: d.wingName.toLowerCase(),
+      unitNumberLower: d.unitNumber.toLowerCase(),
+    }));
     const unitDocs = await MemberUnit.find(
       {
         societyId: activeDuty.societyId,
-        wingNameLower: wingName.toLowerCase(),
-        unitNumberLower: { $in: unitNumberLowers },
-        $or: [
-          { occupancyStatus: 'currently_residing' },
-          { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
+        $and: [
+          { $or: unitCriteria },
+          {
+            $or: [
+              { occupancyStatus: 'currently_residing' },
+              { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
+            ],
+          },
         ],
       },
-      { _id: 1, unitNumberLower: 1 }
+      { _id: 1, wingNameLower: 1, unitNumberLower: 1 }
     ).lean();
-    const unitByNumber = new Map();
+    const unitByDestination = new Map();
     for (const unit of unitDocs || []) {
-      const key = unit.unitNumberLower;
-      if (key && !unitByNumber.has(key)) {
-        unitByNumber.set(key, unit);
+      const key = `${unit.wingNameLower}::${unit.unitNumberLower}`;
+      if (!unitByDestination.has(key)) {
+        unitByDestination.set(key, unit);
       }
     }
 
     const now = new Date();
     const createdDocs = await Promise.all(
-      unitsToProcess.map(async (targetUnit) => {
-        const unitKey = targetUnit.toLowerCase();
-        const unitDoc = unitByNumber.get(unitKey);
+      uniqueDestinations.map(async (destination) => {
+        const wingKey = destination.wingName.toLowerCase();
+        const unitKey = destination.unitNumber.toLowerCase();
+        const destinationKey = `${wingKey}::${unitKey}`;
+        const unitDoc = unitByDestination.get(destinationKey);
         const preApproval = unitDoc
           ? await resolvePreApprovalForUnit({
               visitorType,
@@ -4064,9 +4145,9 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
 
         return GuestEntryRequest.create({
           societyId: activeDuty.societyId,
-          wingName,
-          wingNameLower: wingName.toLowerCase(),
-          unitNumber: targetUnit,
+          wingName: destination.wingName,
+          wingNameLower: wingKey,
+          unitNumber: destination.unitNumber,
           unitNumberLower: unitKey,
           createdByGuardId: authUser._id,
           gateId: activeDuty.dutyGateId || null,
@@ -4090,7 +4171,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
             visitorType,
             autoApproved,
             preApproval,
-            defaultRecipientUserIds: recipientsByUnit.get(targetUnit),
+            defaultRecipientUserIds: recipientsByUnit.get(destinationKey),
           }),
         });
       })
