@@ -689,6 +689,109 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser, approvedByGuard, companyLo
   };
 };
 
+const buildMobileInfo = (user) => {
+  if (!user?.phoneNumber) return null;
+  return {
+    countryCode: user.countryCode || '+91',
+    phoneNumber: user.phoneNumber,
+  };
+};
+
+const toDeniedReasonLabel = (reqDoc) => {
+  const rejectedReasonRaw = reqDoc?.rejectedReason || null;
+  if (!rejectedReasonRaw) return null;
+  const visitorTypeKey = normalizeVisitorType(reqDoc?.visitorType) || 'guest';
+  const allowedReasons = getAllowedActionReasons('DENY_ENTRY', visitorTypeKey);
+  return canonicalizeEnumReason(rejectedReasonRaw, allowedReasons) || rejectedReasonRaw;
+};
+
+const toWrongEntryReasonLabel = (reqDoc) => {
+  const wrongEntryReasonRaw = reqDoc?.wrongEntryReason || null;
+  if (!wrongEntryReasonRaw) return null;
+
+  const visitorTypeKey = normalizeVisitorType(reqDoc?.visitorType) || 'guest';
+  const allowedReasons = getAllowedActionReasons('WRONG_ENTRY', visitorTypeKey);
+  let normalizedReason = canonicalizeEnumReason(wrongEntryReasonRaw, allowedReasons);
+
+  if (!normalizedReason) {
+    const legacyKey = normalizeOption(wrongEntryReasonRaw);
+    const mapped = LEGACY_WRONG_ENTRY_REASON_MAP?.[visitorTypeKey]?.[legacyKey] || null;
+    normalizedReason = mapped ? canonicalizeEnumReason(mapped, allowedReasons) : null;
+  }
+
+  return normalizedReason || wrongEntryReasonRaw;
+};
+
+const toExitNotifier = ({ reqDoc, userById }) => {
+  if (reqDoc?.entryLeftByGuardId) {
+    const guard = userById.get(String(reqDoc.entryLeftByGuardId));
+    return guard
+      ? {
+          id: String(guard._id),
+          name: `${guard.fullName || 'Guard'} (Security)`,
+          role: 'guard',
+        }
+      : null;
+  }
+
+  if (reqDoc?.entryLeftByMemberId) {
+    const member = userById.get(String(reqDoc.entryLeftByMemberId));
+    return member
+      ? {
+          id: String(member._id),
+          name: member.fullName || 'Member',
+          role: member.role || 'member',
+        }
+      : null;
+  }
+
+  return null;
+};
+
+const toWrongEntryNotifier = ({ reqDoc, userById }) => {
+  if (!reqDoc?.wrongEntryMarkedByMemberId) return null;
+  const notifier = userById.get(String(reqDoc.wrongEntryMarkedByMemberId));
+  return notifier
+    ? {
+        id: String(notifier._id),
+        name: notifier.fullName || 'Member',
+        role: notifier.role || 'member',
+      }
+    : null;
+};
+
+const enrichGuardListPayload = ({ payload, reqDoc, relatedDocs, userById }) => {
+  const docs = Array.isArray(relatedDocs) && relatedDocs.length > 0 ? relatedDocs : [reqDoc];
+  const residentMobileNumbers = [];
+  const seenResidentPhones = new Set();
+
+  for (const doc of docs) {
+    const recipientIds = Array.isArray(doc?.recipientUserIds) ? doc.recipientUserIds : [];
+    for (const recipientId of recipientIds) {
+      const user = userById.get(String(recipientId));
+      const mobile = buildMobileInfo(user);
+      if (!mobile) continue;
+      const key = `${mobile.countryCode}|${mobile.phoneNumber}`;
+      if (seenResidentPhones.has(key)) continue;
+      seenResidentPhones.add(key);
+      residentMobileNumbers.push(mobile);
+    }
+  }
+
+  return {
+    ...payload,
+    residentMobileNumber: residentMobileNumbers[0] || null,
+    residentMobileNumbers,
+    entryDeniedAt: reqDoc?.rejectedAt ? toISTDateTimeLabel(reqDoc.rejectedAt) : null,
+    entryDeniedReason: toDeniedReasonLabel(reqDoc),
+    exit: reqDoc?.entryLeftAt ? toISTDateTimeLabel(reqDoc.entryLeftAt) : null,
+    exitNotifier: toExitNotifier({ reqDoc, userById }),
+    wrongEntryNotifiedAt: reqDoc?.wrongEntryMarkedAt ? toISTDateTimeLabel(reqDoc.wrongEntryMarkedAt) : null,
+    wrongEntryNotifier: toWrongEntryNotifier({ reqDoc, userById }),
+    wrongEntryReason: toWrongEntryReasonLabel(reqDoc),
+  };
+};
+
 
 const getRecentGuestsForGuard = async (req, res, next) => {
   try {
@@ -899,6 +1002,16 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
       approvedByGuardWithoutMemberResponse: 1,
       approvedByGuardId: 1,
       approvedByGuardAt: 1,
+      rejectedByUserId: 1,
+      rejectedAt: 1,
+      rejectedReason: 1,
+      entryLeftAt: 1,
+      entryLeftByGuardId: 1,
+      entryLeftByMemberId: 1,
+      wrongEntryMarkedAt: 1,
+      wrongEntryMarkedByMemberId: 1,
+      wrongEntryReason: 1,
+      recipientUserIds: 1,
       createdAt: 1,
       gateId: 1,
       createdByGuardId: 1,
@@ -970,32 +1083,35 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
         .filter(([, imageUrl]) => Boolean(imageUrl))
     );
 
-    const approverIds = Array.from(
+    const involvedUserIds = Array.from(
       new Set(
-        docs
-          .map((d) => d.approvedByUserId)
-          .filter(Boolean)
-          .map((id) => String(id))
+        docs.flatMap((d) => {
+          const recipientIds = Array.isArray(d.recipientUserIds)
+            ? d.recipientUserIds.map((id) => String(id))
+            : [];
+          return [
+            d.approvedByUserId ? String(d.approvedByUserId) : null,
+            d.approvedByGuardId ? String(d.approvedByGuardId) : null,
+            d.rejectedByUserId ? String(d.rejectedByUserId) : null,
+            d.entryLeftByGuardId ? String(d.entryLeftByGuardId) : null,
+            d.entryLeftByMemberId ? String(d.entryLeftByMemberId) : null,
+            d.wrongEntryMarkedByMemberId ? String(d.wrongEntryMarkedByMemberId) : null,
+            ...recipientIds,
+          ].filter(Boolean);
+        })
       )
     );
 
-    const guardApproverIds = Array.from(
-      new Set(
-        docs
-          .filter((d) => d.approvedByGuardWithoutMemberResponse && d.approvedByGuardId)
-          .map((d) => String(d.approvedByGuardId))
-      )
-    );
-
-    const approvers = approverIds.length
-      ? await User.find({ _id: { $in: approverIds } }, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
+    const involvedUsers = involvedUserIds.length
+      ? await User.find(
+          { _id: { $in: involvedUserIds } },
+          { fullName: 1, countryCode: 1, phoneNumber: 1, role: 1 }
+        ).lean()
       : [];
-    const approverById = new Map(approvers.map((u) => [String(u._id), u]));
+    const userById = new Map(involvedUsers.map((u) => [String(u._id), u]));
 
-    const guardApprovers = guardApproverIds.length
-      ? await User.find({ _id: { $in: guardApproverIds } }, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
-      : [];
-    const guardApproverById = new Map(guardApprovers.map((u) => [String(u._id), u]));
+    const approverById = userById;
+    const guardApproverById = userById;
 
     const deliveryDocs = shouldGroupDelivery ? docs.filter((d) => d.visitorType === 'delivery_executive') : [];
     const otherDocs = shouldGroupDelivery ? docs.filter((d) => d.visitorType !== 'delivery_executive') : docs;
@@ -1010,7 +1126,8 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
         companyName: doc.visitorCompanyName,
         deliveryCompanyLogos,
       });
-      const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
+      const basePayload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
+      const payload = enrichGuardListPayload({ payload: basePayload, reqDoc: doc, relatedDocs: [doc], userById });
       return {
         ...payload,
         statusKey: doc.status,
@@ -1109,12 +1226,18 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
             ? toGuardCardPayload({ reqDoc: primaryDoc, approvedByUser, approvedByGuard, companyLogo })
             : null;
           if (payload) {
+            const enrichedPayload = enrichGuardListPayload({
+              payload,
+              reqDoc: primaryDoc,
+              relatedDocs: groupDocs,
+              userById,
+            });
             // Partial approval: some approved, some not
             const statusLabel = isPartialApproval ? 'Partial Approved' : 'Approved';
             const statusKeyValue = isPartialApproval ? 'partial_approved' : 'approved';
 
             mappedDelivery.push({
-              ...payload,
+              ...enrichedPayload,
               status: statusLabel,
               statusKey: statusKeyValue,
               visitorTypeKey: primaryDoc.visitorType || 'guest',
@@ -1154,7 +1277,13 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
               companyName: doc.visitorCompanyName,
               deliveryCompanyLogos,
             });
-            const payload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
+            const basePayload = toGuardCardPayload({ reqDoc: doc, approvedByUser, approvedByGuard, companyLogo });
+            const payload = enrichGuardListPayload({
+              payload: basePayload,
+              reqDoc: doc,
+              relatedDocs: [doc],
+              userById,
+            });
             mappedDelivery.push({
               ...payload,
               statusKey: doc.status,
@@ -1182,8 +1311,14 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
             ? toGuardCardPayload({ reqDoc: primaryDoc, approvedByUser, approvedByGuard, companyLogo })
             : null;
           if (payload) {
+            const enrichedPayload = enrichGuardListPayload({
+              payload,
+              reqDoc: primaryDoc,
+              relatedDocs: groupDocs,
+              userById,
+            });
             mappedDelivery.push({
-              ...payload,
+              ...enrichedPayload,
               status: 'Awaiting Approval',
               statusKey: 'pending',
               visitorTypeKey: primaryDoc.visitorType || 'guest',
