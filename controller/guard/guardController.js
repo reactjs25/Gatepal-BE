@@ -399,6 +399,7 @@ const startDuty = async (req, res, next) => {
       gateId: gate._id,
       gateName: gate.name,
       logType: 'duty_start',
+      autoEndDuty: false,
       logTime: user.guardSocieties[societyIndex].dutyStartedAt,
     });
 
@@ -472,6 +473,7 @@ const endDuty = async (req, res, next) => {
       gateId: gateId,
       gateName: gateName,
       logType: 'duty_end',
+      autoEndDuty: false,
       logTime: dutyEndedAt,
     });
 

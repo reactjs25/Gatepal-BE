@@ -51,6 +51,7 @@ const getGuardLogs = async (req, res, next) => {
       logTime: toISTDateTimeLabel(log.logTime),
       logType: log.logType === 'duty_start' ? 'Duty Start' : 'Duty End',
       gateName: log.gateName || null,
+      autoEndDuty: log.autoEndDuty === true,
     }));
 
     return sendSuccessResponse(res, 200, 'Guard logs fetched successfully.', {

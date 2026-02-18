@@ -3,6 +3,19 @@ const User = require('../model/userSchema');
 const Society = require('../model/societySchema');
 const { normalizeDigits } = require('../utils/phoneNumber');
 const { createHttpError } = require('../utils/httpError');
+const { autoEndExpiredDutyForGuard } = require('../utils/guardDutyUtils');
+
+const tryAutoEndGuardDuty = async (user) => {
+  if (!user || user.role !== 'guard') {
+    return;
+  }
+
+  try {
+    await autoEndExpiredDutyForGuard(user);
+  } catch (error) {
+    console.error('[Auth] Failed to auto-end expired guard duty:', error.message);
+  }
+};
 
 const userAuthMiddleware = async (req, res, next) => {
   try {
@@ -57,6 +70,7 @@ const userAuthMiddleware = async (req, res, next) => {
         societyId: society._id,
       };
       req.appUser = linkedUser;
+      await tryAutoEndGuardDuty(req.appUser);
       req.appUser.adminSocietyId = society._id;
       req.appUser.linkedSocietyAdminId = admin._id;
       req.appUser.linkedSocietyAdminIds = Array.from(
@@ -79,6 +93,7 @@ const userAuthMiddleware = async (req, res, next) => {
       scope: 'app_user',
     };
     req.appUser = user;
+    await tryAutoEndGuardDuty(req.appUser);
     return next();
   } catch (error) {
     return next(createHttpError('Invalid or expired token', 401));

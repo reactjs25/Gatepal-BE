@@ -41,6 +41,10 @@ const guardDutyLogSchema = new mongoose.Schema(
       enum: ['duty_start', 'duty_end'],
       required: true,
     },
+    autoEndDuty: {
+      type: Boolean,
+      default: false,
+    },
     logTime: {
       type: Date,
       required: true,
