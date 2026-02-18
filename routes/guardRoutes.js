@@ -14,6 +14,7 @@ const {
   listGuestEntryRequestsForGuard,
   createGuestEntryRequest,
   createOnboardedVisitorEntry,
+  allowDailyHelpEntryBridge,
   getGuestEntryRequestForGuard,
   allowGuestEntry,
   allowEntryWithoutApproval,
@@ -39,6 +40,7 @@ router.post('/guestEntryRequests', userAuthMiddleware, createGuestEntryRequest);
 router.post('/visitorEntry', userAuthMiddleware, createOnboardedVisitorEntry);
 router.get('/guestEntryRequests', userAuthMiddleware, getGuestEntryRequestForGuard);
 router.post('/guestEntryRequests/allowEntry', userAuthMiddleware, allowGuestEntry);
+router.post('/dailyHelp/allowEntry', userAuthMiddleware, allowDailyHelpEntryBridge);
 router.post('/guestEntryRequests/allowEntryWithoutApproval', userAuthMiddleware, allowEntryWithoutApproval);
 router.post('/guestEntryRequests/allowExit', userAuthMiddleware, allowGuestExit);
 router.patch('/guestEntryRequests/photo', userAuthMiddleware, updateGuestEntryRequestPhoto);

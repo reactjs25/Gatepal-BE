@@ -3,6 +3,8 @@ const GuestEntryRequestDraft = require('../model/guestEntryRequestDraftSchema');
 const GuestInvite = require('../model/guestInviteSchema');
 const MemberUnit = require('../model/memberUnitSchema');
 const User = require('../model/userSchema');
+const DailyHelp = require('../model/dailyHelpSchema');
+const DailyHelpAssignment = require('../model/dailyHelpAssignmentSchema');
 const { lookupSocietyAdminByMobile } = require('../utils/societyAdminUtils');
 const TaxiDriverCompany = require('../model/taxiDriverCompanySchema');
 const DeliveryCompany = require('../model/deliveryCompanySchema');
@@ -4164,11 +4166,205 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
   }
 };
 
+const allowDailyHelpEntryBridge = async (req, res, next) => {
+  try {
+    const authUser = req.appUser;
+    if (!authUser) return next(createHttpError('Unauthorized.', 401));
+    if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
+
+    const activeDuty = requireGuardOnDuty(authUser);
+
+    const dailyHelpId = normalizeString(req.body?.dailyHelpId || req.query?.dailyHelpId || req.params?.dailyHelpId);
+    const assignmentIdsRaw = req.body?.assignmentIds ?? req.query?.assignmentIds;
+    const assignmentIds =
+      Array.isArray(assignmentIdsRaw)
+        ? assignmentIdsRaw.map((x) => normalizeString(x)).filter(Boolean)
+        : typeof assignmentIdsRaw === 'string'
+          ? assignmentIdsRaw
+              .split(',')
+              .map((x) => normalizeString(x))
+              .filter(Boolean)
+          : [];
+
+    if (!dailyHelpId) return next(createHttpError('dailyHelpId is required.', 400));
+
+    const dailyHelpDoc = await DailyHelp.findOne({
+      _id: dailyHelpId,
+      societyId: activeDuty.societyId,
+      status: 'APPROVED',
+    }).lean();
+
+    if (!dailyHelpDoc) {
+      return next(createHttpError('Approved daily help not found in current society.', 404));
+    }
+
+    let assignments = await DailyHelpAssignment.find({
+      dailyHelpId: dailyHelpDoc._id,
+      status: 'APPROVED',
+    }).lean();
+
+    if (assignmentIds.length > 0) {
+      const assignmentIdSet = new Set(assignmentIds);
+      assignments = assignments.filter((a) => assignmentIdSet.has(String(a._id)));
+    }
+
+    if (!assignments || assignments.length === 0) {
+      return next(createHttpError('No approved assignments found for this daily help.', 404));
+    }
+
+    const parseUnit = (value) => {
+      const parts = String(value || '').split(':');
+      return {
+        societyId: parts[0] || '',
+        wingNameLower: parts[1] || '',
+        unitNumberLower: parts[2] || '',
+      };
+    };
+
+    const unitLookups = assignments
+      .map((a) => {
+        const parsed = parseUnit(a.unitId);
+        if (!parsed.wingNameLower || !parsed.unitNumberLower) return null;
+        return {
+          key: `${parsed.wingNameLower}::${parsed.unitNumberLower}`,
+          wingNameLower: parsed.wingNameLower,
+          unitNumberLower: parsed.unitNumberLower,
+          assignment: a,
+        };
+      })
+      .filter(Boolean);
+
+    if (unitLookups.length === 0) {
+      return next(createHttpError('No valid unit mappings found for selected daily help assignments.', 400));
+    }
+
+    const uniqueUnitPairs = Array.from(new Set(unitLookups.map((x) => x.key))).map((key) => {
+      const [wingNameLower, unitNumberLower] = key.split('::');
+      return { wingNameLower, unitNumberLower };
+    });
+
+    const unitDocs = await MemberUnit.find(
+      {
+        societyId: activeDuty.societyId,
+        $or: uniqueUnitPairs,
+      },
+      {
+        _id: 1,
+        wingName: 1,
+        wingNameLower: 1,
+        unitNumber: 1,
+        unitNumberLower: 1,
+      }
+    ).lean();
+
+    const unitMap = unitDocs.reduce((acc, unit) => {
+      acc[`${unit.wingNameLower}::${unit.unitNumberLower}`] = unit;
+      return acc;
+    }, {});
+
+    const missingUnits = uniqueUnitPairs.filter((u) => !unitMap[`${u.wingNameLower}::${u.unitNumberLower}`]);
+    if (missingUnits.length > 0) {
+      return next(createHttpError('Some approved assignment units no longer exist in this society.', 404));
+    }
+
+    const phoneDigits = normalizePhoneDigits(dailyHelpDoc.phoneDigits || dailyHelpDoc.phoneNumber);
+    if (!phoneDigits) {
+      return next(createHttpError('Daily help phone number is invalid.', 400));
+    }
+
+    const alreadyInsideEntry = await checkVisitorAlreadyInside({
+      societyId: activeDuty.societyId,
+      phoneDigits,
+    });
+    if (alreadyInsideEntry) {
+      return next(
+        createHttpError(
+          `This visitor is already inside the society (Entry: ${alreadyInsideEntry.requestId}). Please mark exit first.`,
+          409
+        )
+      );
+    }
+
+    const assignmentByUnitKey = new Map(
+      unitLookups.map((item) => [item.key, item.assignment])
+    );
+
+    const now = new Date();
+    const createdDocs = [];
+
+    for (const unitPair of uniqueUnitPairs) {
+      const unitKey = `${unitPair.wingNameLower}::${unitPair.unitNumberLower}`;
+      const unitDoc = unitMap[unitKey];
+      const assignment = assignmentByUnitKey.get(unitKey);
+      if (!unitDoc || !assignment) continue;
+
+      const existingOpen = await GuestEntryRequest.findOne({
+        societyId: activeDuty.societyId,
+        wingNameLower: unitDoc.wingNameLower,
+        unitNumberLower: unitDoc.unitNumberLower,
+        visitorType: 'other_visitor',
+        guestPhoneDigits: phoneDigits,
+        status: { $in: ['approved', 'entered', 'pending'] },
+      }).sort({ createdAt: -1 });
+
+      if (existingOpen) {
+        createdDocs.push(existingOpen);
+        continue;
+      }
+
+      const doc = await GuestEntryRequest.create({
+        societyId: activeDuty.societyId,
+        wingName: unitDoc.wingName,
+        wingNameLower: unitDoc.wingNameLower,
+        unitNumber: unitDoc.unitNumber,
+        unitNumberLower: unitDoc.unitNumberLower,
+        createdByGuardId: authUser._id,
+        gateId: activeDuty.dutyGateId || null,
+        gateName: activeDuty.dutyGateName || null,
+        guestName: dailyHelpDoc.name,
+        guestCountryCode: normalizeCountryCode(dailyHelpDoc.countryCode || '+91'),
+        guestPhoneNumber: phoneDigits,
+        guestPhoneDigits: phoneDigits,
+        guestImageUrl: dailyHelpDoc.imageUrl || null,
+        visitorType: 'other_visitor',
+        visitorCompanyName: null,
+        visitorWorkCategory:
+          getWorkCategoryDisplayName(dailyHelpDoc.category) ||
+          normalizeString(dailyHelpDoc.category).replace(/_/g, ' ') ||
+          'Other',
+        accompanyingCount: 0,
+        vehicleNumber: null,
+        status: 'approved',
+        approvedByUserId: assignment.memberId || null,
+        approvedAt: now,
+        expiresAt: null,
+        recipientUserIds: assignment.memberId ? [assignment.memberId] : [],
+      });
+
+      createdDocs.push(doc);
+    }
+
+    if (createdDocs.length === 0) {
+      return next(createHttpError('No eligible daily help entries found to allow.', 409));
+    }
+
+    req.body.requestIds = createdDocs.map((d) => d.requestId);
+    req.body.requestId = undefined;
+    req.query.requestIds = createdDocs.map((d) => d.requestId).join(',');
+    req.query.requestId = undefined;
+
+    return allowGuestEntry(req, res, next);
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to allow daily help entry'));
+  }
+};
+
 module.exports = {
   getRecentGuestsForGuard,
   listGuestEntryRequestsForGuard,
   createGuestEntryRequest,
   createOnboardedVisitorEntry,
+  allowDailyHelpEntryBridge,
   getGuestEntryRequestForGuard,
   listGuestEntryRequestsForMember,
   listGuestEntryRequestsForSocietyAdmin,
