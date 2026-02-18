@@ -1237,16 +1237,27 @@ const createGuestEntryRequest = async (req, res, next) => {
     const unitNumber = Array.isArray(unitNumberRaw) ? null : normalizeString(unitNumberRaw);
     const unitsPayloadRaw = Array.isArray(req.body?.units) ? req.body.units : [];
     const hasObjectUnitTargets = unitsPayloadRaw.some((item) => item && typeof item === 'object' && !Array.isArray(item));
-    const destinationFromUnits = hasObjectUnitTargets
-      ? unitsPayloadRaw
-      .map((item) => ({
-        wingName: normalizeString(item?.wingName ?? item?.wing),
-        unitNumber: normalizeString(item?.unitNumber ?? item?.unit),
-      }))
-      .filter((item) => item.wingName && item.unitNumber)
-      : [];
-    if (hasObjectUnitTargets && destinationFromUnits.length !== unitsPayloadRaw.length) {
-      return next(createHttpError('Each units item must include wingName and unitNumber.', 400));
+    const destinationFromUnits = [];
+    if (hasObjectUnitTargets) {
+      for (const item of unitsPayloadRaw) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          return next(createHttpError('Each units item must be an object with wingName and unitNumbers/unitNumber.', 400));
+        }
+
+        const normalizedWing = normalizeString(item?.wingName ?? item?.wing);
+        const unitNumbersRaw = item?.unitNumbers ?? item?.unitNumber ?? item?.unit;
+        const normalizedUnitNumbers = Array.isArray(unitNumbersRaw)
+          ? unitNumbersRaw.map((value) => normalizeString(value)).filter(Boolean)
+          : [normalizeString(unitNumbersRaw)].filter(Boolean);
+
+        if (!normalizedWing || normalizedUnitNumbers.length === 0) {
+          return next(createHttpError('Each units item must include wingName and at least one unitNumber.', 400));
+        }
+
+        for (const normalizedUnit of normalizedUnitNumbers) {
+          destinationFromUnits.push({ wingName: normalizedWing, unitNumber: normalizedUnit });
+        }
+      }
     }
     const destinationFromWingArrayUnits = [];
     if (wingNames.length > 0 && unitsPayloadRaw.length > 0 && !hasObjectUnitTargets) {
