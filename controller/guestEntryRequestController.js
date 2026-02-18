@@ -1342,6 +1342,9 @@ const createGuestEntryRequest = async (req, res, next) => {
       return next(createHttpError('companyName is required for other visitor.', 400));
     }
 
+    const useFlatDeliveryMultiUnitResponse =
+      visitorType === 'delivery_executive' && uniqueDestinations.length > 1;
+
     let companyName = companyNameRaw;
     if (visitorType === 'taxi_vehicle_driver' && companyName) {
       const matchedTaxiCompany = await resolveTaxiCompanyName(companyName);
@@ -1401,17 +1404,27 @@ const createGuestEntryRequest = async (req, res, next) => {
           requestId: draft.requestId,
           status: 'Awaiting Approval',
           category: labels.category,
-          visitorType: labels.visitorType,
+          visitorType: useFlatDeliveryMultiUnitResponse ? visitorType : labels.visitorType,
           photoRequired: true,
-          guest: {
-            name: guestName,
-            countryCode: countryCode || '+91',
-            phoneNumber: phoneDigits,
-            imageUrl: null,
-            companyName: companyName || null,
-            workCategory: workCategoryRaw || null,
-          },
-          accompanyingCount: String(accompanyingCount || 0),
+          ...(useFlatDeliveryMultiUnitResponse
+            ? {
+                name: guestName,
+                countryCode: countryCode || '+91',
+                phoneNumber: phoneDigits,
+                imageUrl: null,
+                deliveryCompanyName: companyName || null,
+              }
+            : {
+                guest: {
+                  name: guestName,
+                  countryCode: countryCode || '+91',
+                  phoneNumber: phoneDigits,
+                  imageUrl: null,
+                  companyName: companyName || null,
+                  workCategory: workCategoryRaw || null,
+                },
+              }),
+          accompanyingCount: useFlatDeliveryMultiUnitResponse ? accompanyingCount : String(accompanyingCount || 0),
           vehicleNumber: vehicleNumber || null,
           ...(uniqueDestinations.length === 1
             ? { unit: { wingName: uniqueDestinations[0].wingName, unitNumber: uniqueDestinations[0].unitNumber } }
@@ -1580,6 +1593,28 @@ const createGuestEntryRequest = async (req, res, next) => {
           ...basePayload,
           requestId: primaryDoc.requestId,
           unit: { wingName: primaryDoc.wingName, unitNumber: primaryDoc.unitNumber },
+        },
+      });
+    }
+
+    if (useFlatDeliveryMultiUnitResponse) {
+      return sendSuccessResponse(res, 201, 'Guest approval requests created successfully.', {
+        data: {
+          requestIds: createdDocs.map((d) => d.requestId),
+          status: getStatusLabel(primaryDoc.status),
+          category: labels.category,
+          visitorType: primaryDoc.visitorType || 'delivery_executive',
+          photoRequired,
+          requestsendat: primaryDoc.createdAt ? toISTDateTimeLabel(primaryDoc.createdAt) : null,
+          expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabel(primaryDoc.expiresAt) : null,
+          name: primaryDoc.guestName,
+          phoneNumber: primaryDoc.guestPhoneNumber,
+          countryCode: primaryDoc.guestCountryCode || '+91',
+          deliveryCompanyName: primaryDoc.visitorCompanyName || null,
+          imageUrl: primaryDoc.guestImageUrl || null,
+          vehicleNumber: primaryDoc.vehicleNumber || null,
+          accompanyingCount: primaryDoc.accompanyingCount || 0,
+          units: createdDocs.map((d) => ({ wingName: d.wingName, unitNumber: d.unitNumber })),
         },
       });
     }
