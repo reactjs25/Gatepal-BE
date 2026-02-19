@@ -571,7 +571,7 @@ const createGroupInvite = async (req, res, next) => {
       maxEntries: invite.maxEntries,
     };
 
-    const shareMessage = `${authUser.fullName || 'A member'} has invited you. Show this QR code to the guard at the gate.`;
+    const shareMessage = `${authUser.fullName || 'A member'} has invited you.`;
 
     return sendSuccessResponse(res, 201, 'Group guest invite created successfully.', {
       data: responseData,
@@ -681,7 +681,7 @@ const createFrequentInvite = async (req, res, next) => {
       maxEntries: null,
     };
 
-    const shareMessage = `${authUser.fullName || 'A member'} has invited you. Show this QR code to the guard at the gate.`;
+    const shareMessage = `${authUser.fullName || 'A member'} has invited you.`;
 
     return sendSuccessResponse(res, 201, 'Frequent guest invite created successfully.', {
       data: responseData,
@@ -801,7 +801,7 @@ const createQuickInvite = async (req, res, next) => {
       maxEntries: invite.maxEntries,
     };
 
-    const shareMessage = `${authUser.fullName || 'A member'} has invited you. Show this QR code to the guard at the gate.`;
+    const shareMessage = `${authUser.fullName || 'A member'} has invited you.`;
 
     return sendSuccessResponse(res, 201, 'Guest quick invite created successfully.', {
       data: responseData,

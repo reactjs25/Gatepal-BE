@@ -3027,6 +3027,8 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         }
       }
 
+      const shareMessage = `${invitedByUser?.fullName || 'A member'} has invited you.`;
+
       return sendSuccessResponse(res, 200, 'Guest invite fetched successfully.', {
         data: {
           requestId: guestInvite.inviteId,
@@ -3061,6 +3063,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             : null,
           isGuestInvite: true,
         },
+        shareMessage,
       });
     }
 
