@@ -329,11 +329,11 @@ const resolveCompanyLogo = ({ visitorType, companyName, deliveryCompanyLogos }) 
   }
 
   if (visitorType === 'taxi_vehicle_driver') {
-    return getTaxiCompanyInfo(trimmed)?.imageUrl || null;
+    return getTaxiCompanyInfo(trimmed)?.imageUrl || '/assets/Default.png';
   }
 
   if (visitorType === 'other_visitor') {
-    return getOtherVisitorCompanyInfo(trimmed)?.imageUrl || null;
+    return getOtherVisitorCompanyInfo(trimmed)?.imageUrl || '/assets/Default.png';
   }
 
   return null;
