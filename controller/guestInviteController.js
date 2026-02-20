@@ -1560,15 +1560,33 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
         : null;
     }
 
+    let guestEntryRequestRecord = null;
+
     if (Object.keys(entryRequestUpdate).length > 0) {
-      await GuestEntryRequest.findOneAndUpdate(
+      guestEntryRequestRecord = await GuestEntryRequest.findOneAndUpdate(
         {
           guestInviteId: invite._id,
           createdByGuardId: authUser._id,
         },
         { $set: entryRequestUpdate },
-        { sort: { createdAt: -1 } }
+        {
+          sort: { createdAt: -1 },
+          new: true,
+          projection: { requestId: 1 },
+        }
       );
+    }
+
+    if (!guestEntryRequestRecord) {
+      guestEntryRequestRecord = await GuestEntryRequest.findOne(
+        {
+          guestInviteId: invite._id,
+          createdByGuardId: authUser._id,
+        },
+        { requestId: 1 }
+      )
+        .sort({ createdAt: -1 })
+        .lean();
     }
 
     
@@ -1618,6 +1636,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
 
     const responseData = {
       qrType: 'guest_invite',
+      requestId: guestEntryRequestRecord?.requestId || null,
       inviteId: invite.inviteId,
       inviteType: invite.type,
       societyId: String(invite.societyId),

@@ -187,8 +187,12 @@ GatePal handles different types of visitors entering a society. The system suppo
               │ POST /guard/entryDetails│                 │
               ├─────────────────────────┤                 │
               │ {                       │                 │
-              │   "requestId": "...",   │                 │
+              │   "inviteId": "...",    │                 │
+              │   "guestId": "...",     │                 │
               │   "imageUrl": "...",    │                 │
+              │   "guestName": "...",   │                 │
+              │   "phoneNumber": "...", │                 │
+              │   "countryCode": "+91", │                 │
               │   "vehicleNumber": "",  │                 │
               │   "accompanyingCount":1 │                 │
               │ }                       │                 │
@@ -197,6 +201,20 @@ GatePal handles different types of visitors entering a society. The system suppo
                            └──────────────┬───────────────┘
                                           │
                                           ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         ENTRY DETAILS RESPONSE                                      │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│  {                                                                                  │
+│    "requestId": "...",        ← GuestEntryRequest id for allowEntry/allowExit    │
+│    "inviteId": "...",                                                          │
+│    "arrivingGuest": { ... },                                                      │
+│    "vehicleNumber": "...",                                                      │
+│    "accompanyingCount": 1                                                         │
+│  }                                                                                  │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+                                         │
+                                         ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                         GUARD ALLOWS ENTRY                                          │
 │              POST /guard/guestEntryRequests/allowEntry                              │
@@ -918,6 +936,37 @@ POST /member/guestInvites/group
 | `POST` | `/guard/guestEntryRequests/allowExit` | Mark visitor exit |
 | `PATCH` | `/guard/guestEntryRequests/photo` | Update visitor photo |
 | `POST` | `/guard/guestEntryRequests/recentGuests` | Get recent guests for unit |
+
+#### `/guard/entryDetails` Request Body (POST/PATCH)
+
+```json
+{
+  "inviteId": "required-string",
+  "guestId": "optional-string",
+  "imageUrl": "optional-string-or-null",
+  "guestName": "optional-string-or-null",
+  "fullName": "optional-string-or-null",
+  "phoneNumber": "optional-string-or-null",
+  "countryCode": "optional-string (defaults to +91 when phoneNumber is sent)",
+  "vehicleNumber": "optional-string-or-null",
+  "accompanyingCount": "optional-non-negative-number"
+}
+```
+
+#### `/guard/entryDetails` Response (key fields)
+
+```json
+{
+  "data": {
+    "requestId": "guest-entry-request-id",
+    "inviteId": "invite-id",
+    "inviteType": "quick|frequent|group",
+    "arrivingGuest": { "guestId": "...", "name": "..." },
+    "vehicleNumber": "...",
+    "accompanyingCount": 0
+  }
+}
+```
 
 ---
 
