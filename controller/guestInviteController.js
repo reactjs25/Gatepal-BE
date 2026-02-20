@@ -93,6 +93,23 @@ const normalizeOption = (value) =>
     .toLowerCase()
     .replace(/\s+/g, '_');
 
+const getStatusLabel = (status) =>
+  status === 'approved'
+    ? 'Approved'
+    : status === 'rejected'
+      ? 'Denied'
+      : status === 'entered'
+        ? 'Inside Society'
+        : status === 'left'
+          ? 'Left Society'
+          : status === 'expired'
+            ? 'Expired'
+            : status === 'cancelled'
+              ? 'Cancelled'
+              : status === 'wrong_entry'
+                ? 'Wrong Entry'
+                : 'Awaiting Approval';
+
 const parseDateOnly = (value, fieldLabel) => {
   if (!value) {
     throw createHttpError(`${fieldLabel} is required.`, 400);
@@ -1572,7 +1589,7 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
         {
           sort: { createdAt: -1 },
           new: true,
-          projection: { requestId: 1 },
+          projection: { requestId: 1, status: 1 },
         }
       );
     }
@@ -1583,11 +1600,14 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
           guestInviteId: invite._id,
           createdByGuardId: authUser._id,
         },
-        { requestId: 1 }
+        { requestId: 1, status: 1 }
       )
         .sort({ createdAt: -1 })
         .lean();
     }
+
+    const statusKey = normalizeOption(guestEntryRequestRecord?.status || 'pending');
+    const statusLabel = getStatusLabel(statusKey);
 
     
     const member = await User.findById(invite.invitedByUserId).lean();
@@ -1637,6 +1657,10 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
     const responseData = {
       qrType: 'guest_invite',
       requestId: guestEntryRequestRecord?.requestId || null,
+      status: statusLabel,
+      statusKey,
+      category: 'Guest',
+      visitorType: 'Guest',
       inviteId: invite.inviteId,
       inviteType: invite.type,
       societyId: String(invite.societyId),

@@ -3049,7 +3049,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
               }
             : null,
           guests,
-          maxEntries: guestInvite.type === 'frequent' ? null : guestInvite.maxEntries,
+          maxEntries: Number.isFinite(guestInvite.maxEntries) ? guestInvite.maxEntries : 0,
           usedEntries: Array.isArray(guestInvite.entryLogs) ? guestInvite.entryLogs.length : 0,
           cancelledReason: inviteCancelledReasonOut,
           cancelledDescription: normalizeString(guestInvite.cancelledDescription) || null,
