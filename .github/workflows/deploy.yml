@@ -3,7 +3,7 @@ name: Deploy to EC2
 on:
   push:
     branches:
-      - aws   # change if needed
+      - aws
 
 jobs:
   deploy:
@@ -13,11 +13,11 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 65.0.86.176
+          host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd /var/www/Gatepal-BE
-            git pull origin main
+            git pull origin aws
             npm install
             pm2 restart app
