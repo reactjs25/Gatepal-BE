@@ -22,6 +22,7 @@ app.get('/', (req, res) =>
   sendSuccessResponse(res, 200, 'Gatepal API is up and running')
 );
 
+
 app.use('/api', routes);
 app.use(notFoundHandler);
 app.use(errorHandler);
