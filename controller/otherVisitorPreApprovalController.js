@@ -49,11 +49,11 @@ const resolveOtherVisitorCompany = async (companyName) => {
   }
 
   if (record) {
-    return { name: record.name, imageUrl: record.imageUrl };
+    return { id: record.id, name: record.name, imageUrl: record.imageUrl };
   }
 
   const fallback = getOtherVisitorCompanyInfo(trimmed);
-  return fallback ? { name: fallback.name, imageUrl: fallback.imageUrl } : null;
+  return fallback ? { id: fallback.id, name: fallback.name, imageUrl: fallback.imageUrl } : null;
 };
 
 const parseDateTime = (value, fieldLabel) => {
@@ -239,6 +239,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
       return next(e);
     }
 
+    let resolvedCompany = null;
     let resolvedCompanyName = null;
     const trimmedCompany = normalizeString(companyName);
     if (trimmedCompany) {
@@ -251,6 +252,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
           )
         );
       }
+      resolvedCompany = matchedCompany;
       resolvedCompanyName = matchedCompany.name;
     }
 
@@ -280,7 +282,17 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
         category: 'Visitor',
         visitorType: 'Other Visitor',
         workCategory: approval.workCategory,
-        companyName: approval.companyName || null,
+        company: resolvedCompany
+          ? {
+              id: resolvedCompany.id || null,
+              name: resolvedCompany.name || null,
+              imageUrl: resolvedCompany.imageUrl || null,
+            }
+          : {
+              id: null,
+              name: null,
+              imageUrl: null,
+            },
         visitorName: approval.visitorName || null,
         unit: {
           id: String(unitDoc._id),
@@ -417,6 +429,9 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
     await approval.save();
 
     const member = await User.findById(authUser._id).lean();
+    const companyInfo = approval.companyName
+      ? await resolveOtherVisitorCompany(approval.companyName)
+      : null;
     const fromLabel = toISTDateTimeLabelNoComma(approval.validFrom);
     const tillLabel = toISTDateTimeLabelNoComma(approval.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
@@ -427,6 +442,17 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
         category: 'Visitor',
         visitorType: 'Other Visitor',
         workCategory: approval.workCategory,
+        company: companyInfo
+          ? {
+              id: companyInfo.id || null,
+              name: companyInfo.name || null,
+              imageUrl: companyInfo.imageUrl || null,
+            }
+          : {
+              id: null,
+              name: null,
+              imageUrl: null,
+            },
         companyName: approval.companyName || null,
         visitorName: approval.visitorName || null,
         unit: {

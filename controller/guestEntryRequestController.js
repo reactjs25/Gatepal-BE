@@ -339,6 +339,30 @@ const resolveCompanyLogo = ({ visitorType, companyName, deliveryCompanyLogos }) 
   return null;
 };
 
+const resolveCompanyObject = ({ visitorType, companyName, companyLogo }) => {
+  const trimmed = normalizeString(companyName);
+  if (!trimmed) {
+    return {
+      id: null,
+      name: null,
+      imageUrl: null,
+    };
+  }
+
+  let info = null;
+  if (visitorType === 'taxi_vehicle_driver') {
+    info = getTaxiCompanyInfo(trimmed);
+  } else if (visitorType === 'other_visitor') {
+    info = getOtherVisitorCompanyInfo(trimmed);
+  }
+
+  return {
+    id: info?.id || normalizeCompanyId(trimmed) || null,
+    name: info?.name || trimmed,
+    imageUrl: info?.imageUrl || companyLogo || null,
+  };
+};
+
 const resolveCompanyLogoForRequest = async ({ visitorType, companyName }) => {
   const trimmed = normalizeString(companyName);
   if (!trimmed) return null;
@@ -680,6 +704,11 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser, approvedByGuard, companyLo
 
     },
     imageUrl: reqDoc.guestImageUrl || null,
+    company: resolveCompanyObject({
+      visitorType: reqDoc.visitorType,
+      companyName: reqDoc.visitorCompanyName,
+      companyLogo,
+    }),
     companyName: reqDoc.visitorCompanyName || null,
     companyLogo: companyLogo || null,
     workCategory: reqDoc.visitorWorkCategory || null,
@@ -1705,6 +1734,11 @@ const createGuestEntryRequest = async (req, res, next) => {
         countryCode: primaryDoc.guestCountryCode || '+91',
         phoneNumber: primaryDoc.guestPhoneNumber,
         imageUrl: primaryDoc.guestImageUrl || null,
+        company: resolveCompanyObject({
+          visitorType: primaryDoc.visitorType,
+          companyName: primaryDoc.visitorCompanyName,
+          companyLogo: null,
+        }),
         companyName: primaryDoc.visitorCompanyName || null,
         workCategory: primaryDoc.visitorWorkCategory || null,
       },
