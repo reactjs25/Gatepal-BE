@@ -1406,6 +1406,7 @@ const getRecentGuests = async (req, res, next) => {
     const invites = await GuestInvite.find(
       {
         invitedByUserId: authUser._id,
+        type: { $ne: 'group' },
         createdAt: { $gte: since },
       },
       { guests: 1, entryLogs: 1, createdAt: 1 }
@@ -1425,7 +1426,6 @@ const getRecentGuests = async (req, res, next) => {
     };
 
     for (const invite of invites) {
-      if (invite?.type === 'group') continue;
       const guests = Array.isArray(invite.guests) ? invite.guests : [];
       const entryLogs = Array.isArray(invite.entryLogs) ? invite.entryLogs : [];
       for (const g of guests) {
