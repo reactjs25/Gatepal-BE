@@ -100,8 +100,8 @@ const getAllSociety = async (req, res, next) => {
 
     if (phoneNumber !== undefined) {
       const digits = String(phoneNumber).replace(/\D/g, '');
-      if (!digits || digits.length !== 10) {
-        return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
+      if (!digits || digits.length < 10 || digits.length > 12) {
+        return next(createHttpError('Please enter a valid phone number.', 400));
       }
 
    

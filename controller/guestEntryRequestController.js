@@ -1494,7 +1494,7 @@ const createGuestEntryRequest = async (req, res, next) => {
 
     if (!guestName) return next(createHttpError('guestName is required.', 400));
     if (!phoneRaw) return next(createHttpError('phoneNumber is required.', 400));
-    if (!isTenDigitPhone(phoneRaw)) return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
+    if (!isTenDigitPhone(phoneRaw)) return next(createHttpError('Please enter a valid phone number.', 400));
 
     let visitorType = (visitorTypeRaw || '').toLowerCase().replace(/\s+/g, '_') || 'guest';
     if (!visitorTypeRaw && companyNameRaw) visitorType = 'delivery_executive';

@@ -31,8 +31,8 @@ const superAdminSchema = new mongoose.Schema(
       trim: true,
       unique: true,
       minlength: 10,
-      maxlength: 10,
-      match: /^\d{10}$/,
+      maxlength: 12,
+      match: /^\d{10,12}$/,
     },
     resetPasswordToken: {
       type: String,

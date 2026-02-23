@@ -28,8 +28,8 @@ const normalizePhoneDigits = (value = '') => {
 };
 
 const isTenDigitPhone = (value = '') => {
-  const digits = normalizePhoneDigits(value);
-  return digits.length === 10;
+  const digits = normalizeDigits(value);
+  return digits.length >= 10 && digits.length <= 12;
 };
 
 const getComparablePhoneNumber = ({ countryCode, phoneNumber }) => {

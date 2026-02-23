@@ -33,8 +33,8 @@ const signUp = async (req, res, next) => {
     const normalizedEmail = email.toLowerCase();
     const digits = normalizeDigits(phoneNumber);
 
-    if (digits.length !== 10) {
-      return next(createHttpError('Phone number must contain exactly 10 digits.', 400));
+    if (digits.length < 10 || digits.length > 12) {
+      return next(createHttpError('Phone number must contain between 10 and 12 digits.', 400));
     }
 
     

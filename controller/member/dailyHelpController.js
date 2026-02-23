@@ -84,8 +84,8 @@ const addDailyHelp = async (req, res, next) => {
 
     const normalizedCode = normalizeCountryCode(countryCode || '+91');
     const digits = normalizeDigits(phoneNumber || '');
-    if (!digits || digits.length !== 10) {
-      return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
+    if (!digits || digits.length < 10 || digits.length > 12) {
+      return next(createHttpError('Please enter a valid phone number.', 400));
     }
 
     const formattedImage = imageUrl !== undefined ? ensureBase64ImageDataUrl({ value: imageUrl, fieldLabel: 'Image' }) : null;
@@ -462,8 +462,8 @@ const editDailyHelpProfile = async (req, res, next) => {
 
     if (phoneNumber !== undefined) {
       const digits = normalizeDigits(phoneNumber || '');
-      if (digits && digits.length !== 10) {
-        return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
+      if (digits && (digits.length < 10 || digits.length > 12)) {
+        return next(createHttpError('Please enter a valid phone number.', 400));
       }
 
       const normalizedCode = normalizeCountryCode(countryCode || doc.countryCode || '+91');

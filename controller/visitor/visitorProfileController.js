@@ -204,8 +204,8 @@ const updateVisitorProfile = async (req, res, next) => {
 
         if (phoneNumberRaw !== undefined) {
             const digits = String(phoneNumberRaw).replace(/\D/g, '');
-            if (!digits || digits.length !== 10) {
-                return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
+            if (!digits || digits.length < 10 || digits.length > 12) {
+                return next(createHttpError('Please enter a valid phone number.', 400));
             }
 
             const alreadyUser = await User.exists({ phoneNumber: digits, _id: { $ne: user._id } });

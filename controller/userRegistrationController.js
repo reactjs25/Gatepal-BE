@@ -71,8 +71,8 @@ const registerUser = async (req, res, next) => {
       throw createHttpError('Phone number is required.', 400);
     }
 
-    if (normalizedPhone.length !== 10) {
-      throw createHttpError('Phone number must contain exactly 10 digits.', 400);
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 12) {
+      throw createHttpError('Phone number must contain between 10 and 12 digits.', 400);
     }
 
     const normalizedCountryCode = normalizeCountryCode(countryCode);

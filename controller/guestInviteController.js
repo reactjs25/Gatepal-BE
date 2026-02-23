@@ -198,7 +198,7 @@ const sanitizeGuests = (guests) => {
 
     if (phoneNumberRaw) {
       if (!isTenDigitPhone(phoneNumberRaw)) {
-        throw createHttpError('Guest phoneNumber must contain exactly 10 digits.', 400);
+        throw createHttpError('Guest Please enter a valid phone number.', 400);
       }
       phoneDigits = normalizeDigits(phoneNumberRaw);
       phoneNumber = phoneDigits;

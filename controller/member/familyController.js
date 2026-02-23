@@ -72,8 +72,8 @@ const validateAddFamilyInput = (input = {}) => {
     }
   }
 
-  if (phoneDigits && phoneDigits.length !== 10) {
-    throw createHttpError('phoneNumber must contain exactly 10 digits.', 400);
+  if (phoneDigits && (phoneDigits.length < 10 || phoneDigits.length > 12)) {
+    throw createHttpError('Please enter a valid phone number.', 400);
   }
 
   return { unitId, category, name, countryCode, phoneDigits, imageUrl, rawPhone: input.phoneNumber };
@@ -251,7 +251,7 @@ const getFamilyMembersByUnit = async (req, res, next) => {
     const occupantPhones = new Set(
       occupantItems
         .map((item) => normalizeDigits(item.phoneNumber || ''))
-        .filter((digits) => digits && digits.length === 10)
+        .filter((digits) => digits && digits.length >= 10 && digits.length <= 12)
     );
 
     const data = members
@@ -338,8 +338,8 @@ const updateFamilyMember = async (req, res, next) => {
 
       if (phoneRaw !== undefined) {
         const digits = normalizeDigits(phoneRaw || '');
-        if (digits && digits.length !== 10) {
-          return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
+        if (digits && (digits.length < 10 || digits.length > 12)) {
+          return next(createHttpError('Please enter a valid phone number.', 400));
         }
 
         if (!digits) {
@@ -442,8 +442,8 @@ const updateFamilyMember = async (req, res, next) => {
 
     if (phoneRaw !== undefined) {
       const digits = normalizeDigits(phoneRaw || '');
-      if (digits && digits.length !== 10) {
-        return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
+      if (digits && (digits.length < 10 || digits.length > 12)) {
+        return next(createHttpError('Please enter a valid phone number.', 400));
       }
 
       const effectiveCode = updates.countryCode || doc.countryCode || '+91';

@@ -15,8 +15,8 @@ const familyMemberSchema = new mongoose.Schema(
       default: null,
       index: true,
       validate: {
-        validator: (v) => v == null || /^\d{10}$/.test(v),
-        message: 'phoneNumber must contain exactly 10 digits',
+        validator: (v) => v == null || /^\d{10,12}$/.test(v),
+        message: 'Please enter a valid phone number',
       },
     },
     comparablePhone: { type: String, default: null, index: true },
