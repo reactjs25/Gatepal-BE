@@ -207,6 +207,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
+      isSilentDelivery,
       isPrivateInvite,
     } = req.body || {};
 
@@ -257,6 +258,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+    const silentFlag = Boolean(isSilentDelivery);
 
     const approval = await OtherVisitorPreApproval.create({
       societyId: unitDoc.societyId,
@@ -265,6 +267,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
       visitorName: resolvedVisitorName || null,
       workCategory: resolvedWorkCategory,
       companyName: resolvedCompanyName,
+      isSilentDelivery: silentFlag,
       isPrivateInvite: Boolean(isPrivateInvite),
       validFrom: window.validFrom,
       validTill: window.validTill,
@@ -304,6 +307,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
           name: member?.fullName || authUser.fullName || null,
         },
         validityLabel,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
         isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });
@@ -335,6 +339,7 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
+      isSilentDelivery,
       isPrivateInvite,
     } = req.body || {};
 
@@ -408,6 +413,7 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+    const silentFlag = Boolean(isSilentDelivery);
 
     if (resolvedVisitorName !== undefined) {
       approval.visitorName = resolvedVisitorName || null;
@@ -417,6 +423,9 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
     }
     if (companyName !== undefined) {
       approval.companyName = resolvedCompanyName;
+    }
+    if (isSilentDelivery !== undefined) {
+      approval.isSilentDelivery = silentFlag;
     }
     if (isPrivateInvite !== undefined) {
       approval.isPrivateInvite = Boolean(isPrivateInvite);
@@ -467,6 +476,7 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
         validFrom: approval.validFrom,
         validTill: approval.validTill,
         validityLabel,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
         isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });

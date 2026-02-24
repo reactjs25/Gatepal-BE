@@ -36,6 +36,7 @@ const otherVisitorPreApprovalSchema = new mongoose.Schema(
     visitorName: { type: String, trim: true, default: null },
     workCategory: { type: String, trim: true, required: true },
     companyName: { type: String, trim: true, default: null },
+    isSilentDelivery: { type: Boolean, default: false },
     isPrivateInvite: { type: Boolean, default: false },
     validFrom: {
       type: Date,

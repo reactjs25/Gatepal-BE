@@ -215,6 +215,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
+      isSilentDelivery,
       isPrivateInvite,
     } = req.body || {};
 
@@ -250,6 +251,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
     }
 
     const privateFlag = Boolean(isPrivateInvite);
+    const silentFlag = Boolean(isSilentDelivery);
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
 
@@ -262,6 +264,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       companyImageUrl: resolvedCompany.imageUrl || null,
       visitorName: resolvedVisitorName || null,
       vehicleNumber: normalizeString(vehicleNumber).toUpperCase() || null,
+      isSilentDelivery: silentFlag,
       isPrivateInvite: privateFlag,
       validFrom: window.validFrom,
       validTill: window.validTill,
@@ -295,6 +298,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
         },
         validityLabel,
         vehicleNumber: approval.vehicleNumber || null,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
         isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });
@@ -326,6 +330,7 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
+      isSilentDelivery,
       isPrivateInvite,
     } = req.body || {};
 
@@ -385,6 +390,7 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+    const silentFlag = Boolean(isSilentDelivery);
 
     if (resolvedCompany) {
       approval.companyId = resolvedCompany.id || null;
@@ -396,6 +402,9 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
     }
     if (vehicleNumber !== undefined) {
       approval.vehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
+    }
+    if (isSilentDelivery !== undefined) {
+      approval.isSilentDelivery = silentFlag;
     }
     if (isPrivateInvite !== undefined) {
       approval.isPrivateInvite = Boolean(isPrivateInvite);
@@ -436,6 +445,7 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
         validFrom: approval.validFrom,
         validTill: approval.validTill,
         validityLabel,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
         isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });
