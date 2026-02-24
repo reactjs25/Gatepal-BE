@@ -1726,7 +1726,7 @@ const createGuestEntryRequest = async (req, res, next) => {
       visitorType: labels.visitorType,
       photoRequired,
       requestsendat: primaryDoc.createdAt ? toISTDateTimeLabel(primaryDoc.createdAt) : null,
-      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabel(primaryDoc.expiresAt) : null,
+      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabelWithoutYear(primaryDoc.expiresAt) : null,
       guest: {
         name: primaryDoc.guestName,
         countryCode: primaryDoc.guestCountryCode || '+91',
@@ -1786,7 +1786,7 @@ const createGuestEntryRequest = async (req, res, next) => {
           visitorType: primaryDoc.visitorType || 'delivery_executive',
           photoRequired,
           requestsendat: primaryDoc.createdAt ? toISTDateTimeLabel(primaryDoc.createdAt) : null,
-          expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabel(primaryDoc.expiresAt) : null,
+          expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabelWithoutYear(primaryDoc.expiresAt) : null,
           name: primaryDoc.guestName,
           phoneNumber: primaryDoc.guestPhoneNumber,
           countryCode: primaryDoc.guestCountryCode || '+91',
@@ -2824,7 +2824,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             visitorType: labels.visitorType,
             requestedOn: doc.createdAt ? toISTDateTimeLabelWithoutYear(doc.createdAt) : null,
             approvedOn: doc.approvedAt ? toISTDateTimeLabelWithoutYear(doc.approvedAt) : null,
-            expiresAt: doc.expiresAt ? toISTDateTimeLabel(doc.expiresAt) : null,
+            expiresAt: doc.expiresAt ? toISTDateTimeLabelWithoutYear(doc.expiresAt) : null,
             entryAt: doc.entryAllowedAt ? toISTDateTimeLabelWithoutYear(doc.entryAllowedAt) : null,
             leftAt: doc.entryLeftAt ? toISTDateTimeLabelWithoutYear(doc.entryLeftAt) : null,
             exitNotifier,
@@ -2977,7 +2977,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           requestedOn: preDoc.validFrom ? toISTDateTimeLabelWithoutYear(preDoc.validFrom) : null,
           validFrom: preDoc.validFrom ? toISTDateTimeLabel(preDoc.validFrom) : null,
           validTill: preDoc.validTill ? toISTDateTimeLabel(preDoc.validTill) : null,
-          createdAt: preDoc.createdAt ? toISTDateTimeLabel(preDoc.createdAt) : null,
+          createdAt: preDoc.createdAt ? toISTDateTimeLabelWithoutYear(preDoc.createdAt) : null,
           validityLabel,
           unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
           approver: invitedByUser
@@ -3006,7 +3006,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           isPrivateInvite: Boolean(preDoc.isPrivateInvite),
           cancelledReason: preCancelledReasonOut,
           cancelledDescription: normalizeString(preDoc.cancelledDescription) || null,
-          cancelledAt: preDoc.cancelledAt ? toISTDateTimeLabel(preDoc.cancelledAt) : null,
+          cancelledAt: preDoc.cancelledAt ? toISTDateTimeLabelWithoutYear(preDoc.cancelledAt) : null,
         },
       });
     }
@@ -3119,7 +3119,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           usedEntries: Array.isArray(guestInvite.entryLogs) ? guestInvite.entryLogs.length : 0,
           cancelledReason: inviteCancelledReasonOut,
           cancelledDescription: normalizeString(guestInvite.cancelledDescription) || null,
-          cancelledAt: guestInvite.cancelledAt ? toISTDateTimeLabel(guestInvite.cancelledAt) : null,
+          cancelledAt: guestInvite.cancelledAt ? toISTDateTimeLabelWithoutYear(guestInvite.cancelledAt) : null,
           cancelledBy: cancelledByUser
             ? {
                 name: cancelledByUser.fullName || null,
@@ -3781,7 +3781,7 @@ const updateGuestEntryRequestPhoto = async (req, res, next) => {
         visitorType: labels.visitorType,
         photoRequired: false,
         requestsendat: doc.createdAt ? toISTDateTimeLabel(doc.createdAt) : null,
-        expiresAt: doc.expiresAt ? toISTDateTimeLabel(doc.expiresAt) : null,
+        expiresAt: doc.expiresAt ? toISTDateTimeLabelWithoutYear(doc.expiresAt) : null,
         unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
         guest: {
           name: doc.guestName,
@@ -4414,7 +4414,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
       category: labels.category,
       visitorType: labels.visitorType,
       requestedOn: primaryDoc.createdAt ? toISTDateTimeLabelWithoutYear(primaryDoc.createdAt) : null,
-      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabel(primaryDoc.expiresAt) : null,
+      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabelWithoutYear(primaryDoc.expiresAt) : null,
       guest: {
         id: String(visitor._id),
         name: guestName,
