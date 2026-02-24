@@ -9,6 +9,7 @@ const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { countryCityData } = require('../../utils/countryCityData');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
 const { normalizeString, toTitleCaseName } = require('../../utils/strings');
+const { uploadBufferToS3 } = require('../../utils/s3Upload');
 
 const findStateName = (countryName, cityName) => {
   const normalizedCountry = (countryName || '').toString().trim().toLowerCase();
@@ -82,10 +83,18 @@ const getMemberProfile = async (req, res, next) => {
       const currentSociety = user.societyId ? societyMap[String(user.societyId)] || null : null;
       const payload = buildQrPayload({ user, society: currentSociety, memberCode });
       try {
-        qrCodeImage = await QRCode.toDataURL(payload, {
+        const qrBuffer = await QRCode.toBuffer(payload, {
+          type: 'png',
           errorCorrectionLevel: 'M',
           margin: 1,
           width: 256,
+        });
+        qrCodeImage = await uploadBufferToS3({
+          buffer: qrBuffer,
+          contentType: 'image/png',
+          keyPrefix: `members/${String(user._id)}/qr`,
+          fileExtension: 'png',
+          fileName: `member-qr-${Date.now()}`,
         });
         user.qrCodeImage = qrCodeImage;
         user.qrCodeGeneratedAt = new Date();
@@ -97,12 +106,12 @@ const getMemberProfile = async (req, res, next) => {
 
     const adminSocietyIds = new Set();
 
-    // Include currently active admin context from token (if any).
+    
     if (req.user?.effectiveRole === 'society_admin' && req.user?.societyId) {
       adminSocietyIds.add(String(req.user.societyId));
     }
 
-    // Include all societies linked through stored admin IDs.
+    
     const linkedAdminIds = Array.from(
       new Set(
         [
@@ -125,7 +134,7 @@ const getMemberProfile = async (req, res, next) => {
       });
     }
 
-    // Include all societies where this phone exists as a society admin.
+    
     const phoneAdminMatches = await lookupSocietyAdminsByMobile(user.phoneNumber || '');
     phoneAdminMatches.forEach((match) => {
       if (match?.societyId) {

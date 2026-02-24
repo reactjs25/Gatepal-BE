@@ -2,7 +2,8 @@ const QRCode = require('qrcode');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { toTitleCaseName, normalizeString } = require('../../utils/strings');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeImageInputToStorageUrl } = require('../../utils/imageDataUrl');
+const { uploadBufferToS3 } = require('../../utils/s3Upload');
 const User = require('../../model/userSchema');
 const SuperAdmin = require('../../model/superAdminSchema');
 const DeliveryCompany = require('../../model/deliveryCompanySchema');
@@ -88,18 +89,30 @@ const buildVisitorQrPayload = (user) =>
 
 const VISITOR_QR_VERSION = 3;
 
+const uploadVisitorQrCode = async (user) => {
+    const payload = buildVisitorQrPayload(user);
+    const qrBuffer = await QRCode.toBuffer(payload, {
+        type: 'png',
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 256,
+    });
+    return uploadBufferToS3({
+        buffer: qrBuffer,
+        contentType: 'image/png',
+        keyPrefix: `visitors/${String(user._id)}/qr`,
+        fileExtension: 'png',
+        fileName: `visitor-qr-v${VISITOR_QR_VERSION}-${Date.now()}`,
+    });
+};
+
 const ensureVisitorQrCode = async (user) => {
     let qrCodeImageUrl = user.qrCodeImage || null;
     
     const needsRegeneration = !qrCodeImageUrl || (user.qrCodeVersion || 0) < VISITOR_QR_VERSION;
     if (needsRegeneration) {
         try {
-            const payload = buildVisitorQrPayload(user);
-            qrCodeImageUrl = await QRCode.toDataURL(payload, {
-                errorCorrectionLevel: 'M',
-                margin: 1,
-                width: 256,
-            });
+            qrCodeImageUrl = await uploadVisitorQrCode(user);
             user.qrCodeImage = qrCodeImageUrl;
             user.qrCodeVersion = VISITOR_QR_VERSION;
             user.qrCodeGeneratedAt = new Date();
@@ -186,7 +199,12 @@ const updateVisitorProfile = async (req, res, next) => {
                 updates.profilePhoto = null;
             } else {
                 try {
-                    updates.profilePhoto = ensureBase64ImageDataUrl({ value: trimmed, fieldLabel: 'Image' });
+                    updates.profilePhoto = await normalizeImageInputToStorageUrl({
+                        value: trimmed,
+                        fieldLabel: 'Image',
+                        keyPrefix: `visitors/${String(user._id)}/profile`,
+                        fileName: `profile-${Date.now()}`,
+                    });
                 } catch (e) {
                     return next(createHttpError(e.message, 400));
                 }

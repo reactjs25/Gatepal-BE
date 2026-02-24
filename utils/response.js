@@ -1,3 +1,5 @@
+const { signS3UrlsInObject } = require('./s3Upload');
+
 const RESERVED_KEYS = new Set(['statusCode', 'success', 'message', 'timestamp']);
 
 const isPlainObject = (obj) => {
@@ -105,19 +107,44 @@ const sendSuccessResponse = (res, statusCode = 200, message = 'OK', payload = {}
   };
 
   const hasDataKey = Object.prototype.hasOwnProperty.call(payload || {}, 'data');
-  if (hasDataKey) {
-    sanitized.data = isEmptyData(payload.data) ? null : formatDataField(payload.data);
-  }
 
-  const responseBody = {
-    statusCode: safeStatus,
-    success: true,
-    message,
-    timestamp: new Date().toISOString(),
-    ...sanitized,
+  const buildResponseBody = async () => {
+    if (hasDataKey) {
+      const formattedData = isEmptyData(payload.data) ? null : formatDataField(payload.data);
+      sanitized.data = formattedData === null ? null : await signS3UrlsInObject(formattedData);
+    }
+
+    return {
+      statusCode: safeStatus,
+      success: true,
+      message,
+      timestamp: new Date().toISOString(),
+      ...sanitized,
+    };
   };
 
-  return res.status(safeStatus).json(responseBody);
+  const buildFallbackResponseBody = () => {
+    if (hasDataKey) {
+      sanitized.data = isEmptyData(payload.data) ? null : formatDataField(payload.data);
+    }
+
+    return {
+      statusCode: safeStatus,
+      success: true,
+      message,
+      timestamp: new Date().toISOString(),
+      ...sanitized,
+    };
+  };
+
+  return Promise.resolve()
+    .then(buildResponseBody)
+    .then((responseBody) => res.status(safeStatus).json(responseBody))
+    .catch(() => {
+      if (res.headersSent) return res;
+      const responseBody = buildFallbackResponseBody();
+      return res.status(safeStatus).json(responseBody);
+    });
 };
 
 module.exports = {

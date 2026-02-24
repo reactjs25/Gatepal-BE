@@ -10,7 +10,7 @@ const {
   isSocietyAdminPrincipal,
   resolveAdminSocietyFromContext,
 } = require('../../utils/adminSocietyContext');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeImageListToStorageUrls } = require('../../utils/imageDataUrl');
 const { toISTDateLabel, toISTTimeLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
@@ -91,8 +91,9 @@ const parseMeetingDateTime = (meetingDate, meetingStartingFrom) => {
   return d;
 };
 
-const validateMeetingPayload = (payload = {}, options = {}) => {
+const validateMeetingPayload = async (payload = {}, options = {}) => {
   const isPartial = !!options.isPartial;
+  const storagePrefix = normalizeString(options.storagePrefix) || 'meetings';
 
   const meetingDateRaw = payload.meetingDate;
   const startingFromRaw = payload.meetingStartingFrom;
@@ -177,15 +178,21 @@ const validateMeetingPayload = (payload = {}, options = {}) => {
       sources = [agendaPhotoRaw];
     }
 
-    const cleanedPhotos = sources
+    const cleanedPhotoInputs = sources
       .map((entry) => (entry == null ? '' : entry.toString().trim()))
-      .filter((entry) => entry.length > 0)
-      .map((value) =>
-        ensureBase64ImageDataUrl({
-          value,
-          fieldLabel: 'Meeting agenda photo',
-        })
-      );
+      .filter((entry) => entry.length > 0);
+
+    let cleanedPhotos = [];
+    try {
+      cleanedPhotos = await normalizeImageListToStorageUrls({
+        values: cleanedPhotoInputs,
+        fieldLabel: 'Meeting agenda photo',
+        keyPrefix: `${storagePrefix}/agenda`,
+        fileNamePrefix: 'agenda-photo',
+      });
+    } catch (e) {
+      throw createHttpError(e.message, 400);
+    }
 
     validated.agendaPhotos = cleanedPhotos;
   }
@@ -228,15 +235,21 @@ const validateMeetingPayload = (payload = {}, options = {}) => {
       sources = [discussionPhotoRaw];
     }
 
-    const cleanedPhotos = sources
+    const cleanedPhotoInputs = sources
       .map((entry) => (entry == null ? '' : entry.toString().trim()))
-      .filter((entry) => entry.length > 0)
-      .map((value) =>
-        ensureBase64ImageDataUrl({
-          value,
-          fieldLabel: 'Meeting discussion photo',
-        })
-      );
+      .filter((entry) => entry.length > 0);
+
+    let cleanedPhotos = [];
+    try {
+      cleanedPhotos = await normalizeImageListToStorageUrls({
+        values: cleanedPhotoInputs,
+        fieldLabel: 'Meeting discussion photo',
+        keyPrefix: `${storagePrefix}/discussion`,
+        fileNamePrefix: 'discussion-photo',
+      });
+    } catch (e) {
+      throw createHttpError(e.message, 400);
+    }
 
     validated.discussionPhotos = cleanedPhotos;
   }
@@ -302,7 +315,10 @@ const createMeeting = async (req, res, next) => {
 
     let validated;
     try {
-      validated = validateMeetingPayload(req.body || {}, { isPartial: false });
+      validated = await validateMeetingPayload(req.body || {}, {
+        isPartial: false,
+        storagePrefix: `meetings/${String(society._id)}`,
+      });
     } catch (e) {
       return next(e);
     }
@@ -645,7 +661,10 @@ const updateMeetingById = async (req, res, next) => {
 
     let validated;
     try {
-      validated = validateMeetingPayload(req.body || {}, { isPartial: true });
+      validated = await validateMeetingPayload(req.body || {}, {
+        isPartial: true,
+        storagePrefix: `meetings/${String(society._id)}/${String(doc._id)}`,
+      });
     } catch (e) {
       return next(e);
     }
@@ -767,7 +786,10 @@ const updateMeetingDiscussionById = async (req, res, next) => {
 
     let validated;
     try {
-      validated = validateMeetingPayload(req.body || {}, { isPartial: true });
+      validated = await validateMeetingPayload(req.body || {}, {
+        isPartial: true,
+        storagePrefix: `meetings/${String(society._id)}/${String(doc._id)}`,
+      });
     } catch (e) {
       return next(e);
     }

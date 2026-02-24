@@ -3,7 +3,7 @@ const Society = require('../../model/societySchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { uploadImageDataUrlToS3, uploadBufferToS3 } = require('../../utils/s3Upload');
 const { buildCanonicalUnitId, assertUnitResidentAccess } = require('../../utils/unitAccess');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { buildMaintenanceReceiptPdf } = require('../society/maintainanceAdminController');
@@ -114,19 +114,63 @@ const validateUploadPayload = (payload = {}) => {
         throw createHttpError('transactionDate is required.', 400);
     }
 
-    const proofImageUrl = ensureBase64ImageDataUrl({ value: payload.proofImageUrl, fieldLabel: 'Proof of Maintenance' });
+    const proofImageInput = normalizeString(payload.proofImageUrl);
+    if (!proofImageInput) {
+        throw createHttpError('Proof of Maintenance is required to continue onboarding', 400);
+    }
 
     return {
         year,
         month,
         amount,
         transactionDate,
-        proofImageUrl,
+        proofImageInput,
     };
 };
 
 const isMemberOrSocietyAdmin = (authUser) =>
     authUser && (authUser.role === 'member' || authUser.role === 'society_admin');
+
+const uploadMaintenanceReceiptPdf = async ({ societyId, maintenanceId, receiptNumber, buffer }) => {
+    if (!buffer) return null;
+    return uploadBufferToS3({
+        buffer,
+        contentType: 'application/pdf',
+        keyPrefix: `maintenance/${String(societyId)}/receipts`,
+        fileExtension: 'pdf',
+        fileName: `maintenance-${maintenanceId || 'unknown'}-receipt-${receiptNumber || 'na'}`,
+    });
+};
+
+const resolveOrCreateReceiptUrl = async ({ doc, society, unitLabel, ownerName, paidByName }) => {
+    if (!society) return null;
+    if (doc.status !== 'Verified' || !doc.receiptNumber) return null;
+    if (doc.receiptUrl) return doc.receiptUrl;
+
+    const buffer = await buildMaintenanceReceiptPdf({
+        society,
+        maintenance: doc,
+        unitLabel,
+        ownerName,
+        paidByName,
+    });
+
+    const receiptUrl = await uploadMaintenanceReceiptPdf({
+        societyId: society._id,
+        maintenanceId: doc.maintenanceId,
+        receiptNumber: doc.receiptNumber,
+        buffer,
+    });
+
+    if (receiptUrl) {
+        await Maintenance.updateOne(
+            { maintenanceId: doc.maintenanceId },
+            { $set: { receiptUrl } }
+        );
+    }
+
+    return receiptUrl;
+};
 
 const uploadMaintainanceProof = async (req, res, next) => {
     try {
@@ -185,6 +229,20 @@ const uploadMaintainanceProof = async (req, res, next) => {
             }
         }
 
+        let proofImageUrl = validated.proofImageInput;
+        if (!/^https?:\/\//i.test(validated.proofImageInput)) {
+            try {
+                proofImageUrl = await uploadImageDataUrlToS3({
+                    dataUrl: validated.proofImageInput,
+                    keyPrefix: `maintenance/${canonicalUnitId}/${validated.year}/${validated.month.toLowerCase()}`,
+                    fileName: `proof-${Date.now()}`,
+                    fieldLabel: 'Proof of Maintenance',
+                });
+            } catch (uploadError) {
+                return next(createHttpError(uploadError.message || 'Failed to upload maintenance proof image.', 400));
+            }
+        }
+
         const doc = await Maintenance.create({
             unitId: canonicalUnitId,
             memberId: authUser._id,
@@ -192,7 +250,7 @@ const uploadMaintainanceProof = async (req, res, next) => {
             month: validated.month,
             amount: validated.amount,
             transactionDate: validated.transactionDate,
-            proofImageUrl: validated.proofImageUrl,
+            proofImageUrl,
             status: 'Uploaded',
         });
 
@@ -334,14 +392,13 @@ const getMaintainancesByUnit = async (req, res, next) => {
                         const unitLabel = unitDoc.wingName
                             ? `${unitDoc.wingName}-${unitDoc.unitNumber}`
                             : unitDoc.unitNumber;
-                        const buffer = await buildMaintenanceReceiptPdf({
+                        receipt = await resolveOrCreateReceiptUrl({
+                            doc,
                             society,
-                            maintenance: doc,
                             unitLabel,
                             ownerName: u.fullName || '',
                             paidByName: u.fullName || '',
                         });
-                        receipt = `data:application/pdf;base64,${buffer.toString('base64')}`;
                         receiptDate = doc.verifiedAt || null;
                     } catch (e) {
                         receipt = null;
@@ -447,14 +504,13 @@ const getMaintainanceById = async (req, res, next) => {
                 const unitLabel = unitDoc.wingName
                     ? `${unitDoc.wingName}-${unitDoc.unitNumber}`
                     : unitDoc.unitNumber;
-                const buffer = await buildMaintenanceReceiptPdf({
+                receipt = await resolveOrCreateReceiptUrl({
+                    doc,
                     society,
-                    maintenance: doc,
                     unitLabel,
                     ownerName: uploader ? uploader.fullName || '' : '',
                     paidByName: uploader ? uploader.fullName || '' : '',
                 });
-                receipt = `data:application/pdf;base64,${buffer.toString('base64')}`;
                 receiptDate = doc.verifiedAt || null;
             } catch (e) {
                 receipt = null;

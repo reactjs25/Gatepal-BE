@@ -1,5 +1,6 @@
 const { createHttpError } = require('../../utils/httpError');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeImageInputToStorageUrl } = require('../../utils/imageDataUrl');
+const { uploadBufferToS3 } = require('../../utils/s3Upload');
 const QRCode = require('qrcode');
 const { toTitleCaseName } = require('../../utils/strings');
 const { getTaxiCompanyDisplayName } = require('../../utils/taxiDriverCompanies');
@@ -18,12 +19,29 @@ const VEHICLE_REQUIRED_VISITOR_TYPES = new Set([
   VISITOR_TYPES.OTHER_VISITOR,
 ]);
 
-const ensureImage = ({ value, fieldLabel }) => {
+const ensureImage = async ({ value, fieldLabel, keyPrefix, fileName }) => {
   try {
-    return ensureBase64ImageDataUrl({ value, fieldLabel });
+    return await normalizeImageInputToStorageUrl({ value, fieldLabel, keyPrefix, fileName });
   } catch (e) {
     throw createHttpError(e.message, 400);
   }
+};
+
+const buildVisitorQrImageUrl = async (user) => {
+  const qrPayload = buildVisitorQrPayload(user);
+  const qrBuffer = await QRCode.toBuffer(qrPayload, {
+    type: 'png',
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 256,
+  });
+  return uploadBufferToS3({
+    buffer: qrBuffer,
+    contentType: 'image/png',
+    keyPrefix: `visitors/${String(user._id)}/qr`,
+    fileExtension: 'png',
+    fileName: `visitor-qr-${Date.now()}`,
+  });
 };
 
 const buildVisitorQrPayload = (user) =>
@@ -69,9 +87,11 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
   let sanitizedPhoto = null;
 
   if (hasProfilePhoto) {
-    sanitizedPhoto = ensureImage({
+    sanitizedPhoto = await ensureImage({
       value: profilePhoto,
       fieldLabel: 'Visitor photo',
+      keyPrefix: `visitors/${String(user._id)}/profile`,
+      fileName: `profile-${Date.now()}`,
     });
   }
 
@@ -85,12 +105,7 @@ const handleVisitorOnboarding = async ({ user, payload }) => {
   
   if (!user.qrCodeImage) {
     try {
-      const qrPayload = buildVisitorQrPayload(user);
-      const qrCodeImage = await QRCode.toDataURL(qrPayload, {
-        errorCorrectionLevel: 'M',
-        margin: 1,
-        width: 256,
-      });
+      const qrCodeImage = await buildVisitorQrImageUrl(user);
       user.qrCodeImage = qrCodeImage;
       user.qrCodeGeneratedAt = new Date();
     } catch (e) {

@@ -10,7 +10,7 @@ const {
   isSocietyAdminPrincipal,
   resolveAdminSocietyFromContext,
 } = require('../../utils/adminSocietyContext');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeImageListToStorageUrls } = require('../../utils/imageDataUrl');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
@@ -100,8 +100,9 @@ const assertAdminAccessToSociety = async ({ req, authUser, societyId }) => {
   throw createHttpError('Forbidden: you are not mapped as admin for this society.', 403);
 };
 
-const validateSocietyRulePayload = (payload = {}, options = {}) => {
+const validateSocietyRulePayload = async (payload = {}, options = {}) => {
   const isPartial = !!options.isPartial;
+  const storagePrefix = normalizeString(options.storagePrefix) || 'society-rules';
 
   const categoryKeyRaw = payload.categoryKey;
   const contentRaw = payload.contentHtml;
@@ -148,15 +149,21 @@ const validateSocietyRulePayload = (payload = {}, options = {}) => {
       sources = [photoRaw];
     }
 
-    const cleanedPhotos = sources
+    const cleanedPhotoInputs = sources
       .map((entry) => (entry == null ? '' : entry.toString().trim()))
-      .filter((entry) => entry.length > 0)
-      .map((value) =>
-        ensureBase64ImageDataUrl({
-          value,
-          fieldLabel: 'Society rule photo',
-        })
-      );
+      .filter((entry) => entry.length > 0);
+
+    let cleanedPhotos = [];
+    try {
+      cleanedPhotos = await normalizeImageListToStorageUrls({
+        values: cleanedPhotoInputs,
+        fieldLabel: 'Society rule photo',
+        keyPrefix: storagePrefix,
+        fileNamePrefix: 'rule-photo',
+      });
+    } catch (e) {
+      throw createHttpError(e.message, 400);
+    }
 
     validated.photos = cleanedPhotos;
   }
@@ -218,7 +225,10 @@ const createSocietyRule = async (req, res, next) => {
 
     let validated;
     try {
-      validated = validateSocietyRulePayload(req.body || {}, { isPartial: false });
+      validated = await validateSocietyRulePayload(req.body || {}, {
+        isPartial: false,
+        storagePrefix: `society-rules/${String(society._id)}`,
+      });
     } catch (e) {
       return next(e);
     }
@@ -669,7 +679,10 @@ const updateSocietyRuleById = async (req, res, next) => {
 
     let validated;
     try {
-      validated = validateSocietyRulePayload(mutableBody, { isPartial: true });
+      validated = await validateSocietyRulePayload(mutableBody, {
+        isPartial: true,
+        storagePrefix: `society-rules/${String(society._id)}/${String(doc._id)}`,
+      });
     } catch (e) {
       return next(e);
     }

@@ -3,7 +3,7 @@ const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { buildCanonicalUnitId, assertUnitAccess } = require('../../utils/unitAccess');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeImageInputToStorageUrl } = require('../../utils/imageDataUrl');
 
 const ALLOWED_PET_TYPES = new Set(['Dog', 'Cat', 'Parrot', 'Rabbit', 'Hamsters', 'Others']);
 const ALLOWED_VACCINATION_STATUSES = new Set([
@@ -36,11 +36,7 @@ const toDateOnly = (value) => {
 const ensureCertificateMaybe = ({ value, fieldLabel }) => {
   const trimmed = normalizeString(value);
   if (!trimmed) return null;
-  try {
-    return ensureBase64ImageDataUrl({ value: trimmed, fieldLabel });
-  } catch (e) {
-    throw createHttpError(e.message, 400);
-  }
+  return trimmed;
 };
 
 const validatePetPayload = (payload = {}) => {
@@ -51,7 +47,7 @@ const validatePetPayload = (payload = {}) => {
   const lastVaccinationDate = toDateOrNull(payload.lastVaccinationDate);
   const nextVaccinationDueDate = toDateOrNull(payload.nextVaccinationDueDate);
 
-  const certificateUrl = payload.certificateUrl !== undefined
+  const certificateInput = payload.certificateUrl !== undefined
     ? ensureCertificateMaybe({ value: payload.certificateUrl, fieldLabel: 'Vaccination certificate' })
     : null;
 
@@ -73,7 +69,7 @@ const validatePetPayload = (payload = {}) => {
     vaccinationStatus,
     lastVaccinationDate,
     nextVaccinationDueDate,
-    certificateUrl,
+    certificateInput,
   };
 };
 
@@ -105,7 +101,7 @@ const validatePetPatchPayload = (payload = {}) => {
     out.nextVaccinationDueDate = toDateOrNull(payload.nextVaccinationDueDate);
   }
   if (payload.certificateUrl !== undefined) {
-    out.certificateUrl = ensureCertificateMaybe({ value: payload.certificateUrl, fieldLabel: 'Vaccination certificate' });
+    out.certificateInput = ensureCertificateMaybe({ value: payload.certificateUrl, fieldLabel: 'Vaccination certificate' });
   }
   return out;
 };
@@ -141,6 +137,20 @@ const addPet = async (req, res, next) => {
       return next(createHttpError('A pet with the same name and type already exists for the unit.', 409));
     }
 
+    let certificateUrl = validated.certificateInput || null;
+    if (certificateUrl) {
+      try {
+        certificateUrl = await normalizeImageInputToStorageUrl({
+          value: certificateUrl,
+          fieldLabel: 'Vaccination certificate',
+          keyPrefix: `pets/${canonicalUnitId}/certificates`,
+          fileName: `certificate-${Date.now()}`,
+        });
+      } catch (e) {
+        return next(createHttpError(e.message, 400));
+      }
+    }
+
     const doc = await Pet.create({
       unitId: canonicalUnitId,
       memberId: authUser._id,
@@ -149,7 +159,7 @@ const addPet = async (req, res, next) => {
       vaccinationStatus: validated.vaccinationStatus,
       lastVaccinationDate: validated.lastVaccinationDate,
       nextVaccinationDueDate: validated.nextVaccinationDueDate,
-      certificateUrl: validated.certificateUrl || null,
+      certificateUrl,
     });
 
     return sendSuccessResponse(res, 201, 'Pet details saved successfully.', {
@@ -263,7 +273,22 @@ const editPet = async (req, res, next) => {
     if (validated.vaccinationStatus !== undefined) doc.vaccinationStatus = validated.vaccinationStatus;
     if (validated.lastVaccinationDate !== undefined) doc.lastVaccinationDate = validated.lastVaccinationDate;
     if (validated.nextVaccinationDueDate !== undefined) doc.nextVaccinationDueDate = validated.nextVaccinationDueDate;
-    if (validated.certificateUrl !== undefined) doc.certificateUrl = validated.certificateUrl;
+    if (validated.certificateInput !== undefined) {
+      if (validated.certificateInput === null) {
+        doc.certificateUrl = null;
+      } else {
+        try {
+          doc.certificateUrl = await normalizeImageInputToStorageUrl({
+            value: validated.certificateInput,
+            fieldLabel: 'Vaccination certificate',
+            keyPrefix: `pets/${canonicalUnitId}/certificates`,
+            fileName: `certificate-${Date.now()}`,
+          });
+        } catch (e) {
+          return next(createHttpError(e.message, 400));
+        }
+      }
+    }
     doc.memberId = authUser._id;
     await doc.save();
 

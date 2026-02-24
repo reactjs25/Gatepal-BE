@@ -7,7 +7,7 @@ const { buildCanonicalUnitId, assertUnitAccess } = require('../../utils/unitAcce
 
 const ALLOWED_TYPES = new Set(['Two-Wheeler', 'Four-Wheeler', 'Other']);
 
-// Default limits if society has no vehicleLimits configured
+
 const DEFAULT_VEHICLE_LIMITS = {
   twoWheelersPerUnit: 2,
   fourWheelersPerUnit: 2,
@@ -58,7 +58,7 @@ const assertVehicleTypeLimit = async ({ unitId, vehicleType, excludeVehicleId, s
   const limits = await getVehicleLimitsForSociety(societyId);
   const max = getMaxForVehicleType(vehicleType, limits);
   
-  // If max is 0, no vehicles of this type are allowed
+  
   if (max === 0) {
     throw createHttpError(`${vehicleType} vehicles are not allowed in this society.`, 400);
   }
