@@ -226,11 +226,15 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       return next(e);
     }
 
-    const resolvedCompany = await resolveCompanyData({ companyName });
-    if (!resolvedCompany) {
-      return next(
-        createHttpError('companyName must match a registered taxi company.', 400)
-      );
+    const normalizedCompanyName = normalizeString(companyName);
+    let resolvedCompany = null;
+    if (normalizedCompanyName) {
+      resolvedCompany = await resolveCompanyData({ companyName: normalizedCompanyName });
+      if (!resolvedCompany) {
+        return next(
+          createHttpError('companyName must match a registered taxi company.', 400)
+        );
+      }
     }
 
     let window;
@@ -259,9 +263,9 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
       invitedByUserId: authUser._id,
-      companyId: resolvedCompany.id || null,
-      companyName: resolvedCompany.name,
-      companyImageUrl: resolvedCompany.imageUrl || null,
+      companyId: resolvedCompany?.id || null,
+      companyName: resolvedCompany?.name || null,
+      companyImageUrl: resolvedCompany?.imageUrl || null,
       visitorName: resolvedVisitorName || null,
       vehicleNumber: normalizeString(vehicleNumber).toUpperCase() || null,
       isSilentDelivery: silentFlag,
@@ -282,9 +286,9 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
         category: 'Taxi',
         visitorType: 'Taxi',
         company: {
-          id: resolvedCompany.id || null,
-          name: resolvedCompany.name,
-          imageUrl: resolvedCompany.imageUrl || null,
+          id: approval.companyId || null,
+          name: approval.companyName || null,
+          imageUrl: approval.companyImageUrl || null,
         },
         visitorName: approval.visitorName || null,
         unit: {
