@@ -1506,17 +1506,8 @@ const createGuestEntryRequest = async (req, res, next) => {
         createHttpError('Multiple wing/unit targets are only supported for delivery executive.', 400)
       );
     }
-    if (visitorType === 'delivery_executive' && !companyNameRaw) {
-      return next(createHttpError('deliveryCompanyName is required for delivery executive.', 400));
-    }
-    if (visitorType === 'taxi_vehicle_driver' && !companyNameRaw) {
-      return next(createHttpError('companyName is required for taxi vehicle driver.', 400));
-    }
     if (visitorType === 'other_visitor' && !workCategoryRaw) {
       return next(createHttpError('workCategory is required for other visitor.', 400));
-    }
-    if (visitorType === 'other_visitor' && !companyNameRaw) {
-      return next(createHttpError('companyName is required for other visitor.', 400));
     }
 
     const useFlatDeliveryMultiUnitResponse =
