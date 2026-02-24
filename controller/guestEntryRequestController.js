@@ -2800,10 +2800,11 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           });
           const otherUnitCount = Math.max(0, activeUnitCount - 1);
           if (otherUnitCount > 0) {
+            const countLabel = otherUnitCount === 1 ? 'one' : String(otherUnitCount);
             const unitLabel = otherUnitCount === 1 ? 'unit' : 'units';
             detailBody = isDeliveryExecutive
-              ? `Delivering to ${otherUnitCount} other ${unitLabel}.`
-              : `Helping ${otherUnitCount} other ${unitLabel}.`;
+              ? `Delivering to ${countLabel} other ${unitLabel}.`
+              : `Helping ${countLabel} other ${unitLabel}.`;
           }
         }
 
