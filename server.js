@@ -8,6 +8,8 @@ const { initializeFirebase } = require('./config/firebaseConfig');
 const { expireVisitorStatuses } = require('./utils/expireVisitorStatuses');
 const { initializeScheduledJobs } = require('./jobs');
 
+
+
 const startServer = async () => {
   try {
     await connectToDb({
