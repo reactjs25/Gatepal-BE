@@ -7,7 +7,7 @@ const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
 const { ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
-const { toISTDateTimeLabelNoComma } = require('../utils/dateTime');
+const { toISTDateTimeLabelNoCommaWithoutYear } = require('../utils/dateTime');
 
 const normalizeOption = (value) =>
   (value || '')
@@ -280,8 +280,8 @@ const createDeliveryPreApproval = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    const fromLabel = toISTDateTimeLabelNoComma(window.validFrom);
-    const tillLabel = toISTDateTimeLabelNoComma(window.validTill);
+    const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(window.validFrom);
+    const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(window.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 201, 'Delivery pre-approval created successfully.', {
@@ -418,8 +418,8 @@ const updateDeliveryPreApproval = async (req, res, next) => {
     await approval.save();
 
     const member = await User.findById(authUser._id).lean();
-    const fromLabel = toISTDateTimeLabelNoComma(approval.validFrom);
-    const tillLabel = toISTDateTimeLabelNoComma(approval.validTill);
+    const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(approval.validFrom);
+    const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(approval.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 200, 'Delivery pre-approval updated successfully.', {

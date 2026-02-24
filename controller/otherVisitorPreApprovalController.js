@@ -6,7 +6,7 @@ const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
 const { ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
-const { toISTDateTimeLabelNoComma } = require('../utils/dateTime');
+const { toISTDateTimeLabelNoCommaWithoutYear } = require('../utils/dateTime');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const OtherVisitorCompany = require('../model/otherVisitorCompanySchema');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
@@ -275,8 +275,8 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    const fromLabel = toISTDateTimeLabelNoComma(window.validFrom);
-    const tillLabel = toISTDateTimeLabelNoComma(window.validTill);
+    const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(window.validFrom);
+    const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(window.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 201, 'Visitor pre-approval created successfully.', {
@@ -441,8 +441,8 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
     const companyInfo = approval.companyName
       ? await resolveOtherVisitorCompany(approval.companyName)
       : null;
-    const fromLabel = toISTDateTimeLabelNoComma(approval.validFrom);
-    const tillLabel = toISTDateTimeLabelNoComma(approval.validTill);
+    const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(approval.validFrom);
+    const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(approval.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 200, 'Visitor pre-approval updated successfully.', {
