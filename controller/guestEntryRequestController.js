@@ -2787,6 +2787,35 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           rejectedReasonOut = canonicalizeEnumReason(rejectedReasonRaw, allowedReasons) || rejectedReasonRaw;
         }
 
+        const visitorPhoneDigits = normalizePhoneDigits(doc.guestPhoneDigits || doc.guestPhoneNumber);
+        const isDeliveryExecutive = doc.visitorType === 'delivery_executive';
+        const isDailyHelpVisitor =
+          doc.visitorType === 'other_visitor' &&
+          Boolean(visitorPhoneDigits) &&
+          Boolean(
+            await DailyHelp.exists({
+              societyId: doc.societyId,
+              phoneDigits: visitorPhoneDigits,
+              status: 'APPROVED',
+            })
+          );
+
+        let detailBody = null;
+        if ((isDeliveryExecutive || isDailyHelpVisitor) && visitorPhoneDigits) {
+          const activeUnitCount = await GuestEntryRequest.countDocuments({
+            societyId: doc.societyId,
+            guestPhoneDigits: visitorPhoneDigits,
+            status: { $in: ['approved', 'entered'] },
+          });
+          const otherUnitCount = Math.max(0, activeUnitCount - 1);
+          if (otherUnitCount > 0) {
+            const unitLabel = otherUnitCount === 1 ? 'unit' : 'units';
+            detailBody = isDeliveryExecutive
+              ? `Delivering to ${otherUnitCount} other ${unitLabel}.`
+              : `Helping ${otherUnitCount} other ${unitLabel}.`;
+          }
+        }
+
         return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully.', {
           data: {
             requestId: doc.requestId,
@@ -2843,6 +2872,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             wrongEntryNotifier,
             rejectedReason: rejectedReasonOut,
             rejectedDescription: doc.rejectedDescription || null,
+            ...(detailBody ? { body: detailBody } : {}),
           },
         });
       }
