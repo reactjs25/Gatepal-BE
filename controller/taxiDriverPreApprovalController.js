@@ -7,7 +7,7 @@ const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
 const { ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
-const { toISTDateTimeLabelNoComma } = require('../utils/dateTime');
+const { toISTDateTimeLabelNoCommaWithoutYear } = require('../utils/dateTime');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 
 const normalizeOption = (value) =>
@@ -215,6 +215,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
+      isSilentDelivery,
       isPrivateInvite,
     } = req.body || {};
 
@@ -225,11 +226,15 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       return next(e);
     }
 
-    const resolvedCompany = await resolveCompanyData({ companyName });
-    if (!resolvedCompany) {
-      return next(
-        createHttpError('companyName must match a registered taxi company.', 400)
-      );
+    const normalizedCompanyName = normalizeString(companyName);
+    let resolvedCompany = null;
+    if (normalizedCompanyName) {
+      resolvedCompany = await resolveCompanyData({ companyName: normalizedCompanyName });
+      if (!resolvedCompany) {
+        return next(
+          createHttpError('companyName must match a registered taxi company.', 400)
+        );
+      }
     }
 
     let window;
@@ -250,6 +255,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
     }
 
     const privateFlag = Boolean(isPrivateInvite);
+    const silentFlag = Boolean(isSilentDelivery);
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
 
@@ -257,11 +263,12 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
       societyId: unitDoc.societyId,
       unitId: unitDoc._id,
       invitedByUserId: authUser._id,
-      companyId: resolvedCompany.id || null,
-      companyName: resolvedCompany.name,
-      companyImageUrl: resolvedCompany.imageUrl || null,
+      companyId: resolvedCompany?.id || null,
+      companyName: resolvedCompany?.name || null,
+      companyImageUrl: resolvedCompany?.imageUrl || null,
       visitorName: resolvedVisitorName || null,
       vehicleNumber: normalizeString(vehicleNumber).toUpperCase() || null,
+      isSilentDelivery: silentFlag,
       isPrivateInvite: privateFlag,
       validFrom: window.validFrom,
       validTill: window.validTill,
@@ -269,8 +276,8 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    const fromLabel = toISTDateTimeLabelNoComma(window.validFrom);
-    const tillLabel = toISTDateTimeLabelNoComma(window.validTill);
+    const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(window.validFrom);
+    const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(window.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 201, 'Taxi/Cab pre-approval created successfully.', {
@@ -279,9 +286,9 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
         category: 'Taxi',
         visitorType: 'Taxi',
         company: {
-          id: resolvedCompany.id || null,
-          name: resolvedCompany.name,
-          imageUrl: resolvedCompany.imageUrl || null,
+          id: approval.companyId || null,
+          name: approval.companyName || null,
+          imageUrl: approval.companyImageUrl || null,
         },
         visitorName: approval.visitorName || null,
         unit: {
@@ -295,6 +302,7 @@ const createTaxiDriverPreApproval = async (req, res, next) => {
         },
         validityLabel,
         vehicleNumber: approval.vehicleNumber || null,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
         isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });
@@ -326,6 +334,7 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
+      isSilentDelivery,
       isPrivateInvite,
     } = req.body || {};
 
@@ -385,6 +394,7 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+    const silentFlag = Boolean(isSilentDelivery);
 
     if (resolvedCompany) {
       approval.companyId = resolvedCompany.id || null;
@@ -397,6 +407,9 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
     if (vehicleNumber !== undefined) {
       approval.vehicleNumber = normalizeString(vehicleNumber).toUpperCase() || null;
     }
+    if (isSilentDelivery !== undefined) {
+      approval.isSilentDelivery = silentFlag;
+    }
     if (isPrivateInvite !== undefined) {
       approval.isPrivateInvite = Boolean(isPrivateInvite);
     }
@@ -408,8 +421,8 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
     await approval.save();
 
     const member = await User.findById(authUser._id).lean();
-    const fromLabel = toISTDateTimeLabelNoComma(approval.validFrom);
-    const tillLabel = toISTDateTimeLabelNoComma(approval.validTill);
+    const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(approval.validFrom);
+    const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(approval.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 200, 'Taxi/Cab pre-approval updated successfully.', {
@@ -436,6 +449,7 @@ const updateTaxiDriverPreApproval = async (req, res, next) => {
         validFrom: approval.validFrom,
         validTill: approval.validTill,
         validityLabel,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
         isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });

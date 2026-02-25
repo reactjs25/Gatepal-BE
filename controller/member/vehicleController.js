@@ -163,6 +163,7 @@ const getVehiclesByUnit = async (req, res, next) => {
     }
 
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
+    const vehicleLimits = await getVehicleLimitsForSociety(unitDoc.societyId);
 
     const items = await Vehicle.find({ unitId: canonicalUnitId, deletedAt: null }).sort({ createdAt: -1 }).lean();
 
@@ -178,6 +179,10 @@ const getVehiclesByUnit = async (req, res, next) => {
         createdAt: v.createdAt,
         updatedAt: v.updatedAt,
       })),
+      vehicleLength: {
+        twoWheeler: vehicleLimits.twoWheelersPerUnit,
+        fourWheeler: vehicleLimits.fourWheelersPerUnit,
+      },
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch vehicles'));

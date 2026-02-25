@@ -6,7 +6,7 @@ const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
 const { ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
-const { toISTDateTimeLabelNoComma } = require('../utils/dateTime');
+const { toISTDateTimeLabelNoCommaWithoutYear } = require('../utils/dateTime');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const OtherVisitorCompany = require('../model/otherVisitorCompanySchema');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
@@ -207,6 +207,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
+      isSilentDelivery,
       isPrivateInvite,
     } = req.body || {};
 
@@ -257,6 +258,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+    const silentFlag = Boolean(isSilentDelivery);
 
     const approval = await OtherVisitorPreApproval.create({
       societyId: unitDoc.societyId,
@@ -265,6 +267,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
       visitorName: resolvedVisitorName || null,
       workCategory: resolvedWorkCategory,
       companyName: resolvedCompanyName,
+      isSilentDelivery: silentFlag,
       isPrivateInvite: Boolean(isPrivateInvite),
       validFrom: window.validFrom,
       validTill: window.validTill,
@@ -272,8 +275,8 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
 
     const member = await User.findById(authUser._id).lean();
 
-    const fromLabel = toISTDateTimeLabelNoComma(window.validFrom);
-    const tillLabel = toISTDateTimeLabelNoComma(window.validTill);
+    const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(window.validFrom);
+    const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(window.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 201, 'Visitor pre-approval created successfully.', {
@@ -304,6 +307,7 @@ const createOtherVisitorPreApproval = async (req, res, next) => {
           name: member?.fullName || authUser.fullName || null,
         },
         validityLabel,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
         isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });
@@ -335,6 +339,7 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
       visitorName,
       guestName,
       personName,
+      isSilentDelivery,
       isPrivateInvite,
     } = req.body || {};
 
@@ -408,6 +413,7 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
     }
 
     const resolvedVisitorName = normalizeString(visitorName ?? guestName ?? personName);
+    const silentFlag = Boolean(isSilentDelivery);
 
     if (resolvedVisitorName !== undefined) {
       approval.visitorName = resolvedVisitorName || null;
@@ -417,6 +423,9 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
     }
     if (companyName !== undefined) {
       approval.companyName = resolvedCompanyName;
+    }
+    if (isSilentDelivery !== undefined) {
+      approval.isSilentDelivery = silentFlag;
     }
     if (isPrivateInvite !== undefined) {
       approval.isPrivateInvite = Boolean(isPrivateInvite);
@@ -432,8 +441,8 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
     const companyInfo = approval.companyName
       ? await resolveOtherVisitorCompany(approval.companyName)
       : null;
-    const fromLabel = toISTDateTimeLabelNoComma(approval.validFrom);
-    const tillLabel = toISTDateTimeLabelNoComma(approval.validTill);
+    const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(approval.validFrom);
+    const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(approval.validTill);
     const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
     return sendSuccessResponse(res, 200, 'Visitor pre-approval updated successfully.', {
@@ -467,6 +476,7 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
         validFrom: approval.validFrom,
         validTill: approval.validTill,
         validityLabel,
+        isSilentDelivery: Boolean(approval.isSilentDelivery),
         isPrivateInvite: Boolean(approval.isPrivateInvite),
       },
     });

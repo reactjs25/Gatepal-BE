@@ -35,9 +35,10 @@ const taxiDriverPreApprovalSchema = new mongoose.Schema(
     },
     visitorName: { type: String, trim: true, default: null },
     companyId: { type: String, trim: true, default: null },
-    companyName: { type: String, trim: true, required: true },
+    companyName: { type: String, trim: true, default: null },
     companyImageUrl: { type: String, trim: true, default: null },
     vehicleNumber: { type: String, trim: true, default: null },
+    isSilentDelivery: { type: Boolean, default: false },
     isPrivateInvite: { type: Boolean, default: false },
     validFrom: {
       type: Date,
