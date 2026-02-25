@@ -10,7 +10,7 @@ const {
   isSocietyAdminPrincipal,
   resolveAdminSocietyFromContext,
 } = require('../../utils/adminSocietyContext');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeImageListToStorageUrls } = require('../../utils/imageDataUrl');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
@@ -95,8 +95,9 @@ const assertAdminAccessToSociety = async ({ req, authUser, societyId }) => {
   throw createHttpError('Forbidden: you are not mapped as admin for this society.', 403);
 };
 
-const validateAnnouncementPayload = (payload = {}, options = {}) => {
+const validateAnnouncementPayload = async (payload = {}, options = {}) => {
   const isPartial = !!options.isPartial;
+  const storagePrefix = normalizeString(options.storagePrefix) || 'announcements';
 
   const titleRaw = payload.title;
   const descriptionRaw = payload.descriptionHtml;
@@ -145,15 +146,21 @@ const validateAnnouncementPayload = (payload = {}, options = {}) => {
       sources = [photoRaw];
     }
 
-    const cleanedPhotos = sources
+    const cleanedPhotoInputs = sources
       .map((entry) => (entry == null ? '' : entry.toString().trim()))
-      .filter((entry) => entry.length > 0)
-      .map((value) =>
-        ensureBase64ImageDataUrl({
-          value,
-          fieldLabel: 'Announcement photo',
-        })
-      );
+      .filter((entry) => entry.length > 0);
+
+    let cleanedPhotos = [];
+    try {
+      cleanedPhotos = await normalizeImageListToStorageUrls({
+        values: cleanedPhotoInputs,
+        fieldLabel: 'Announcement photo',
+        keyPrefix: storagePrefix,
+        fileNamePrefix: 'announcement-photo',
+      });
+    } catch (e) {
+      throw createHttpError(e.message, 400);
+    }
 
     validated.photos = cleanedPhotos;
   }
@@ -215,7 +222,10 @@ const createAnnouncement = async (req, res, next) => {
 
     let validated;
     try {
-      validated = validateAnnouncementPayload(req.body || {}, { isPartial: false });
+      validated = await validateAnnouncementPayload(req.body || {}, {
+        isPartial: false,
+        storagePrefix: `announcements/${String(society._id)}`,
+      });
     } catch (e) {
       return next(e);
     }
@@ -612,7 +622,10 @@ const updateAnnouncementById = async (req, res, next) => {
 
     let validated;
     try {
-      validated = validateAnnouncementPayload(req.body || {}, { isPartial: true });
+      validated = await validateAnnouncementPayload(req.body || {}, {
+        isPartial: true,
+        storagePrefix: `announcements/${String(society._id)}`,
+      });
     } catch (e) {
       return next(e);
     }

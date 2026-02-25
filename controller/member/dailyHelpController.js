@@ -9,7 +9,7 @@ const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { normalizeDigits, normalizeCountryCode } = require('../../utils/phoneNumber');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeImageInputToStorageUrl } = require('../../utils/imageDataUrl');
 const { assertUnitAccess, buildCanonicalUnitId } = require('../../utils/unitAccess');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 
@@ -88,7 +88,19 @@ const addDailyHelp = async (req, res, next) => {
       return next(createHttpError('Please enter a valid phone number.', 400));
     }
 
-    const formattedImage = imageUrl !== undefined ? ensureBase64ImageDataUrl({ value: imageUrl, fieldLabel: 'Image' }) : null;
+    let formattedImage = null;
+    if (imageUrl !== undefined) {
+      try {
+        formattedImage = await normalizeImageInputToStorageUrl({
+          value: imageUrl,
+          fieldLabel: 'Image',
+          keyPrefix: `daily-help/${String(unitDoc.societyId)}/${canonicalCategory}`,
+          fileName: `${digits}-${Date.now()}`,
+        });
+      } catch (e) {
+        return next(createHttpError(e.message, 400));
+      }
+    }
 
     if (!complianceConfirmed) {
       return next(createHttpError('Compliance confirmation is required.', 400));
@@ -456,8 +468,21 @@ const editDailyHelpProfile = async (req, res, next) => {
     }
 
     if (imageUrl !== undefined) {
-      const formatted = ensureBase64ImageDataUrl({ value: imageUrl, fieldLabel: 'Image' });
-      updates.imageUrl = formatted;
+      const trimmed = normalizeString(imageUrl);
+      if (!trimmed) {
+        updates.imageUrl = null;
+      } else {
+        try {
+          updates.imageUrl = await normalizeImageInputToStorageUrl({
+            value: trimmed,
+            fieldLabel: 'Image',
+            keyPrefix: `daily-help/${String(doc.societyId)}/${doc.category}`,
+            fileName: `${String(doc._id)}-${Date.now()}`,
+          });
+        } catch (e) {
+          return next(createHttpError(e.message, 400));
+        }
+      }
     }
 
     if (phoneNumber !== undefined) {

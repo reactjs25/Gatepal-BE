@@ -1,12 +1,12 @@
 const mongoose = require('mongoose');
 const { createHttpError } = require('../../utils/httpError');
 const Society = require('../../model/societySchema');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeImageInputToStorageUrl } = require('../../utils/imageDataUrl');
 const { toTitleCaseName } = require('../../utils/strings');
 
-const ensureBase64ImageDataUrlGuard = ({ value, fieldLabel }) => {
+const ensureBase64ImageDataUrlGuard = async ({ value, fieldLabel, keyPrefix, fileName }) => {
   try {
-    return ensureBase64ImageDataUrl({ value, fieldLabel });
+    return await normalizeImageInputToStorageUrl({ value, fieldLabel, keyPrefix, fileName });
   } catch (e) {
     throw createHttpError(e.message, 400);
   }
@@ -26,7 +26,12 @@ const handleGuardOnboarding = async ({ user, payload }) => {
   if (profilePhoto !== undefined) {
     const hasProfilePhoto = Boolean((profilePhoto || '').trim());
     if (hasProfilePhoto) {
-      sanitizedPhoto = ensureBase64ImageDataUrlGuard({ value: profilePhoto, fieldLabel: 'Guard photo' });
+      sanitizedPhoto = await ensureBase64ImageDataUrlGuard({
+        value: profilePhoto,
+        fieldLabel: 'Guard photo',
+        keyPrefix: `guards/${String(user._id)}/profile`,
+        fileName: `profile-${Date.now()}`,
+      });
     }
   }
 

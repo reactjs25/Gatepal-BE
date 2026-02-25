@@ -22,6 +22,7 @@ const {
 const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
+const { uploadBufferToS3 } = require('../utils/s3Upload');
 
 const escapeRegex = (value) => (value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -455,15 +456,34 @@ const buildGroupInviteQrPayload = ({ invite }) => {
   return JSON.stringify(payload);
 };
 
+const generateQrPngBuffer = async (payload) =>
+  QRCode.toBuffer(payload, {
+    type: 'png',
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 256,
+  });
+
+const uploadGuestQrToS3 = async ({ inviteId, guestId, payload }) => {
+  const pngBuffer = await generateQrPngBuffer(payload);
+  return uploadBufferToS3({
+    buffer: pngBuffer,
+    contentType: 'image/png',
+    keyPrefix: `guest-invites/${inviteId}/qr`,
+    fileExtension: 'png',
+    fileName: `${guestId || 'guest'}-${Date.now()}`,
+  });
+};
+
 const generateGuestQrCodes = async ({ invite }) => {
   const updatedGuests = [];
   for (const guest of invite.guests) {
     try {
       const payload = buildGuestInviteQrPayload({ invite, guest });
-      const qrCodeImage = await QRCode.toDataURL(payload, {
-        errorCorrectionLevel: 'M',
-        margin: 1,
-        width: 256,
+      const qrCodeImage = await uploadGuestQrToS3({
+        inviteId: invite.inviteId,
+        guestId: guest.guestId,
+        payload,
       });
       updatedGuests.push({
         ...guest.toObject ? guest.toObject() : guest,
@@ -541,10 +561,10 @@ const createGroupInvite = async (req, res, next) => {
     let qrCodeImage = null;
     try {
       const payload = buildGroupInviteQrPayload({ invite });
-      qrCodeImage = await QRCode.toDataURL(payload, {
-        errorCorrectionLevel: 'M',
-        margin: 1,
-        width: 256,
+      qrCodeImage = await uploadGuestQrToS3({
+        inviteId: invite.inviteId,
+        guestId: 'group',
+        payload,
       });
     } catch (e) {
       qrCodeImage = null;
@@ -942,10 +962,10 @@ const updateGuestInviteForMember = async (req, res, next) => {
       let qrCodeImage = null;
       try {
         const payload = buildGuestInviteQrPayload({ invite, unit: unitDoc, member, guest: invite.guests[0] });
-        qrCodeImage = await QRCode.toDataURL(payload, {
-          errorCorrectionLevel: 'M',
-          margin: 1,
-          width: 256,
+        qrCodeImage = await uploadGuestQrToS3({
+          inviteId: invite.inviteId,
+          guestId: 'group',
+          payload,
         });
       } catch (e) {
         qrCodeImage = null;
@@ -1092,11 +1112,21 @@ const scanGuestInvite = async (req, res, next) => {
     try {
       let text = normalizeString(qrDataRaw);
       if (!text && qrCodeImage) {
-        const base64Match = qrCodeImage.toString().trim();
-        const base64Data = base64Match.includes('base64,')
-          ? base64Match.split('base64,').pop()
-          : base64Match;
-        const buffer = Buffer.from(base64Data, 'base64');
+        const qrImageInput = qrCodeImage.toString().trim();
+        let buffer;
+        if (/^https?:\/\//i.test(qrImageInput)) {
+          const response = await fetch(qrImageInput);
+          if (!response.ok) {
+            return next(createHttpError('Could not fetch QR code image from URL.', 400));
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+        } else {
+          const base64Data = qrImageInput.includes('base64,')
+            ? qrImageInput.split('base64,').pop()
+            : qrImageInput;
+          buffer = Buffer.from(base64Data, 'base64');
+        }
         const image = await Jimp.read(buffer);
         const width = image.width;
         const height = image.height;

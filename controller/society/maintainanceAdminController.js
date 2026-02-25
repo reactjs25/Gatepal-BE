@@ -9,9 +9,9 @@ const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
 const { resolveAdminSocietyFromContext } = require('../../utils/adminSocietyContext');
 const { toDateOnly, toISTDateLabel, toISTDateTimeLabel } = require('../../utils/dateTime');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
 const { sendToUser } = require('../../utils/pushNotificationService');
 const { getNotificationMessage } = require('../../utils/notificationMessages');
+const { uploadBufferToS3, getS3ObjectKeyFromUrl } = require('../../utils/s3Upload');
 
 const MONTH_LABELS = [
   'January',
@@ -288,6 +288,58 @@ const toCanonicalMonthLabel = (value) => {
   const y = Math.round(Number(parts[parts.length - 1]));
   if (!m || !Number.isFinite(y) || String(y).length !== 4) return '';
   return `${m} ${y}`;
+};
+
+const uploadMaintenanceReceiptPdf = async ({ societyId, maintenanceId, receiptNumber, buffer }) => {
+  if (!buffer) return null;
+  return uploadBufferToS3({
+    buffer,
+    contentType: 'application/pdf',
+    keyPrefix: `maintenance/${String(societyId)}/receipts`,
+    fileExtension: 'pdf',
+    fileName: `maintenance-${maintenanceId || 'unknown'}-receipt-${receiptNumber || 'na'}`,
+  });
+};
+
+const resolveOrCreateReceiptUrl = async ({ doc, society, unitLabel, ownerName, paidByName }) => {
+  if (!society) return null;
+  if (String(doc.status || '').toLowerCase() !== 'verified' || !doc.receiptNumber) return null;
+  if (doc.receiptUrl) return doc.receiptUrl;
+
+  const buffer = await buildMaintenanceReceiptPdf({
+    society,
+    maintenance: doc,
+    unitLabel,
+    ownerName,
+    paidByName,
+  });
+
+  const receiptUrl = await uploadMaintenanceReceiptPdf({
+    societyId: society._id,
+    maintenanceId: doc.maintenanceId,
+    receiptNumber: doc.receiptNumber,
+    buffer,
+  });
+
+  if (receiptUrl) {
+    await Maintenance.updateOne(
+      { maintenanceId: doc.maintenanceId },
+      { $set: { receiptUrl } }
+    );
+  }
+
+  return receiptUrl;
+};
+
+const isSameStoredObjectUrl = (incomingValue, storedValue) => {
+  const incoming = normalizeString(incomingValue);
+  const stored = normalizeString(storedValue);
+
+  if (incoming === stored) return true;
+
+  const incomingKey = getS3ObjectKeyFromUrl(incoming);
+  const storedKey = getS3ObjectKeyFromUrl(stored);
+  return Boolean(incomingKey && storedKey && incomingKey === storedKey);
 };
 
 const getMaintenanceYearlySummary = async (req, res, next) => {
@@ -732,14 +784,13 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
               : primaryUnit.unitNumber
             : unitNumber;
           const uploaderUser = userMap[String(doc.memberId)] || {};
-          const buffer = await buildMaintenanceReceiptPdf({
+          receipt = await resolveOrCreateReceiptUrl({
+            doc,
             society,
-            maintenance: doc,
             unitLabel,
             ownerName: residentUser.fullName || '',
             paidByName: uploaderUser.fullName || '',
           });
-          receipt = `data:application/pdf;base64,${buffer.toString('base64')}`;
           receiptDate = doc.verifiedAt || null;
         } catch (e) {
           receipt = null;
@@ -868,13 +919,19 @@ const verifyMaintenance = async (req, res, next) => {
       return next(createHttpError('Payload amount does not match record.', 409));
     }
     if (transactionDate !== undefined) {
-      const txDatePayload = new Date(transactionDate);
-      if (Number.isNaN(txDatePayload.getTime())) {
-        return next(createHttpError('transactionDate must be a valid date.', 400));
-      }
-      const toDateOnlyStr = (d) => new Date(d).toISOString().split('T')[0];
-      if (toDateOnlyStr(txDatePayload) !== toDateOnlyStr(doc.transactionDate)) {
-        return next(createHttpError('Payload transactionDate does not match record.', 409));
+      const expectedTransactionDateLabel = normalizeString(toISTDateLabel(doc.transactionDate));
+      const payloadTransactionDateLabel = normalizeString(transactionDate);
+
+      if (payloadTransactionDateLabel !== expectedTransactionDateLabel) {
+        const txDatePayload = new Date(transactionDate);
+        if (Number.isNaN(txDatePayload.getTime())) {
+          return next(createHttpError('transactionDate must be a valid date.', 400));
+        }
+
+        const payloadAsIstLabel = normalizeString(toISTDateLabel(txDatePayload));
+        if (payloadAsIstLabel !== expectedTransactionDateLabel) {
+          return next(createHttpError('Payload transactionDate does not match record.', 409));
+        }
       }
     }
     if (uploadedBy !== undefined && normalizeString(uploadedBy) !== normalizeString(uploaderUser ? uploaderUser.fullName : '')) {
@@ -884,8 +941,7 @@ const verifyMaintenance = async (req, res, next) => {
     if (!proofImageUrl) {
       return next(createHttpError('proofImageUrl is required.', 400));
     }
-    const formattedProof = ensureBase64ImageDataUrl({ value: proofImageUrl, fieldLabel: 'Proof of Maintenance' });
-    if (normalizeString(formattedProof) !== normalizeString(doc.proofImageUrl)) {
+    if (!isSameStoredObjectUrl(proofImageUrl, doc.proofImageUrl)) {
       return next(createHttpError('Payload proofImageUrl does not match record.', 409));
     }
     if (!uploadedOn) {
@@ -920,7 +976,7 @@ const verifyMaintenance = async (req, res, next) => {
     doc.verifiedByUserId = authUser._id || null;
     await doc.save();
 
-    // Send push notification to the member who uploaded the proof
+    
     if (doc.memberId) {
       sendToUser(
         doc.memberId,
@@ -956,7 +1012,21 @@ const verifyMaintenance = async (req, res, next) => {
       paidByName: uploaderUser ? uploaderUser.fullName : '',
     });
 
-    const receiptBase64 = receiptBuffer.toString('base64');
+    let receipt = null;
+    try {
+      receipt = await uploadMaintenanceReceiptPdf({
+        societyId: society._id,
+        maintenanceId: doc.maintenanceId,
+        receiptNumber: doc.receiptNumber,
+        buffer: receiptBuffer,
+      });
+      if (receipt) {
+        doc.receiptUrl = receipt;
+        await doc.save();
+      }
+    } catch (e) {
+      receipt = null;
+    }
 
     return sendSuccessResponse(res, 200, 'Maintenance verified successfully.', {
       data: {
@@ -973,7 +1043,7 @@ const verifyMaintenance = async (req, res, next) => {
         uploadedBy: toTitleCase(uploaderUser ? uploaderUser.fullName : null) || null,
         receiptNumber: doc.receiptNumber != null ? String(doc.receiptNumber) : null,
         receiptDate: toISTDateLabel(doc.verifiedAt),
-        receipt: `data:application/pdf;base64,${receiptBase64}`,
+        receipt,
       },
     });
   } catch (error) {
@@ -1037,7 +1107,7 @@ const rejectMaintenance = async (req, res, next) => {
     doc.rejectionDescription = desc || null;
     await doc.save();
 
-    // Send push notification to the member who uploaded the proof
+    
     if (doc.memberId) {
       const reasonDisplay = reasonRaw.replace(/_/g, ' ');
       sendToUser(

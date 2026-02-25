@@ -399,8 +399,8 @@ const login = async (req, res, next) => {
           await principal.save();
         }
 
-        // Mirror token to linked app-user document so member-targeted notifications
-        // are still deliverable when login resolves through society-admin identity.
+        
+        
         if (linkedUser) {
           await User.updateMany(
             { _id: { $ne: linkedUser._id }, 'fcmTokens.token': fcmToken },

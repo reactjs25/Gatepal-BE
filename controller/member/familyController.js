@@ -5,7 +5,7 @@ const User = require('../../model/userSchema');
 const { normalizeDigits, normalizeCountryCode, getComparablePhoneNumber } = require('../../utils/phoneNumber');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { sendSuccessResponse } = require('../../utils/response');
-const { ensureBase64ImageDataUrl } = require('../../utils/imageDataUrl');
+const { normalizeImageInputToStorageUrl } = require('../../utils/imageDataUrl');
 const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 
 const ALLOWED_CATEGORIES = new Set(['adult', 'child']);
@@ -46,11 +46,7 @@ const getFamilyDisplayStatus = ({ category, status }) => {
 const ensureImageMaybe = ({ value, fieldLabel, minBytes = 512 }) => {
   const trimmed = normalizeString(value);
   if (!trimmed) return null;
-  try {
-    return ensureBase64ImageDataUrl({ value: trimmed, fieldLabel, minBytes });
-  } catch (e) {
-    throw createHttpError(e.message, 400);
-  }
+  return trimmed;
 };
 
 const validateAddFamilyInput = (input = {}) => {
@@ -60,7 +56,7 @@ const validateAddFamilyInput = (input = {}) => {
   const countryCode = normalizeCountryCode(input.countryCode);
   const phoneDigits = normalizeDigits(input.phoneNumber || '');
   const incomingImage = input.imageUrl !== undefined ? input.imageUrl : input.image;
-  const imageUrl = incomingImage !== undefined ? ensureImageMaybe({ value: incomingImage, fieldLabel: 'Image' }) : null;
+  const imageInput = incomingImage !== undefined ? ensureImageMaybe({ value: incomingImage, fieldLabel: 'Image' }) : null;
 
   if (!unitId) throw createHttpError('unitId path parameter is required.', 400);
   if (!mongoose.Types.ObjectId.isValid(unitId)) throw createHttpError('Invalid unit ID format.', 400);
@@ -76,7 +72,7 @@ const validateAddFamilyInput = (input = {}) => {
     throw createHttpError('Please enter a valid phone number.', 400);
   }
 
-  return { unitId, category, name, countryCode, phoneDigits, imageUrl, rawPhone: input.phoneNumber };
+  return { unitId, category, name, countryCode, phoneDigits, imageInput, rawPhone: input.phoneNumber };
 };
 
 const addFamilyMember = async (req, res, next) => {
@@ -113,6 +109,20 @@ const addFamilyMember = async (req, res, next) => {
       if (duplicate) return next(createHttpError('This phone number already exists in the system.', 409));
     }
 
+    let resolvedImageUrl = null;
+    if (validated.imageInput) {
+      try {
+        resolvedImageUrl = await normalizeImageInputToStorageUrl({
+          value: validated.imageInput,
+          fieldLabel: 'Image',
+          keyPrefix: `family/${String(unitDoc._id)}/members`,
+          fileName: `member-${Date.now()}`,
+        });
+      } catch (e) {
+        return next(createHttpError(e.message, 400));
+      }
+    }
+
     const payload = {
       unitId: unitDoc._id,
       createdByUserId: authUser._id,
@@ -122,7 +132,7 @@ const addFamilyMember = async (req, res, next) => {
       phoneNumber: validated.phoneDigits ? validated.rawPhone : null,
       phoneDigits: validated.phoneDigits || null,
       comparablePhone: comparablePhone || null,
-      imageUrl: validated.imageUrl,
+      imageUrl: resolvedImageUrl,
       status: 'Inactive on GatePal™',
     };
 
@@ -331,9 +341,23 @@ const updateFamilyMember = async (req, res, next) => {
       }
 
       if (imageUrl !== undefined) {
-        const formatted = ensureBase64ImageDataUrl({ value: imageUrl, fieldLabel: 'Image' });
-        updates.profilePhoto = formatted;
-        updates.profilePhotoCapturedAt = new Date();
+        const trimmed = normalizeString(imageUrl);
+        if (!trimmed) {
+          updates.profilePhoto = null;
+          updates.profilePhotoCapturedAt = null;
+        } else {
+          try {
+            updates.profilePhoto = await normalizeImageInputToStorageUrl({
+              value: trimmed,
+              fieldLabel: 'Image',
+              keyPrefix: `users/${String(targetUser._id)}/profile`,
+              fileName: `profile-${Date.now()}`,
+            });
+            updates.profilePhotoCapturedAt = new Date();
+          } catch (e) {
+            return next(createHttpError(e.message, 400));
+          }
+        }
       }
 
       if (phoneRaw !== undefined) {
@@ -436,8 +460,21 @@ const updateFamilyMember = async (req, res, next) => {
     }
 
     if (imageUrl !== undefined) {
-      const formatted = ensureBase64ImageDataUrl({ value: imageUrl, fieldLabel: 'Image' });
-      updates.imageUrl = formatted;
+      const trimmed = normalizeString(imageUrl);
+      if (!trimmed) {
+        updates.imageUrl = null;
+      } else {
+        try {
+          updates.imageUrl = await normalizeImageInputToStorageUrl({
+            value: trimmed,
+            fieldLabel: 'Image',
+            keyPrefix: `family/${String(unitDoc._id)}/members`,
+            fileName: `member-${Date.now()}`,
+          });
+        } catch (e) {
+          return next(createHttpError(e.message, 400));
+        }
+      }
     }
 
     if (phoneRaw !== undefined) {

@@ -3909,11 +3909,11 @@ const allowGuestExitForMember = async (req, res, next) => {
     doc.entryLeftAt = new Date();
     await doc.save();
 
-    // Notify the guard who allowed entry, or the guard who created the request, or the on-duty guard
+    
     const guardToNotify = doc.entryAllowedByGuardId || doc.createdByGuardId;
     const guardOnDuty = await findGuardOnDuty(doc.societyId);
     
-    // Collect unique guard IDs to notify
+    
     const guardsToNotify = new Set();
     if (guardToNotify) {
       guardsToNotify.add(String(guardToNotify));
@@ -4037,7 +4037,7 @@ const markWrongEntryForMember = async (req, res, next) => {
     doc.status = 'wrong_entry';
     await doc.save();
 
-    // Notify the guard who allowed entry about the wrong entry
+    
     const guardToNotify = doc.entryAllowedByGuardId || doc.createdByGuardId;
     if (guardToNotify) {
       const guardShouldBeNotified = await shouldNotifyGuardByPreference(guardToNotify, 'denial');
