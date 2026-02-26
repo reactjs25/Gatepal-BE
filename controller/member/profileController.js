@@ -195,8 +195,16 @@ const getMemberProfile = async (req, res, next) => {
 
 const updateMemberProfile = async (req, res, next) => {
   try {
+    console.log('[member/profile][PATCH] request received', {
+      method: req.method,
+      path: req.originalUrl || req.path,
+      hasBody: Boolean(req.body && Object.keys(req.body).length),
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+    });
+
     const user = req.appUser;
     if (!user) {
+      console.log('[member/profile][PATCH] unauthorized request');
       return next(createHttpError('Unauthorized.', 401));
     }
 
@@ -258,10 +266,16 @@ const updateMemberProfile = async (req, res, next) => {
     }
 
     if (req.body && req.body.occupancyStatus !== undefined) {
+      console.log('[member/profile][PATCH] rejected field', { field: 'occupancyStatus' });
       return next(createHttpError('occupancyStatus cannot be edited via profile.', 400));
     }
 
     if (Object.keys(updates).length === 0) {
+      console.log('[member/profile][PATCH] response', {
+        statusCode: 200,
+        message: 'No changes provided.',
+        userId: String(user._id),
+      });
       return sendSuccessResponse(res, 200, 'No changes provided.');
     }
 
@@ -281,6 +295,9 @@ const updateMemberProfile = async (req, res, next) => {
       data: updateResponseData,
     });
   } catch (error) {
+    console.error('[member/profile][PATCH] failed', {
+      message: error?.message,
+    });
     return next(setErrorDefaults(error, 'Failed to update member profile'));
   }
 };
