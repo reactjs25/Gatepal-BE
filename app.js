@@ -4,6 +4,7 @@ const cors = require('cors');
 const routes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const notFoundHandler = require('./middleware/notFoundHandler');
+const multipartFormDataParser = require('./middleware/multipartFormDataParser');
 const config = require('./config/appConfig');
 const { sendSuccessResponse } = require('./utils/response');
 
@@ -15,6 +16,7 @@ const corsOptions =
     : undefined;
 
 app.use(cors(corsOptions));
+app.use(multipartFormDataParser);
 app.use(express.json());
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
