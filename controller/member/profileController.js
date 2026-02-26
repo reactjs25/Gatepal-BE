@@ -185,8 +185,6 @@ const getMemberProfile = async (req, res, next) => {
         'Hello, our society is using GatePal™ app to manage our society. It is a wonderful application to manage guest entries and approvals. I strongly recommend for your society. You can download it from https://maplink.com',
     };
 
-    console.log('[member/profile] response', responseData);
-
     return sendSuccessResponse(res, 200, 'Member profile fetched successfully.', {
       data: responseData,
     });
@@ -270,13 +268,17 @@ const updateMemberProfile = async (req, res, next) => {
     Object.assign(user, updates);
     await user.save();
 
+    const updateResponseData = {
+      id: String(user._id),
+      name: user.fullName || null,
+      phoneNumber: user.phoneNumber,
+      imageUrl: user.profilePhoto || null,
+    };
+
+    console.log('[member/profile][PATCH] response', updateResponseData);
+
     return sendSuccessResponse(res, 200, 'Member profile updated successfully.', {
-      data: {
-        id: String(user._id),
-        name: user.fullName || null,
-        phoneNumber: user.phoneNumber,
-        imageUrl: user.profilePhoto || null,
-      },
+      data: updateResponseData,
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to update member profile'));
