@@ -44,6 +44,16 @@ const generateStableMemberCode = (userId) => {
   return String((num % 900000) + 100000);
 };
 
+const getLastBodyValue = (value) => {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  if (value.length === 0) {
+    return undefined;
+  }
+  return value[value.length - 1];
+};
+
 const buildQrPayload = ({ user, society, memberCode }) => {
   const payload = {
     type: 'gatepal_member',
@@ -208,12 +218,24 @@ const updateMemberProfile = async (req, res, next) => {
       return next(createHttpError('Unauthorized.', 401));
     }
 
-    const { imageUrl, phoneNumber, name, fullName, email } = req.body || {};
+    const payload = req.body || {};
+    const imageRaw =
+      payload.image !== undefined
+        ? payload.image
+        : payload.imageUrl !== undefined
+          ? payload.imageUrl
+          : payload.profilePhoto !== undefined
+            ? payload.profilePhoto
+            : payload.profileImage;
+    const phoneNumber = getLastBodyValue(payload.phoneNumber);
+    const name = getLastBodyValue(payload.name);
+    const fullName = getLastBodyValue(payload.fullName);
+    const email = getLastBodyValue(payload.email);
 
     const updates = {};
 
-    if (imageUrl !== undefined) {
-      const photo = normalizeString(imageUrl);
+    if (imageRaw !== undefined) {
+      const photo = normalizeString(getLastBodyValue(imageRaw));
       updates.profilePhoto = photo || null;
     }
 
