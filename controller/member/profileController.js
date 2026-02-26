@@ -142,49 +142,53 @@ const getMemberProfile = async (req, res, next) => {
       }
     });
 
-    return sendSuccessResponse(res, 200, 'Member profile fetched successfully.', {
-      data: {
-        id: String(user._id),
-        memberId: memberCode,
-        name: user.fullName || null,
-        countryCode: user.countryCode || '+91',
-        imageUrl: user.profilePhoto || null,
-        phoneNumber: user.phoneNumber,
-        units: unitsFromDb.map((u) => {
-          const s = societyMap[String(u.societyId)] || null;
-          const societyRole =
-            s && adminSocietyIds.has(String(s._id))
-              ? 'society_admin'
-              : 'member';
+    const responseData = {
+      id: String(user._id),
+      memberId: memberCode,
+      name: user.fullName || null,
+      countryCode: user.countryCode || '+91',
+      imageUrl: user.profilePhoto || null,
+      phoneNumber: user.phoneNumber,
+      units: unitsFromDb.map((u) => {
+        const s = societyMap[String(u.societyId)] || null;
+        const societyRole =
+          s && adminSocietyIds.has(String(s._id))
+            ? 'society_admin'
+            : 'member';
 
-          return {
-            id: String(u._id),
-            wingName: u.wingName,
-            unitNumber: u.unitNumber,
-            occupantType: u.occupantType,
-            occupancyStatus: u.occupancyStatus,
-            society: s
-              ? {
-                id: String(s._id),
-                name: s.societyName,
-                pin: s.societyPin,
-                address: s.address,
-                city: s.city,
-                stateName: findStateName(s.country, s.city),
-                country: s.country,
-                role: societyRole,
-              }
-              : null,
-          };
-        }),
-        notificationPreferences: {
-          notifyOnEntry: user.notifyOnEntry !== false,
-          notifyOnExit: user.notifyOnExit !== false,
-        },
-        qrCodeImage,
-        message:
-          'Hello, our society is using GatePal™ app to manage our society. It is a wonderful application to manage guest entries and approvals. I strongly recommend for your society. You can download it from https://maplink.com',
+        return {
+          id: String(u._id),
+          wingName: u.wingName,
+          unitNumber: u.unitNumber,
+          occupantType: u.occupantType,
+          occupancyStatus: u.occupancyStatus,
+          society: s
+            ? {
+              id: String(s._id),
+              name: s.societyName,
+              pin: s.societyPin,
+              address: s.address,
+              city: s.city,
+              stateName: findStateName(s.country, s.city),
+              country: s.country,
+              role: societyRole,
+            }
+            : null,
+        };
+      }),
+      notificationPreferences: {
+        notifyOnEntry: user.notifyOnEntry !== false,
+        notifyOnExit: user.notifyOnExit !== false,
       },
+      qrCodeImage,
+      message:
+        'Hello, our society is using GatePal™ app to manage our society. It is a wonderful application to manage guest entries and approvals. I strongly recommend for your society. You can download it from https://maplink.com',
+    };
+
+    console.log('[member/profile] response', responseData);
+
+    return sendSuccessResponse(res, 200, 'Member profile fetched successfully.', {
+      data: responseData,
     });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch member profile'));
