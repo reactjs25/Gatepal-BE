@@ -12,6 +12,7 @@ const { toDateOnly, toISTDateLabel, toISTDateTimeLabel } = require('../../utils/
 const { sendToUser } = require('../../utils/pushNotificationService');
 const { getNotificationMessage } = require('../../utils/notificationMessages');
 const { uploadBufferToS3, getS3ObjectKeyFromUrl } = require('../../utils/s3Upload');
+const { generateAndUploadMaintenanceReport } = require('../../service/report/maintenanceReportService');
 
 const MONTH_LABELS = [
   'January',
@@ -619,6 +620,7 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
     }
 
     const statusRaw = normalizeString((req.body && req.body.status) || '');
+    const requestedStatusKey = statusRaw ? statusRaw.toLowerCase() : '';
     let statusQuery = null;
     let includePendingMissing = false;
     if (statusRaw) {
@@ -859,7 +861,25 @@ const listUploadedMaintenanceByMonth = async (req, res, next) => {
       data = dataUploaded.concat(synthetic);
     }
 
-    return sendSuccessResponse(res, 200, 'Maintenance uploads fetched successfully.', { data });
+    let report = null;
+    if (['uploaded', 'verified', 'rejected'].includes(requestedStatusKey)) {
+      try {
+        report = await generateAndUploadMaintenanceReport({
+          societyId: String(society._id),
+          month,
+          year,
+          status: requestedStatusKey,
+        });
+      } catch (reportError) {
+        report = null;
+      }
+    }
+
+    return sendSuccessResponse(res, 200, 'Maintenance uploads fetched successfully.', {
+      data,
+      reportUrl: report?.url || null,
+      reportCount: report?.count ?? null,
+    });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch maintenance uploads'));
   }

@@ -38,6 +38,11 @@ const config = {
     residentReportCronSchedule: process.env.RESIDENT_REPORT_CRON_SCHEDULE || '0 0 * * *',
     residentReportCronTimezone: process.env.RESIDENT_REPORT_CRON_TIMEZONE || 'Asia/Kolkata',
     residentReportBatchSize: toNumber(process.env.RESIDENT_REPORT_BATCH_SIZE, 10),
+    maintenanceReportCronEnabled:
+      String(process.env.MAINTENANCE_REPORT_CRON_ENABLED || 'false').toLowerCase() === 'true',
+    maintenanceReportCronSchedule: process.env.MAINTENANCE_REPORT_CRON_SCHEDULE || '0 0 * * *',
+    maintenanceReportCronTimezone: process.env.MAINTENANCE_REPORT_CRON_TIMEZONE || 'Asia/Kolkata',
+    maintenanceReportBatchSize: toNumber(process.env.MAINTENANCE_REPORT_BATCH_SIZE, 10),
     guardsLogBatchSize: toNumber(process.env.GUARDS_LOG_REPORT_BATCH_SIZE, 10),
     visitorLogCronEnabled: String(process.env.VISITOR_LOG_REPORT_CRON_ENABLED || 'false').toLowerCase() === 'true',
     visitorLogCronSchedule: process.env.VISITOR_LOG_REPORT_CRON_SCHEDULE || '0 0 * * *',
