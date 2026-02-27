@@ -1,0 +1,171 @@
+const ACTION_TYPES = ['WRONG_ENTRY', 'DENY_ENTRY', 'DELETE_PRE_APPROVAL'];
+
+const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
+
+
+
+const VISITOR_TYPE_DISPLAY_MAP = {
+  'Guest': 'guest',
+  'Delivery Executive': 'delivery_executive',
+  'Taxi': 'taxi_vehicle_driver',
+  'Taxi Vehicle Driver': 'taxi_vehicle_driver',
+  'Other Visitor': 'other_visitor',
+};
+
+
+
+
+
+
+const normalizeVisitorType = (visitorType) => {
+  if (VISITOR_TYPES.includes(visitorType)) {
+    return visitorType;
+  }
+  return VISITOR_TYPE_DISPLAY_MAP[visitorType] || null;
+};
+
+const ACTION_REASONS = {
+  DENY_ENTRY: {
+    guest: [
+      'I am not expecting this guest',
+      'I do not know this person',
+      'Guest has come to the wrong flat',
+      'I did not invite anyone',
+      'I am not available to receive guests',
+      'Please ask the guest to contact me directly',
+      'Entry request seems suspicious',
+      'Guest name/details are incorrect',
+      'I will approve later',
+      'Other',
+    ],
+    delivery_executive: [
+      'I am not expecting any delivery',
+      'This is not my order',
+      'I have already received the delivery',
+      'Delivery is scheduled for another time',
+      'Wrong flat / unit mentioned',
+      'Please ask delivery person to contact me',
+      'I am not available to receive delivery',
+      'Delivery details seem incorrect',
+      'Other',
+    ],
+    taxi_vehicle_driver: [
+      'I did not book this taxi',
+      'This taxi is not for me',
+      'Taxi has arrived at the wrong flat',
+      'I have already left',
+      'I cancelled the ride',
+      'I am not ready yet',
+      'Please ask driver to contact me',
+      'I am not available right now',
+      'Entry request seems incorrect',
+      'Other',
+    ],
+    other_visitor: [
+      'I did not book this service',
+      'I am not expecting any service visit',
+      'This person is unknown to me',
+      'Service has already been completed',
+      'Wrong flat / unit mentioned',
+      'I did not request this visit',
+      'I am not available right now',
+      'Please ask them to contact me first',
+      'Entry request seems suspicious',
+      'Other',
+    ],
+  },
+
+  DELETE_PRE_APPROVAL: {
+    guest: [
+      'Guest visit has been cancelled',
+      'Visit rescheduled to another time',
+      'Pre-approval created by mistake',
+      'Guest is not coming',
+      'Duplicate pre-approval created',
+      'Wrong date or time selected',
+      'Wrong guest details entered',
+      'Security concern',
+      'Other',
+    ],
+    delivery_executive: [
+      'Order has been cancelled',
+      'Delivery rescheduled',
+      'Already received delivery',
+      'Pre-approval created by mistake',
+      'Duplicate pre-approval',
+      'Wrong delivery details entered',
+      'Wrong date selected',
+      'Other',
+    ],
+    taxi_vehicle_driver: [
+      'Ride cancelled',
+      'Ride rescheduled',
+      'Already left',
+      'Pre-approval created by mistake',
+      'Duplicate entry created',
+      'Wrong time selected',
+      'Other',
+    ],
+    other_visitor: [
+      'Service booking cancelled',
+      'Service rescheduled',
+      'Service already completed',
+      'Pre-approval created by mistake',
+      'Duplicate pre-approval',
+      'Wrong details entered',
+      'Wrong date selected',
+      'Other',
+    ],
+  },
+
+  WRONG_ENTRY: {
+    guest: [
+      'Approved by mistake',
+      'Guest did not arrive',
+      'I did not meet this guest',
+      'This was not my visitor',
+      'Guest came to the wrong flat',
+      'Entry details were incorrect',
+      'Duplicate entry was recorded',
+      'Other',
+    ],
+    delivery_executive: [
+      'Approved by mistake',
+      'Delivery executive did not arrive',
+      'Delivery was not received',
+      'This is not my order',
+      'Wrong delivery entry was recorded',
+      'Duplicate entry was recorded',
+      'Entry details were incorrect',
+      'Other',
+    ],
+    taxi_vehicle_driver: [
+      'Approved by mistake',
+      'Taxi did not arrive',
+      'This is not my taxi',
+      'Ride was cancelled',
+      'Wrong taxi entry was recorded',
+      'Duplicate entry was recorded',
+      'Entry details were incorrect',
+      'Other',
+    ],
+    other_visitor: [
+      'Approved by mistake',
+      'Service person did not arrive',
+      'Service was not provided',
+      'This was not my booking',
+      'Wrong entry was recorded',
+      'Duplicate entry was recorded',
+      'Entry details were incorrect',
+      'Other',
+    ],
+  },
+};
+
+module.exports = {
+  ACTION_TYPES,
+  VISITOR_TYPES,
+  VISITOR_TYPE_DISPLAY_MAP,
+  normalizeVisitorType,
+  ACTION_REASONS,
+};

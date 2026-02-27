@@ -1,0 +1,183 @@
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const SuperAdmin = require('../model/superAdminSchema');
+const { createTransporter, buildResetUrl } = require('../utils/passwordReset');
+const { normalizeDigits } = require('../utils/phoneNumber');
+const { createHttpError, setErrorDefaults } = require('../utils/httpError');
+const { sendSuccessResponse } = require('../utils/response');
+
+const generateToken = (superAdminId, email) =>
+  jwt.sign(
+    { id: superAdminId, email, role: 'super_admin' },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+const mapSuperAdminResponse = (superAdmin) => ({
+  id: superAdmin._id,
+  name: superAdmin.fullName,
+  fullName: superAdmin.fullName,
+  email: superAdmin.email,
+  phoneNumber: superAdmin.phoneNumber,
+  role: 'super_admin',
+});
+
+const signUp = async (req, res, next) => {
+  try {
+    const { fullName, email, password, phoneNumber } = req.body;
+
+    if (!fullName || !email || !password || !phoneNumber) {
+      return next(createHttpError('All fields are required.', 400));
+    }
+
+    const normalizedEmail = email.toLowerCase();
+    const digits = normalizeDigits(phoneNumber);
+
+    if (digits.length < 10 || digits.length > 12) {
+      return next(createHttpError('Phone number must contain between 10 and 12 digits.', 400));
+    }
+
+    
+    const existingSuperAdminByEmail = await SuperAdmin.findOne({ email: normalizedEmail });
+    if (existingSuperAdminByEmail) {
+      return next(createHttpError('A user already exists with this email address.', 409));
+    }
+
+    
+    const existingSuperAdminByPhone = await SuperAdmin.exists({ phoneNumber: digits });
+    if (existingSuperAdminByPhone) {
+      return next(createHttpError('A user already exists with this phone number.', 409));
+    }
+
+    const superAdmin = new SuperAdmin({
+      fullName,
+      email: normalizedEmail,
+      password,
+      phoneNumber: digits,
+    });
+
+    await superAdmin.save();
+
+    const token = generateToken(superAdmin._id, superAdmin.email);
+
+    return sendSuccessResponse(res, 201, 'Super admin created successfully.', {
+      data: mapSuperAdminResponse(superAdmin),
+      token,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to create super admin'));
+  }
+};
+
+const login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return next(createHttpError('Email and password are required.', 400));
+    }
+
+    const superAdmin = await SuperAdmin.findOne({ email: email.toLowerCase() });
+
+    if (!superAdmin) {
+      return next(createHttpError('Invalid email or password.', 401));
+    }
+
+    const isPasswordValid = await superAdmin.comparePassword(password);
+
+    if (!isPasswordValid) {
+      return next(createHttpError('Invalid email or password.', 401));
+    }
+
+    const token = generateToken(superAdmin._id, superAdmin.email);
+
+    return sendSuccessResponse(res, 200, 'Super admin login successful.', {
+      data: mapSuperAdminResponse(superAdmin),
+      token,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to login'));
+  }
+};
+
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return next(createHttpError('Email is required.', 400));
+    }
+
+    const superAdmin = await SuperAdmin.findOne({ email: email.toLowerCase() });
+
+    if (!superAdmin) {
+      return next(createHttpError('No account found with this email address.', 404));
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    superAdmin.resetPasswordToken = hashedToken;
+    superAdmin.resetPasswordExpires = Date.now() + 60 * 60 * 1000;
+
+    await superAdmin.save();
+
+    const transporter = createTransporter();
+    const resetUrl = buildResetUrl(resetToken, superAdmin.email);
+    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
+
+    await transporter.sendMail({
+      from: fromAddress,
+      to: superAdmin.email,
+      subject: 'Gatepal | Reset your password',
+      text: `You requested a password reset. Click the link below to set a new password:\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`,
+      html: `<p>You requested a password reset for your Gatepal account.</p>
+             <p>Click the button below to set a new password. This link will expire in 1 hour.</p>
+             <p><a href="${resetUrl}" style="display:inline-block;padding:12px 20px;background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;">Reset Password</a></p>
+             <p>If you did not request this, please ignore this email.</p>`,
+    });
+
+    return sendSuccessResponse(res, 200, 'If the email exists, a password reset link has been sent.');
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to send password reset email'));
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const { token, email, password } = req.body;
+
+    if (!token || !email || !password) {
+      return next(createHttpError('Token, email, and password are required.', 400));
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const superAdmin = await SuperAdmin.findOne({
+      email: email.toLowerCase(),
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!superAdmin) {
+      return next(createHttpError('Invalid or expired reset token.', 400));
+    }
+
+    superAdmin.password = password;
+    superAdmin.resetPasswordToken = null;
+    superAdmin.resetPasswordExpires = null;
+
+    await superAdmin.save();
+
+    const authToken = generateToken(superAdmin._id, superAdmin.email);
+
+    return sendSuccessResponse(res, 200, 'Password reset successful.', {
+      data: mapSuperAdminResponse(superAdmin),
+      token: authToken,
+    });
+  } catch (error) {
+    return next(setErrorDefaults(error, 'Failed to reset password'));
+  }
+};
+
+module.exports = { signUp, login, forgotPassword, resetPassword };
