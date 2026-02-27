@@ -12,6 +12,7 @@ const { runContractExpiryJob } = require('./contractExpiryJob');
 const { runAppInactiveJob } = require('./appInactiveJob');
 const { initializeGuardsLogReportJob, runGuardsLogReportDailyJob } = require('./guardsLogReportJob');
 const { initializeVisitorLogReportJob, runVisitorLogReportDailyJob } = require('./visitorLogReportJob');
+const { initializeUnitListReportJob, runUnitListReportDailyJob } = require('./unitListReportJob');
 
 
 const DAILY_SCHEDULE_UTC = '30 3 * * *';
@@ -68,6 +69,7 @@ const initializeScheduledJobs = () => {
 
   initializeGuardsLogReportJob();
   initializeVisitorLogReportJob();
+  initializeUnitListReportJob();
 
   console.log('[ScheduledJobs] Scheduled jobs initialized successfully');
 };
@@ -90,4 +92,5 @@ module.exports = {
   runAppInactiveJob,
   runGuardsLogReportDailyJob,
   runVisitorLogReportDailyJob,
+  runUnitListReportDailyJob,
 };

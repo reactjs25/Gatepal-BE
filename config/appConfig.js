@@ -39,6 +39,10 @@ const config = {
     visitorLogCronSchedule: process.env.VISITOR_LOG_REPORT_CRON_SCHEDULE || '0 0 * * *',
     visitorLogCronTimezone: process.env.VISITOR_LOG_REPORT_CRON_TIMEZONE || 'Asia/Kolkata',
     visitorLogBatchSize: toNumber(process.env.VISITOR_LOG_REPORT_BATCH_SIZE, 10),
+    unitListCronEnabled: String(process.env.UNIT_LIST_REPORT_CRON_ENABLED || 'false').toLowerCase() === 'true',
+    unitListCronSchedule: process.env.UNIT_LIST_REPORT_CRON_SCHEDULE || '0 0 * * *',
+    unitListCronTimezone: process.env.UNIT_LIST_REPORT_CRON_TIMEZONE || 'Asia/Kolkata',
+    unitListBatchSize: toNumber(process.env.UNIT_LIST_REPORT_BATCH_SIZE, 10),
   },
 };
 
