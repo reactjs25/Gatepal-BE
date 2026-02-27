@@ -35,6 +35,10 @@ const config = {
     guardsLogCronSchedule: process.env.GUARDS_LOG_REPORT_CRON_SCHEDULE || '0 0 * * *',
     guardsLogCronTimezone: process.env.GUARDS_LOG_REPORT_CRON_TIMEZONE || 'Asia/Kolkata',
     guardsLogBatchSize: toNumber(process.env.GUARDS_LOG_REPORT_BATCH_SIZE, 10),
+    visitorLogCronEnabled: String(process.env.VISITOR_LOG_REPORT_CRON_ENABLED || 'false').toLowerCase() === 'true',
+    visitorLogCronSchedule: process.env.VISITOR_LOG_REPORT_CRON_SCHEDULE || '0 0 * * *',
+    visitorLogCronTimezone: process.env.VISITOR_LOG_REPORT_CRON_TIMEZONE || 'Asia/Kolkata',
+    visitorLogBatchSize: toNumber(process.env.VISITOR_LOG_REPORT_BATCH_SIZE, 10),
   },
 };
 
