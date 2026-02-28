@@ -118,7 +118,7 @@ const getStatusQueryForDb = (statusFilter) => {
   if (statusFilter === 'verified') {
     return { $in: ['Verified', 'VERIFIED'] };
   }
-  return { $in: ['Rejected', 'REJECTED'] };
+  return { $in: ['Rejected', 'REJECTED', 'Pending', 'PENDING'] };
 };
 
 const autosizeColumns = (worksheet) => {
@@ -178,6 +178,8 @@ const buildReportRows = async ({ societyId, month, year, statusFilter }) => {
   if (!society) {
     throw createHttpError('Society not found.', 404);
   }
+
+  const includePendingMissing = statusFilter === 'rejected';
 
   const maintenanceDocs = await Maintenance.find(
     {
@@ -250,11 +252,25 @@ const buildReportRows = async ({ societyId, month, year, statusFilter }) => {
   unitsFromStructure.forEach((unit) => {
     const key = getUnitKey(unit.wingName, unit.unitNumber);
     const maintenance = maintenanceByUnitKey.get(key);
-    if (!maintenance) return;
+    if (!maintenance && !includePendingMissing) return;
 
     const items = unitGroups[key] || [];
     const occupancyKind = items.length > 0 ? classifyUnitGroup(items) : 'vacant';
     const occupancyStatus = mapOccupancyLabel(occupancyKind);
+
+    if (!maintenance) {
+      rows.push({
+        wingNumber: unit.wingName || '-',
+        unitNumber: unit.unitNumber || '-',
+        occupancyStatus,
+        month,
+        year: String(year),
+        maintenanceStatus: STATUS_LABELS.pending,
+        isRejected: 'No',
+        rejectedReason: '-',
+      });
+      return;
+    }
 
     const maintenanceStatusKey = normalizeMaintenanceStatus(maintenance.status);
     const maintenanceStatus = STATUS_LABELS[maintenanceStatusKey] || 'Pending';
