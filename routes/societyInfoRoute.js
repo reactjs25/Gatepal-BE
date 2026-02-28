@@ -11,6 +11,7 @@ const {
 const { generateUnitListExcelReport } = require('../controller/society/unitListReportController');
 const { generateResidentExcelReport } = require('../controller/society/residentReportController');
 const { generateVehicleExcelReport } = require('../controller/society/vehicleReportController');
+const { generatePetExcelReport } = require('../controller/society/petReportController');
 const userAuthMiddleware = require('../middleware/userAuthMiddleware');
 
 const router = express.Router();
@@ -24,6 +25,7 @@ router.patch('/residents/:unitId', userAuthMiddleware, updateSocietyResidentUnit
 router.get('/vehicles', userAuthMiddleware, getSocietyInfoVehicles);
 router.post('/vehicles/report/generate', userAuthMiddleware, generateVehicleExcelReport);
 router.get('/pets', userAuthMiddleware, getSocietyInfoPets);
+router.post('/pets/report/generate', userAuthMiddleware, generatePetExcelReport);
 router.get('/activitySummary', userAuthMiddleware, getSocietyActivitySummary);
 
 module.exports = router;
