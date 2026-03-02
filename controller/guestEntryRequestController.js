@@ -21,14 +21,7 @@ const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies')
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const { normalizeCountryCode, normalizeDigits, normalizePhoneDigits, isTenDigitPhone } = require('../utils/phoneNumber');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
-const {
-  toISTDateLabel,
-  toISTDateTimeLabel,
-  toISTDateTimeLabelWithoutYear,
-  toISTDateTimeLabelNoComma,
-  toISTDateTimeLabelNoCommaWithoutYear,
-  toISTTimeLabel,
-} = require('../utils/dateTime');
+const { toISTDateLabel, toISTDateTimeLabel, toISTDateTimeLabelNoComma, toISTTimeLabel } = require('../utils/dateTime');
 const { sendToUsers, sendToUser } = require('../utils/pushNotificationService');
 const { normalizeLanguageCode } = require('../utils/notificationMessages');
 const {
@@ -344,30 +337,6 @@ const resolveCompanyLogo = ({ visitorType, companyName, deliveryCompanyLogos }) 
   }
 
   return null;
-};
-
-const resolveCompanyObject = ({ visitorType, companyName, companyLogo }) => {
-  const trimmed = normalizeString(companyName);
-  if (!trimmed) {
-    return {
-      id: null,
-      name: null,
-      imageUrl: null,
-    };
-  }
-
-  let info = null;
-  if (visitorType === 'taxi_vehicle_driver') {
-    info = getTaxiCompanyInfo(trimmed);
-  } else if (visitorType === 'other_visitor') {
-    info = getOtherVisitorCompanyInfo(trimmed);
-  }
-
-  return {
-    id: info?.id || normalizeCompanyId(trimmed) || null,
-    name: info?.name || trimmed,
-    imageUrl: info?.imageUrl || companyLogo || null,
-  };
 };
 
 const resolveCompanyLogoForRequest = async ({ visitorType, companyName }) => {
@@ -711,17 +680,12 @@ const toGuardCardPayload = ({ reqDoc, approvedByUser, approvedByGuard, companyLo
 
     },
     imageUrl: reqDoc.guestImageUrl || null,
-    company: resolveCompanyObject({
-      visitorType: reqDoc.visitorType,
-      companyName: reqDoc.visitorCompanyName,
-      companyLogo,
-    }),
     companyName: reqDoc.visitorCompanyName || null,
     companyLogo: companyLogo || null,
     workCategory: reqDoc.visitorWorkCategory || null,
     approvedBy: approvedByInfo,
-    approvedOn: approvedOnDate ? toISTDateTimeLabelWithoutYear(approvedOnDate) : null,
-    requestedOn: reqDoc.createdAt ? toISTDateTimeLabelWithoutYear(reqDoc.createdAt) : null,
+    approvedOn: approvedOnDate ? toISTDateTimeLabel(approvedOnDate) : null,
+    requestedOn: reqDoc.createdAt ? toISTDateTimeLabel(reqDoc.createdAt) : null,
   };
 };
 
@@ -818,9 +782,9 @@ const enrichGuardListPayload = ({ payload, reqDoc, relatedDocs, userById }) => {
     ...payload,
     residentMobileNumber: residentMobileNumbers[0] || null,
     residentMobileNumbers,
-    entryDeniedAt: reqDoc?.rejectedAt ? toISTDateTimeLabelWithoutYear(reqDoc.rejectedAt) : null,
+    entryDeniedAt: reqDoc?.rejectedAt ? toISTDateTimeLabel(reqDoc.rejectedAt) : null,
     entryDeniedReason: toDeniedReasonLabel(reqDoc),
-    exit: reqDoc?.entryLeftAt ? toISTDateTimeLabelWithoutYear(reqDoc.entryLeftAt) : null,
+    exit: reqDoc?.entryLeftAt ? toISTDateTimeLabel(reqDoc.entryLeftAt) : null,
     exitNotifier: toExitNotifier({ reqDoc, userById }),
     wrongEntryNotifiedAt: reqDoc?.wrongEntryMarkedAt ? toISTDateTimeLabel(reqDoc.wrongEntryMarkedAt) : null,
     wrongEntryNotifier: toWrongEntryNotifier({ reqDoc, userById }),
@@ -1233,9 +1197,9 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
                   })()
                 : '',
             approvedOn: d.approvedByGuardWithoutMemberResponse && d.approvedByGuardAt
-              ? toISTDateTimeLabelWithoutYear(d.approvedByGuardAt)
+              ? toISTDateTimeLabel(d.approvedByGuardAt)
               : d.approvedAt
-                ? toISTDateTimeLabelWithoutYear(d.approvedAt)
+                ? toISTDateTimeLabel(d.approvedAt)
                 : '',
           }));
 
@@ -1501,7 +1465,7 @@ const createGuestEntryRequest = async (req, res, next) => {
 
     if (!guestName) return next(createHttpError('guestName is required.', 400));
     if (!phoneRaw) return next(createHttpError('phoneNumber is required.', 400));
-    if (!isTenDigitPhone(phoneRaw)) return next(createHttpError('Please enter a valid phone number.', 400));
+    if (!isTenDigitPhone(phoneRaw)) return next(createHttpError('phoneNumber must contain exactly 10 digits.', 400));
 
     let visitorType = (visitorTypeRaw || '').toLowerCase().replace(/\s+/g, '_') || 'guest';
     if (!visitorTypeRaw && companyNameRaw) visitorType = 'delivery_executive';
@@ -1513,8 +1477,17 @@ const createGuestEntryRequest = async (req, res, next) => {
         createHttpError('Multiple wing/unit targets are only supported for delivery executive.', 400)
       );
     }
+    if (visitorType === 'delivery_executive' && !companyNameRaw) {
+      return next(createHttpError('deliveryCompanyName is required for delivery executive.', 400));
+    }
+    if (visitorType === 'taxi_vehicle_driver' && !companyNameRaw) {
+      return next(createHttpError('companyName is required for taxi vehicle driver.', 400));
+    }
     if (visitorType === 'other_visitor' && !workCategoryRaw) {
       return next(createHttpError('workCategory is required for other visitor.', 400));
+    }
+    if (visitorType === 'other_visitor' && !companyNameRaw) {
+      return next(createHttpError('companyName is required for other visitor.', 400));
     }
 
     const useFlatDeliveryMultiUnitResponse =
@@ -1726,17 +1699,12 @@ const createGuestEntryRequest = async (req, res, next) => {
       visitorType: labels.visitorType,
       photoRequired,
       requestsendat: primaryDoc.createdAt ? toISTDateTimeLabel(primaryDoc.createdAt) : null,
-      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabelWithoutYear(primaryDoc.expiresAt) : null,
+      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabel(primaryDoc.expiresAt) : null,
       guest: {
         name: primaryDoc.guestName,
         countryCode: primaryDoc.guestCountryCode || '+91',
         phoneNumber: primaryDoc.guestPhoneNumber,
         imageUrl: primaryDoc.guestImageUrl || null,
-        company: resolveCompanyObject({
-          visitorType: primaryDoc.visitorType,
-          companyName: primaryDoc.visitorCompanyName,
-          companyLogo: null,
-        }),
         companyName: primaryDoc.visitorCompanyName || null,
         workCategory: primaryDoc.visitorWorkCategory || null,
       },
@@ -1786,7 +1754,7 @@ const createGuestEntryRequest = async (req, res, next) => {
           visitorType: primaryDoc.visitorType || 'delivery_executive',
           photoRequired,
           requestsendat: primaryDoc.createdAt ? toISTDateTimeLabel(primaryDoc.createdAt) : null,
-          expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabelWithoutYear(primaryDoc.expiresAt) : null,
+          expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabel(primaryDoc.expiresAt) : null,
           name: primaryDoc.guestName,
           phoneNumber: primaryDoc.guestPhoneNumber,
           countryCode: primaryDoc.guestCountryCode || '+91',
@@ -2110,7 +2078,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         category: labels.category,
         visitorType: labels.visitorType,
         inviteType: linkedInvite?.type || null,
-        requestedOn: d.createdAt ? toISTDateTimeLabelWithoutYear(d.createdAt) : null,
+        requestedOn: d.createdAt ? toISTDateTimeLabel(d.createdAt) : null,
         unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
         guest: {
           name: d.guestName,
@@ -2123,8 +2091,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         },
         accompanyingCount: String(d.accompanyingCount || 0),
         vehicleNumber: d.vehicleNumber || null,
-        entryAt: d.entryAllowedAt ? toISTDateTimeLabelWithoutYear(d.entryAllowedAt) : null,
-        leftAt: d.entryLeftAt ? toISTDateTimeLabelWithoutYear(d.entryLeftAt) : null,
+        entryAt: d.entryAllowedAt ? toISTDateTimeLabel(d.entryAllowedAt) : null,
+        leftAt: d.entryLeftAt ? toISTDateTimeLabel(d.entryLeftAt) : null,
         isPreApproval: Boolean(d.guestInviteId),
         isPrivateInvite: linkedInvite ? Boolean(linkedInvite.isPrivateInvite) : false,
         isSilentDelivery: false,
@@ -2233,7 +2201,6 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             companyName: 1,
             companyImageUrl: 1,
             vehicleNumber: 1,
-            isSilentDelivery: 1,
             isPrivateInvite: 1,
             validFrom: 1,
             validTill: 1,
@@ -2255,7 +2222,6 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             visitorName: 1,
             workCategory: 1,
             companyName: 1,
-            isSilentDelivery: 1,
             isPrivateInvite: 1,
             validFrom: 1,
             validTill: 1,
@@ -2276,8 +2242,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             : effectiveStatus === 'expired'
               ? 'Expired'
               : 'Cancelled';
-        const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(doc.validFrom);
-        const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(doc.validTill);
+        const fromLabel = toISTDateTimeLabelNoComma(doc.validFrom);
+        const tillLabel = toISTDateTimeLabelNoComma(doc.validTill);
         const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
         const displayName = doc.visitorName || null;
         const preApprovalLogo =
@@ -2295,7 +2261,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           category: labels.category,
           visitorType: labels.visitorType,
           inviteType: null,
-          requestedOn: doc.validFrom ? toISTDateTimeLabelWithoutYear(doc.validFrom) : null,
+          requestedOn: doc.validFrom ? toISTDateTimeLabel(doc.validFrom) : null,
           guest: {
             name: displayName,
             imageUrl: normalizeString(doc.companyImageUrl) || null,
@@ -2305,7 +2271,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           },
           validityLabel,
           isPreApproval: true,
-          isSilentDelivery: Boolean(doc.isSilentDelivery),
+          isSilentDelivery: doc.visitorType === 'delivery_executive' ? Boolean(doc.isSilentDelivery) : false,
           isPrivateInvite: Boolean(doc.isPrivateInvite),
           _sortAt: doc.createdAt || doc.validFrom || doc.validTill || null,
         };
@@ -2383,8 +2349,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
             : effectiveStatus === 'expired'
               ? 'Expired'
               : 'Cancelled';
-        const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(invite.validFrom);
-        const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(invite.validTill);
+        const fromLabel = toISTDateTimeLabelNoComma(invite.validFrom);
+        const tillLabel = toISTDateTimeLabelNoComma(invite.validTill);
         const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
         const isGroup = invite.type === 'group';
@@ -2405,7 +2371,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           category: VISITOR_TYPE_LABELS.guest.category,
           visitorType: VISITOR_TYPE_LABELS.guest.visitorType,
           inviteType: invite.type || null,
-          requestedOn: invite.validFrom ? toISTDateTimeLabelWithoutYear(invite.validFrom) : null,
+          requestedOn: invite.validFrom ? toISTDateTimeLabel(invite.validFrom) : null,
           guest: {
             name: isGroup ? 'Group / Party Guests' : (guest?.name || null),
             imageUrl: isGroup ? '' : guestImageUrl,
@@ -2625,7 +2591,7 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
         statusKey: doc.status,
         category: labels.category,
         visitorType: labels.visitorType,
-        requestedOn: doc.createdAt ? toISTDateTimeLabelWithoutYear(doc.createdAt) : null,
+        requestedOn: doc.createdAt ? toISTDateTimeLabel(doc.createdAt) : null,
         unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
         guest: {
           name: doc.guestName,
@@ -2638,8 +2604,8 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
         },
         accompanyingCount: String(doc.accompanyingCount || 0),
         vehicleNumber: doc.vehicleNumber || null,
-        entryAt: doc.entryAllowedAt ? toISTDateTimeLabelWithoutYear(doc.entryAllowedAt) : null,
-        leftAt: doc.entryLeftAt ? toISTDateTimeLabelWithoutYear(doc.entryLeftAt) : null,
+        entryAt: doc.entryAllowedAt ? toISTDateTimeLabel(doc.entryAllowedAt) : null,
+        leftAt: doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null,
       };
     });
 
@@ -2785,36 +2751,6 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           rejectedReasonOut = canonicalizeEnumReason(rejectedReasonRaw, allowedReasons) || rejectedReasonRaw;
         }
 
-        const visitorPhoneDigits = normalizePhoneDigits(doc.guestPhoneDigits || doc.guestPhoneNumber);
-        const isDeliveryExecutive = doc.visitorType === 'delivery_executive';
-        const isDailyHelpVisitor =
-          doc.visitorType === 'other_visitor' &&
-          Boolean(visitorPhoneDigits) &&
-          Boolean(
-            await DailyHelp.exists({
-              societyId: doc.societyId,
-              phoneDigits: visitorPhoneDigits,
-              status: 'APPROVED',
-            })
-          );
-
-        let detailBody = null;
-        if ((isDeliveryExecutive || isDailyHelpVisitor) && visitorPhoneDigits) {
-          const activeUnitCount = await GuestEntryRequest.countDocuments({
-            societyId: doc.societyId,
-            guestPhoneDigits: visitorPhoneDigits,
-            status: { $in: ['approved', 'entered'] },
-          });
-          const otherUnitCount = Math.max(0, activeUnitCount - 1);
-          if (otherUnitCount > 0) {
-            const countLabel = otherUnitCount === 1 ? 'one' : String(otherUnitCount);
-            const unitLabel = otherUnitCount === 1 ? 'unit' : 'units';
-            detailBody = isDeliveryExecutive
-              ? `Delivering to ${countLabel} other ${unitLabel}.`
-              : `Helping ${countLabel} other ${unitLabel}.`;
-          }
-        }
-
         return sendSuccessResponse(res, 200, 'Guest entry request fetched successfully.', {
           data: {
             requestId: doc.requestId,
@@ -2822,11 +2758,11 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             statusKey: doc.status,
             category: labels.category,
             visitorType: labels.visitorType,
-            requestedOn: doc.createdAt ? toISTDateTimeLabelWithoutYear(doc.createdAt) : null,
-            approvedOn: doc.approvedAt ? toISTDateTimeLabelWithoutYear(doc.approvedAt) : null,
-            expiresAt: doc.expiresAt ? toISTDateTimeLabelWithoutYear(doc.expiresAt) : null,
-            entryAt: doc.entryAllowedAt ? toISTDateTimeLabelWithoutYear(doc.entryAllowedAt) : null,
-            leftAt: doc.entryLeftAt ? toISTDateTimeLabelWithoutYear(doc.entryLeftAt) : null,
+            requestedOn: doc.createdAt ? toISTDateTimeLabel(doc.createdAt) : null,
+            approvedOn: doc.approvedAt ? toISTDateTimeLabel(doc.approvedAt) : null,
+            expiresAt: doc.expiresAt ? toISTDateTimeLabel(doc.expiresAt) : null,
+            entryAt: doc.entryAllowedAt ? toISTDateTimeLabel(doc.entryAllowedAt) : null,
+            leftAt: doc.entryLeftAt ? toISTDateTimeLabel(doc.entryLeftAt) : null,
             exitNotifier,
             unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
             approvedBy: approvedByUser
@@ -2871,7 +2807,6 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             wrongEntryNotifier,
             rejectedReason: rejectedReasonOut,
             rejectedDescription: doc.rejectedDescription || null,
-            ...(detailBody ? { body: detailBody } : {}),
           },
         });
       }
@@ -2908,7 +2843,6 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           companyName: 1,
           companyImageUrl: 1,
           vehicleNumber: 1,
-          isSilentDelivery: 1,
           isPrivateInvite: 1,
           validFrom: 1,
           validTill: 1,
@@ -2928,7 +2862,6 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           visitorName: 1,
           workCategory: 1,
           companyName: 1,
-          isSilentDelivery: 1,
           isPrivateInvite: 1,
           validFrom: 1,
           validTill: 1,
@@ -2946,8 +2879,8 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
     if (preDoc) {
       const effectiveStatus = resolveActiveStatus(preDoc.status, preDoc.validTill, new Date());
       const labels = toVisitorLabels(preDoc.visitorType || 'guest');
-      const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(preDoc.validFrom);
-      const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(preDoc.validTill);
+      const fromLabel = toISTDateTimeLabelNoComma(preDoc.validFrom);
+      const tillLabel = toISTDateTimeLabelNoComma(preDoc.validTill);
       const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
       const invitedByUser = preDoc.invitedByUserId
         ? await User.findById(preDoc.invitedByUserId, { fullName: 1, countryCode: 1, phoneNumber: 1 }).lean()
@@ -2974,10 +2907,10 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           statusKey: effectiveStatus === 'active' ? 'approved' : effectiveStatus,
           category: labels.category,
           visitorType: labels.visitorType,
-          requestedOn: preDoc.validFrom ? toISTDateTimeLabelWithoutYear(preDoc.validFrom) : null,
+          requestedOn: preDoc.validFrom ? toISTDateTimeLabel(preDoc.validFrom) : null,
           validFrom: preDoc.validFrom ? toISTDateTimeLabel(preDoc.validFrom) : null,
           validTill: preDoc.validTill ? toISTDateTimeLabel(preDoc.validTill) : null,
-          createdAt: preDoc.createdAt ? toISTDateTimeLabelWithoutYear(preDoc.createdAt) : null,
+          createdAt: preDoc.createdAt ? toISTDateTimeLabel(preDoc.createdAt) : null,
           validityLabel,
           unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
           approver: invitedByUser
@@ -3002,11 +2935,12 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           accompanyingCount: '0',
           vehicleNumber: preDoc.vehicleNumber || null,
           isPreApproval: true,
-          isSilentDelivery: Boolean(preDoc.isSilentDelivery),
+          isSilentDelivery:
+            preDoc.visitorType === 'delivery_executive' ? Boolean(preDoc.isSilentDelivery) : false,
           isPrivateInvite: Boolean(preDoc.isPrivateInvite),
           cancelledReason: preCancelledReasonOut,
           cancelledDescription: normalizeString(preDoc.cancelledDescription) || null,
-          cancelledAt: preDoc.cancelledAt ? toISTDateTimeLabelWithoutYear(preDoc.cancelledAt) : null,
+          cancelledAt: preDoc.cancelledAt ? toISTDateTimeLabel(preDoc.cancelledAt) : null,
         },
       });
     }
@@ -3022,8 +2956,8 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       const effectiveStatus = resolveActiveStatus(guestInvite.status, guestInvite.validTill, new Date());
       const inviteStatusLabel = (status) =>
         status === 'active' ? 'Pre Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
-      const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(guestInvite.validFrom);
-      const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(guestInvite.validTill);
+      const fromLabel = toISTDateTimeLabelNoComma(guestInvite.validFrom);
+      const tillLabel = toISTDateTimeLabelNoComma(guestInvite.validTill);
       const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
 
       const invitedByUser = guestInvite.invitedByUserId
@@ -3081,8 +3015,8 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
             imageUrl: entry.guestImageUrl || null,
             status: toMemberStatusLabel(entry.status, entry),
             statusKey: entry.status,
-            entryAt: entry.entryAllowedAt ? toISTDateTimeLabelWithoutYear(entry.entryAllowedAt) : null,
-            leftAt: entry.entryLeftAt ? toISTDateTimeLabelWithoutYear(entry.entryLeftAt) : null,
+            entryAt: entry.entryAllowedAt ? toISTDateTimeLabel(entry.entryAllowedAt) : null,
+            leftAt: entry.entryLeftAt ? toISTDateTimeLabel(entry.entryLeftAt) : null,
             accompanyingCount: String(entry.accompanyingCount || 0),
             vehicleNumber: entry.vehicleNumber || null,
             isWrongEntry: entry.isWrongEntry || false,
@@ -3104,7 +3038,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           visitorType: 'Guest',
           inviteType: guestInvite.type,
           isPrivateInvite: Boolean(guestInvite.isPrivateInvite),
-          requestedOn: guestInvite.createdAt ? toISTDateTimeLabelWithoutYear(guestInvite.createdAt) : null,
+          requestedOn: guestInvite.createdAt ? toISTDateTimeLabel(guestInvite.createdAt) : null,
           validityLabel,
           unit: { wingName: unitDoc.wingName, unitNumber: unitDoc.unitNumber },
           approver: invitedByUser
@@ -3119,7 +3053,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           usedEntries: Array.isArray(guestInvite.entryLogs) ? guestInvite.entryLogs.length : 0,
           cancelledReason: inviteCancelledReasonOut,
           cancelledDescription: normalizeString(guestInvite.cancelledDescription) || null,
-          cancelledAt: guestInvite.cancelledAt ? toISTDateTimeLabelWithoutYear(guestInvite.cancelledAt) : null,
+          cancelledAt: guestInvite.cancelledAt ? toISTDateTimeLabel(guestInvite.cancelledAt) : null,
           cancelledBy: cancelledByUser
             ? {
                 name: cancelledByUser.fullName || null,
@@ -3781,7 +3715,7 @@ const updateGuestEntryRequestPhoto = async (req, res, next) => {
         visitorType: labels.visitorType,
         photoRequired: false,
         requestsendat: doc.createdAt ? toISTDateTimeLabel(doc.createdAt) : null,
-        expiresAt: doc.expiresAt ? toISTDateTimeLabelWithoutYear(doc.expiresAt) : null,
+        expiresAt: doc.expiresAt ? toISTDateTimeLabel(doc.expiresAt) : null,
         unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
         guest: {
           name: doc.guestName,
@@ -3909,11 +3843,11 @@ const allowGuestExitForMember = async (req, res, next) => {
     doc.entryLeftAt = new Date();
     await doc.save();
 
-    
+    // Notify the guard who allowed entry, or the guard who created the request, or the on-duty guard
     const guardToNotify = doc.entryAllowedByGuardId || doc.createdByGuardId;
     const guardOnDuty = await findGuardOnDuty(doc.societyId);
     
-    
+    // Collect unique guard IDs to notify
     const guardsToNotify = new Set();
     if (guardToNotify) {
       guardsToNotify.add(String(guardToNotify));
@@ -4037,7 +3971,7 @@ const markWrongEntryForMember = async (req, res, next) => {
     doc.status = 'wrong_entry';
     await doc.save();
 
-    
+    // Notify the guard who allowed entry about the wrong entry
     const guardToNotify = doc.entryAllowedByGuardId || doc.createdByGuardId;
     if (guardToNotify) {
       const guardShouldBeNotified = await shouldNotifyGuardByPreference(guardToNotify, 'denial');
@@ -4413,8 +4347,8 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
       statusKey: primaryDoc.status,
       category: labels.category,
       visitorType: labels.visitorType,
-      requestedOn: primaryDoc.createdAt ? toISTDateTimeLabelWithoutYear(primaryDoc.createdAt) : null,
-      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabelWithoutYear(primaryDoc.expiresAt) : null,
+      requestedOn: primaryDoc.createdAt ? toISTDateTimeLabel(primaryDoc.createdAt) : null,
+      expiresAt: primaryDoc.expiresAt ? toISTDateTimeLabel(primaryDoc.expiresAt) : null,
       guest: {
         id: String(visitor._id),
         name: guestName,

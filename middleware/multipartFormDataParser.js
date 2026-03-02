@@ -4,6 +4,15 @@ const { uploadBufferToS3 } = require('../utils/s3Upload');
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
+const ALLOWED_MIME_TYPES = new Set(['application/pdf']);
+
+const isAllowedMultipartMimeType = (mimeType) => {
+  const normalized = String(mimeType || '').toLowerCase().trim();
+  if (!normalized) return false;
+  if (normalized.startsWith('image/')) return true;
+  return ALLOWED_MIME_TYPES.has(normalized);
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -11,8 +20,8 @@ const upload = multer({
     files: 20,
   },
   fileFilter: (req, file, cb) => {
-    if (!file || !file.mimetype || !String(file.mimetype).toLowerCase().startsWith('image/')) {
-      return cb(createHttpError('Only image files are allowed in multipart uploads.', 400));
+    if (!file || !isAllowedMultipartMimeType(file.mimetype)) {
+      return cb(createHttpError('Only image or PDF files are allowed in multipart uploads.', 400));
     }
     return cb(null, true);
   },
@@ -62,6 +71,7 @@ const resolveExtensionFromMimeType = (mimeType, fallback = 'bin') => {
   if (normalized === 'image/heic') return 'heic';
   if (normalized === 'image/heif') return 'heif';
   if (normalized === 'image/gif') return 'gif';
+  if (normalized === 'application/pdf') return 'pdf';
 
   const slashIndex = normalized.indexOf('/');
   if (slashIndex !== -1 && slashIndex < normalized.length - 1) {
@@ -113,7 +123,7 @@ const mapMultipartFilesToBody = async (req) => {
         fileName,
       });
     } catch (error) {
-      throw createHttpError(error.message || 'Failed to upload multipart image.', 500);
+      throw createHttpError(error.message || 'Failed to upload multipart file.', 500);
     }
 
     pushBodyValue(req.body, field, uploadedUrl);
@@ -129,7 +139,7 @@ const multipartFormDataParser = (req, res, next) => {
   return upload.any()(req, res, (error) => {
     if (error) {
       if (error && error.code === 'LIMIT_FILE_SIZE') {
-        return next(createHttpError('Image size must be 10MB or less.', 400));
+        return next(createHttpError('File size must be 10MB or less.', 400));
       }
       if (error && error.code === 'LIMIT_FILE_COUNT') {
         return next(createHttpError('Too many files uploaded in a single request.', 400));
