@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10);
 
@@ -119,9 +118,5 @@ societySchema.index(
   { 'societyAdmins.resetPasswordToken': 1, 'societyAdmins.resetPasswordExpires': 1 },
   { partialFilterExpression: { 'societyAdmins.resetPasswordToken': { $type: 'string' } } }
 );
-
-applyTitleCasePlugin(societySchema, {
-        paths: ['societyName', 'structure.wingName', 'entryGates.name', 'exitGates.name', 'societyAdmins.name', 'societyAdmins.wingName'],
-});
 
 module.exports = mongoose.model('Society', societySchema);

@@ -7,6 +7,96 @@ const { sendSuccessResponse } = require('../utils/response');
 const PIN_MIN = 100000;
 const PIN_MAX = 999999;
 
+const toTrimmedString = (value) => {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  if (value && typeof value === 'object') {
+    const candidateKeys = ['name', 'wingName', 'unitNumber', 'number'];
+    for (const key of candidateKeys) {
+      if (typeof value[key] === 'string') {
+        return value[key].trim();
+      }
+    }
+  }
+
+  return '';
+};
+
+const toFiniteNumber = (value) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+};
+
+const normalizeStructureInput = (structure, wings) => {
+  const source = Array.isArray(structure)
+    ? structure
+    : Array.isArray(wings)
+      ? wings
+      : [];
+
+  return source
+    .map((wing = {}) => {
+      const wingName = toTrimmedString(wing.wingName ?? wing.name);
+      const rawUnits = Array.isArray(wing.units) ? wing.units : [];
+      const units = rawUnits
+        .map((unit = {}) => ({
+          unitNumber: toTrimmedString(unit.unitNumber ?? unit.number ?? unit),
+        }))
+        .filter((unit) => unit.unitNumber.length > 0);
+
+      const totalUnits = toFiniteNumber(wing.totalUnits) ?? units.length;
+
+      if (!wingName) {
+        return null;
+      }
+
+      return {
+        wingName,
+        totalUnits,
+        units,
+      };
+    })
+    .filter(Boolean);
+};
+
+const normalizeGateList = (gates = []) =>
+  (Array.isArray(gates) ? gates : [])
+    .map((gate = {}) => ({
+      name: toTrimmedString(gate.name ?? gate),
+    }))
+    .filter((gate) => gate.name.length > 0);
+
+const normalizeSocietyAdminsInput = (admins = []) =>
+  (Array.isArray(admins) ? admins : [])
+    .map((admin = {}) => {
+      const email = toTrimmedString(admin.email).toLowerCase();
+      const mobile = toTrimmedString(admin.mobile).replace(/\D/g, '');
+
+      return {
+        name: toTrimmedString(admin.name),
+        mobile,
+        email,
+      };
+    })
+    .filter((admin) => admin.name && admin.mobile && admin.email);
+
+const isMongooseValidationError = (error) =>
+  Boolean(error && (error.name === 'ValidationError' || error.name === 'CastError'));
+
 const generateCandidatePin = () =>
   Math.floor(Math.random() * (PIN_MAX - PIN_MIN + 1)) + PIN_MIN;
 
@@ -68,6 +158,7 @@ const createSociety = async (req, res, next) => {
       maintenanceDueDate,
       notes,
       structure,
+      wings,
       entryGates,
       exitGates,
       societyAdmins,
@@ -77,11 +168,15 @@ const createSociety = async (req, res, next) => {
 
     const engagement = engagementInput || {};
     const totals = computeEngagementTotals(engagement);
-    const normalizedSocietyAdmins = Array.isArray(societyAdmins)
-      ? normalizeIncomingAdmins(societyAdmins)
-      : undefined;
+    const normalizedStructure = normalizeStructureInput(structure, wings);
+    const normalizedEntryGates = normalizeGateList(entryGates);
+    const normalizedExitGates = normalizeGateList(exitGates);
 
-    if (normalizedSocietyAdmins?.length > 0) {
+    const normalizedSocietyAdmins = normalizeIncomingAdmins(
+      normalizeSocietyAdminsInput(societyAdmins)
+    );
+
+    if (normalizedSocietyAdmins.length > 0) {
       await ensureAdminListIsUnique(normalizedSocietyAdmins, { skipDbCheck: true });
     }
 
@@ -109,9 +204,9 @@ const createSociety = async (req, res, next) => {
       status,
       maintenanceDueDate,
       notes,
-      structure,
-      entryGates,
-      exitGates,
+      structure: normalizedStructure,
+      entryGates: normalizedEntryGates,
+      exitGates: normalizedExitGates,
       societyAdmins: normalizedSocietyAdmins,
       engagement: {
         ...engagement,
@@ -124,6 +219,9 @@ const createSociety = async (req, res, next) => {
     await newSociety.save();
     return sendSuccessResponse(res, 201, 'Society created successfully.', { data: newSociety });
   } catch (error) {
+    if (isMongooseValidationError(error)) {
+      return next(setErrorDefaults(error, error.message, 400));
+    }
     next(setErrorDefaults(error, 'Failed to create society'));
   }
 };
