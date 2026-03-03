@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const otherVisitorPreApprovalSchema = new mongoose.Schema(
   {
@@ -65,9 +64,5 @@ const otherVisitorPreApprovalSchema = new mongoose.Schema(
 
 otherVisitorPreApprovalSchema.index({ societyId: 1, unitId: 1, validFrom: -1 });
 otherVisitorPreApprovalSchema.index({ invitedByUserId: 1, createdAt: -1 });
-
-applyTitleCasePlugin(otherVisitorPreApprovalSchema, {
-  paths: ['visitorName', 'companyName'],
-});
 
 module.exports = mongoose.model('OtherVisitorPreApproval', otherVisitorPreApprovalSchema);

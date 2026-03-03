@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const PET_TYPES = ['Dog', 'Cat', 'Parrot', 'Rabbit', 'Hamsters', 'Others'];
 const VACCINATION_STATUSES = [
@@ -33,10 +32,6 @@ petSchema.index({ unitId: 1, name: 1, petType: 1 }, {
   unique: true,
   name: 'uniq_pet_name_type_per_unit',
   partialFilterExpression: { deletedAt: null },
-});
-
-applyTitleCasePlugin(petSchema, {
-  paths: ['name'],
 });
 
 module.exports = mongoose.model('Pet', petSchema);

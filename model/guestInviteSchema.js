@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const GUEST_INVITE_TYPES = ['quick', 'group', 'frequent'];
 
@@ -137,10 +136,6 @@ const guestInviteSchema = new mongoose.Schema(
 
 guestInviteSchema.index({ societyId: 1, unitId: 1, validFrom: -1 });
 guestInviteSchema.index({ invitedByUserId: 1, createdAt: -1 });
-
-applyTitleCasePlugin(guestInviteSchema, {
-  paths: ['guests.name', 'entryLogs.guestName'],
-});
 
 module.exports = mongoose.model('GuestInvite', guestInviteSchema);
 

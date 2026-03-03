@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const taxiDriverPreApprovalSchema = new mongoose.Schema(
   {
@@ -67,9 +66,5 @@ const taxiDriverPreApprovalSchema = new mongoose.Schema(
 
 taxiDriverPreApprovalSchema.index({ societyId: 1, unitId: 1, validFrom: -1 });
 taxiDriverPreApprovalSchema.index({ invitedByUserId: 1, createdAt: -1 });
-
-applyTitleCasePlugin(taxiDriverPreApprovalSchema, {
-  paths: ['visitorName', 'companyName'],
-});
 
 module.exports = mongoose.model('TaxiDriverPreApproval', taxiDriverPreApprovalSchema);

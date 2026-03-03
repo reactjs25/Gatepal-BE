@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const validator = require('validator');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const superAdminSchema = new mongoose.Schema(
   {
@@ -65,10 +64,6 @@ superAdminSchema.pre('save', async function hashPassword(next) {
 superAdminSchema.methods.comparePassword = function comparePassword(candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
-
-applyTitleCasePlugin(superAdminSchema, {
-  paths: ['fullName'],
-});
 
 module.exports = mongoose.model('SuperAdmin', superAdminSchema);
 

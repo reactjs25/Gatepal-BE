@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10); 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
@@ -362,9 +361,5 @@ userSchema.methods.verifyOtp = function verifyOtp(otp) {
 
   return isValid;
 };
-
-applyTitleCasePlugin(userSchema, {
-  paths: ['fullName', 'visitorCompanyName', 'guardSocieties.societyName', 'guardSocieties.dutyGateName'],
-});
 
 module.exports = mongoose.model('User', userSchema);

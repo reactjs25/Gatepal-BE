@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const VEHICLE_TYPES = ['Two-Wheeler', 'Four-Wheeler', 'Other'];
 
@@ -29,10 +28,6 @@ vehicleSchema.index(
   { unitId: 1, vehicleNumber: 1 },
   { unique: true, name: 'uniq_vehicle_per_unit', partialFilterExpression: { deletedAt: null } }
 );
-
-applyTitleCasePlugin(vehicleSchema, {
-  paths: ['name'],
-});
 
 module.exports = mongoose.model('Vehicle', vehicleSchema);
 

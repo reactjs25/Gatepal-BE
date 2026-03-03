@@ -14,7 +14,7 @@ const TaxiDriverPreApproval = require('../model/taxiDriverPreApprovalSchema');
 const OtherVisitorPreApproval = require('../model/otherVisitorPreApprovalSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
-const { normalizeString, toTitleCaseName } = require('../utils/strings');
+const { normalizeString } = require('../utils/strings');
 const { ACTION_REASONS, normalizeVisitorType } = require('../utils/enums/actionReasonEnums');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
@@ -1458,7 +1458,7 @@ const createGuestEntryRequest = async (req, res, next) => {
         });
       }
     }
-    const guestName = toTitleCaseName(req.body?.guestName ?? req.body?.fullName ?? req.body?.name);
+    const guestName = normalizeString(req.body?.guestName ?? req.body?.fullName ?? req.body?.name);
     const phoneRaw = normalizeString(req.body?.phoneNumber ?? req.body?.mobileNumber ?? req.body?.mobile);
     const countryCode = normalizeCountryCode(req.body?.countryCode || '+91');
     const imageUrl = normalizeString(req.body?.imageUrl) || null;

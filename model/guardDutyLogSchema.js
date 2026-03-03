@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const guardDutyLogSchema = new mongoose.Schema(
   {
@@ -58,9 +57,5 @@ const guardDutyLogSchema = new mongoose.Schema(
 
 guardDutyLogSchema.index({ societyId: 1, logTime: -1 });
 guardDutyLogSchema.index({ guardId: 1, logTime: -1 });
-
-applyTitleCasePlugin(guardDutyLogSchema, {
-  paths: ['guardName'],
-});
 
 module.exports = mongoose.model('GuardDutyLog', guardDutyLogSchema);

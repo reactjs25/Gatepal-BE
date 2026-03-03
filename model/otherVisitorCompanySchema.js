@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const otherVisitorCompanySchema = new mongoose.Schema(
   {
@@ -9,9 +8,5 @@ const otherVisitorCompanySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-applyTitleCasePlugin(otherVisitorCompanySchema, {
-  paths: ['name'],
-});
 
 module.exports = mongoose.model('OtherVisitorCompany', otherVisitorCompanySchema);

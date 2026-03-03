@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
-const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered', 'left', 'wrong_entry'];
 const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
@@ -95,10 +94,6 @@ const guestEntryRequestSchema = new mongoose.Schema(
 );
 
 guestEntryRequestSchema.index({ societyId: 1, wingNameLower: 1, unitNumberLower: 1, createdAt: -1 });
-
-applyTitleCasePlugin(guestEntryRequestSchema, {
-  paths: ['guestName', 'visitorCompanyName'],
-});
 
 module.exports = mongoose.model('GuestEntryRequest', guestEntryRequestSchema);
 
