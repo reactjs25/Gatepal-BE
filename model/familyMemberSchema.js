@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const FAMILY_CATEGORIES = ['adult', 'child'];
 
@@ -31,6 +32,10 @@ familyMemberSchema.index({ comparablePhone: 1 }, {
   unique: true,
   name: 'uniq_family_comparable_phone_global',
   partialFilterExpression: { comparablePhone: { $type: 'string' } },
+});
+
+applyTitleCasePlugin(familyMemberSchema, {
+  paths: ['name'],
 });
 
 module.exports = mongoose.model('FamilyMember', familyMemberSchema);

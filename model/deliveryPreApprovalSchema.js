@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
+const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const deliveryPreApprovalSchema = new mongoose.Schema(
   {
@@ -64,5 +65,9 @@ const deliveryPreApprovalSchema = new mongoose.Schema(
 
 deliveryPreApprovalSchema.index({ societyId: 1, unitId: 1, validFrom: -1 });
 deliveryPreApprovalSchema.index({ invitedByUserId: 1, createdAt: -1 });
+
+applyTitleCasePlugin(deliveryPreApprovalSchema, {
+  paths: ['visitorName', 'companyName'],
+});
 
 module.exports = mongoose.model('DeliveryPreApproval', deliveryPreApprovalSchema);

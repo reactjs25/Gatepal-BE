@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const DailyHelpSchema = new mongoose.Schema(
   {
@@ -28,6 +29,10 @@ const DailyHelpSchema = new mongoose.Schema(
 );
 
 DailyHelpSchema.index({ societyId: 1, category: 1, phoneDigits: 1 }, { unique: true, sparse: true });
+
+applyTitleCasePlugin(DailyHelpSchema, {
+  paths: ['name'],
+});
 
 module.exports = mongoose.model('DailyHelp', DailyHelpSchema);
 

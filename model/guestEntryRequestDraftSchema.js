@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
+const { applyTitleCasePlugin } = require('../utils/mongooseTitleCasePlugin');
 
 const guestEntryRequestDraftSchema = new mongoose.Schema(
   {
@@ -52,5 +53,9 @@ const guestEntryRequestDraftSchema = new mongoose.Schema(
 );
 
 guestEntryRequestDraftSchema.index({ createdAt: 1 }, { expireAfterSeconds: 1800 });
+
+applyTitleCasePlugin(guestEntryRequestDraftSchema, {
+  paths: ['guestName', 'visitorCompanyName'],
+});
 
 module.exports = mongoose.model('GuestEntryRequestDraft', guestEntryRequestDraftSchema);
