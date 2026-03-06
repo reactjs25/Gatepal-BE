@@ -84,6 +84,9 @@ const guestEntryRequestSchema = new mongoose.Schema(
     approvedByGuardAt: { type: Date, default: null },
 
     
+    isPrivateEntry: { type: Boolean, default: false },
+    privateEntryForUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+
     isWrongEntry: { type: Boolean, default: false },
     wrongEntryReason: { type: String, trim: true, default: null },
     wrongEntryDescription: { type: String, trim: true, default: null },

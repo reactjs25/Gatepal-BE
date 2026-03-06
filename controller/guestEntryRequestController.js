@@ -534,14 +534,24 @@ const findGuestInviteApproval = async ({ societyId, unitId, guestName, phoneDigi
 
 const resolveRecipientUserIds = ({ visitorType, autoApproved, preApproval, defaultRecipientUserIds }) => {
   if (
-    visitorType === 'guest' &&
     autoApproved &&
-    Boolean(preApproval?.isPrivateInvite) &&
+    (Boolean(preApproval?.isPrivateInvite) || Boolean(preApproval?.isSilentDelivery)) &&
     preApproval?.invitedByUserId
   ) {
     return [preApproval.invitedByUserId];
   }
   return defaultRecipientUserIds;
+};
+
+const resolvePrivateEntryFlags = ({ autoApproved, preApproval }) => {
+  if (
+    autoApproved &&
+    (Boolean(preApproval?.isPrivateInvite) || Boolean(preApproval?.isSilentDelivery)) &&
+    preApproval?.invitedByUserId
+  ) {
+    return { isPrivateEntry: true, privateEntryForUserId: preApproval.invitedByUserId };
+  }
+  return { isPrivateEntry: false, privateEntryForUserId: null };
 };
 
 const resolvePreApprovalForUnit = async ({
@@ -1684,6 +1694,7 @@ const createGuestEntryRequest = async (req, res, next) => {
           : null;
         const autoApproved = Boolean(preApproval);
 
+        const privateFlags = resolvePrivateEntryFlags({ autoApproved, preApproval });
         return GuestEntryRequest.create({
           societyId: activeDuty.societyId,
           wingName: destination.wingName,
@@ -1713,6 +1724,7 @@ const createGuestEntryRequest = async (req, res, next) => {
             preApproval,
             defaultRecipientUserIds: recipientsByUnit.get(destinationKey),
           }),
+          ...privateFlags,
         });
       })
     );
@@ -1999,6 +2011,10 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         : status === 'approved'
           ? { status: '__hidden_for_member__' }
           : { status }),
+      $or: [
+        { isPrivateEntry: { $ne: true } },
+        { privateEntryForUserId: authUser._id },
+      ],
     };
     if (startAt || endAt) {
       listQuery.createdAt = {};
@@ -2028,6 +2044,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         entryAllowedAt: 1,
         entryLeftAt: 1,
         guestInviteId: 1,
+        isPrivateEntry: 1,
+        privateEntryForUserId: 1,
       }
     )
       .sort({ createdAt: -1 })
@@ -2126,8 +2144,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         entryAt: d.entryAllowedAt ? toISTDateTimeLabelWithoutYear(d.entryAllowedAt) : null,
         leftAt: d.entryLeftAt ? toISTDateTimeLabelWithoutYear(d.entryLeftAt) : null,
         isPreApproval: Boolean(d.guestInviteId),
-        isPrivateInvite: linkedInvite ? Boolean(linkedInvite.isPrivateInvite) : false,
-        isSilentDelivery: false,
+        isPrivateInvite: Boolean(d.isPrivateEntry) || (linkedInvite ? Boolean(linkedInvite.isPrivateInvite) : false),
+        isSilentDelivery: Boolean(d.isPrivateEntry) && !d.guestInviteId,
       };
     });
 
@@ -2311,10 +2329,17 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         };
       };
 
+      const isVisiblePreApproval = (doc) => {
+        if (Boolean(doc.isPrivateInvite) || Boolean(doc.isSilentDelivery)) {
+          return doc.invitedByUserId && String(doc.invitedByUserId) === String(authUser._id);
+        }
+        return true;
+      };
+
       preApprovalCards = [
-        ...deliveryApprovals.filter((doc) => !hasMatchingEntry(doc, 'delivery_executive')),
-        ...taxiApprovals.filter((doc) => !hasMatchingEntry(doc, 'taxi_vehicle_driver')),
-        ...otherApprovals.filter((doc) => !hasMatchingEntry(doc, 'other_visitor')),
+        ...deliveryApprovals.filter((doc) => isVisiblePreApproval(doc) && !hasMatchingEntry(doc, 'delivery_executive')),
+        ...taxiApprovals.filter((doc) => isVisiblePreApproval(doc) && !hasMatchingEntry(doc, 'taxi_vehicle_driver')),
+        ...otherApprovals.filter((doc) => isVisiblePreApproval(doc) && !hasMatchingEntry(doc, 'other_visitor')),
       ].map(mapPreApproval);
 
       if (status === 'expired') {
@@ -2427,6 +2452,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
       const mappedInvites = [];
       for (const invite of guestInvites || []) {
+        if (Boolean(invite.isPrivateInvite) && String(invite.invitedByUserId) !== String(authUser._id)) continue;
         if (invite.type === 'group') {
           
           const guest = Array.isArray(invite.guests) && invite.guests.length > 0 ? invite.guests[0] : null;
@@ -2710,6 +2736,10 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
           return next(createHttpError('Forbidden: request does not belong to this unit.', 403));
         }
 
+        if (doc.isPrivateEntry && doc.privateEntryForUserId && String(doc.privateEntryForUserId) !== String(authUser._id)) {
+          return next(createHttpError('Not found.', 404));
+        }
+
         if (doc.status === 'pending' && doc.expiresAt && doc.expiresAt.getTime() <= Date.now()) {
           await GuestEntryRequest.updateOne({ _id: doc._id }, { $set: { status: 'expired' } });
           doc.status = 'expired';
@@ -2944,6 +2974,13 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
 
     const preDoc = deliveryDoc || taxiDoc || otherDoc;
     if (preDoc) {
+      if (
+        (Boolean(preDoc.isPrivateInvite) || Boolean(preDoc.isSilentDelivery)) &&
+        preDoc.invitedByUserId &&
+        String(preDoc.invitedByUserId) !== String(authUser._id)
+      ) {
+        return next(createHttpError('Not found.', 404));
+      }
       const effectiveStatus = resolveActiveStatus(preDoc.status, preDoc.validTill, new Date());
       const labels = toVisitorLabels(preDoc.visitorType || 'guest');
       const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(preDoc.validFrom);
@@ -3019,6 +3056,13 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
     }).lean();
 
     if (guestInvite) {
+      if (
+        Boolean(guestInvite.isPrivateInvite) &&
+        guestInvite.invitedByUserId &&
+        String(guestInvite.invitedByUserId) !== String(authUser._id)
+      ) {
+        return next(createHttpError('Not found.', 404));
+      }
       const effectiveStatus = resolveActiveStatus(guestInvite.status, guestInvite.validTill, new Date());
       const inviteStatusLabel = (status) =>
         status === 'active' ? 'Pre Approved' : status === 'expired' ? 'Expired' : 'Cancelled';
@@ -4346,6 +4390,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
 
         const autoApproved = Boolean(preApproval);
         const expiresAt = autoApproved ? null : new Date(Date.now() + 30 * 60 * 1000);
+        const privateFlags = resolvePrivateEntryFlags({ autoApproved, preApproval });
 
         return GuestEntryRequest.create({
           societyId: activeDuty.societyId,
@@ -4377,6 +4422,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
             preApproval,
             defaultRecipientUserIds: recipientsByUnit.get(destinationKey),
           }),
+          ...privateFlags,
         });
       })
     );
