@@ -101,15 +101,20 @@ const formatNotificationCreatedOn = (dateValue, preferredLanguage = 'en') => {
   if (Number.isNaN(date.getTime())) return '';
 
   const now = new Date();
+  const tz = 'Asia/Kolkata';
 
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const istDateStr = (d) => d.toLocaleDateString('en-CA', { timeZone: tz });
+  const todayIST = istDateStr(now);
+  const dateIST = istDateStr(date);
 
-  const dayDiff = Math.round((startOfToday - startOfDate) / (24 * 60 * 60 * 1000));
+  const dayDiff = Math.round(
+    (new Date(todayIST) - new Date(dateIST)) / (24 * 60 * 60 * 1000),
+  );
 
   const locale = getLanguageLocale(preferredLanguage);
   const dayLabel = getRelativeDayLabel(preferredLanguage, dayDiff);
   const timePart = date.toLocaleTimeString(locale, {
+    timeZone: tz,
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
@@ -120,6 +125,7 @@ const formatNotificationCreatedOn = (dateValue, preferredLanguage = 'en') => {
   }
 
   const datePart = date.toLocaleDateString(locale, {
+    timeZone: tz,
     day: 'numeric',
     month: 'short',
     year: 'numeric',
