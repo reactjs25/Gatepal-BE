@@ -1717,8 +1717,8 @@ const createGuestEntryRequest = async (req, res, next) => {
           guestPhoneDigits: phoneDigits,
           guestImageUrl: finalImageUrl,
           visitorType,
-          visitorCompanyName: companyName || null,
-          visitorWorkCategory: resolvedWorkCategory || null,
+          visitorCompanyName: companyName || (autoApproved && preApproval?.companyName) || null,
+          visitorWorkCategory: resolvedWorkCategory || (autoApproved && preApproval?.workCategory) || null,
           accompanyingCount,
           vehicleNumber,
           status: autoApproved ? 'approved' : 'pending',
@@ -2204,7 +2204,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         }
 
         if (visitorType === 'delivery_executive') {
-          if (preCompany && preCompany !== entry.companyName) return false;
+          if (preCompany && entry.companyName && preCompany !== entry.companyName) return false;
         } else if (visitorType === 'taxi_vehicle_driver') {
           if (preCompany && preCompany !== entry.companyName) return false;
           if (preVehicle && preVehicle !== entry.vehicleNumber) return false;
@@ -4434,8 +4434,8 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
           guestImageUrl: finalImageUrl,
           visitorType,
           visitorUserId: visitor._id,
-          visitorCompanyName: companyName,
-          visitorWorkCategory: resolvedWorkCategory,
+          visitorCompanyName: companyName || (autoApproved && preApproval?.companyName) || null,
+          visitorWorkCategory: resolvedWorkCategory || (autoApproved && preApproval?.workCategory) || null,
           accompanyingCount,
           vehicleNumber,
           status: autoApproved ? 'approved' : 'pending',
