@@ -441,12 +441,12 @@ const expirePreApprovalsAndInvites = async ({ societyId, unitId, now }) => {
   ]);
 };
 
-const findDeliveryPreApproval = async ({ societyId, unitId, companyName, now }) => {
-  if (!societyId || !unitId) return null;
+const findDeliveryPreApproval = async ({ societyId, unitIds, companyName, now }) => {
+  if (!societyId || !unitIds || unitIds.length === 0) return null;
   const trimmedCompany = normalizeString(companyName);
   const query = {
     societyId,
-    unitId,
+    unitId: { $in: unitIds },
     status: 'active',
     validFrom: { $lte: now },
     validTill: { $gte: now },
@@ -458,14 +458,14 @@ const findDeliveryPreApproval = async ({ societyId, unitId, companyName, now }) 
   return DeliveryPreApproval.findOne(query).sort({ validFrom: -1, createdAt: -1 }).lean();
 };
 
-const findTaxiPreApproval = async ({ societyId, unitId, companyName, vehicleNumber, now }) => {
-  if (!societyId || !unitId) return null;
+const findTaxiPreApproval = async ({ societyId, unitIds, companyName, vehicleNumber, now }) => {
+  if (!societyId || !unitIds || unitIds.length === 0) return null;
   const trimmedCompany = normalizeString(companyName);
   if (!trimmedCompany) return null;
   const nameRegex = new RegExp(`^${escapeRegex(trimmedCompany)}$`, 'i');
   const query = {
     societyId,
-    unitId,
+    unitId: { $in: unitIds },
     status: 'active',
     validFrom: { $lte: now },
     validTill: { $gte: now },
@@ -479,15 +479,15 @@ const findTaxiPreApproval = async ({ societyId, unitId, companyName, vehicleNumb
   return TaxiDriverPreApproval.findOne(query).sort({ validFrom: -1, createdAt: -1 }).lean();
 };
 
-const findOtherVisitorPreApproval = async ({ societyId, unitId, workCategory, companyName, now }) => {
-  if (!societyId || !unitId) return null;
+const findOtherVisitorPreApproval = async ({ societyId, unitIds, workCategory, companyName, now }) => {
+  if (!societyId || !unitIds || unitIds.length === 0) return null;
   const resolvedWorkCategory = getWorkCategoryDisplayName(workCategory);
   if (!resolvedWorkCategory) return null;
   const workCategoryRegex = new RegExp(`^${escapeRegex(resolvedWorkCategory)}$`, 'i');
   const trimmedCompany = normalizeString(companyName);
   const query = {
     societyId,
-    unitId,
+    unitId: { $in: unitIds },
     status: 'active',
     validFrom: { $lte: now },
     validTill: { $gte: now },
@@ -500,13 +500,13 @@ const findOtherVisitorPreApproval = async ({ societyId, unitId, workCategory, co
   return OtherVisitorPreApproval.findOne(query).sort({ validFrom: -1, createdAt: -1 }).lean();
 };
 
-const findGuestInviteApproval = async ({ societyId, unitId, guestName, phoneDigits, now }) => {
-  if (!societyId || !unitId) return null;
+const findGuestInviteApproval = async ({ societyId, unitIds, guestName, phoneDigits, now }) => {
+  if (!societyId || !unitIds || unitIds.length === 0) return null;
   const normalizedName = normalizeString(guestName).toLowerCase();
   const invites = await GuestInvite.find(
     {
       societyId,
-      unitId,
+      unitId: { $in: unitIds },
       status: 'active',
       validFrom: { $lte: now },
       validTill: { $gte: now },
@@ -557,7 +557,7 @@ const resolvePrivateEntryFlags = ({ autoApproved, preApproval }) => {
 const resolvePreApprovalForUnit = async ({
   visitorType,
   societyId,
-  unitId,
+  unitIds,
   companyName,
   workCategory,
   vehicleNumber,
@@ -568,13 +568,13 @@ const resolvePreApprovalForUnit = async ({
   if (!visitorType) return null;
   switch (visitorType) {
     case 'delivery_executive':
-      return findDeliveryPreApproval({ societyId, unitId, companyName, now });
+      return findDeliveryPreApproval({ societyId, unitIds, companyName, now });
     case 'taxi_vehicle_driver':
-      return findTaxiPreApproval({ societyId, unitId, companyName, vehicleNumber, now });
+      return findTaxiPreApproval({ societyId, unitIds, companyName, vehicleNumber, now });
     case 'other_visitor':
-      return findOtherVisitorPreApproval({ societyId, unitId, workCategory, companyName, now });
+      return findOtherVisitorPreApproval({ societyId, unitIds, workCategory, companyName, now });
     case 'guest':
-      return findGuestInviteApproval({ societyId, unitId, guestName, phoneDigits, now });
+      return findGuestInviteApproval({ societyId, unitIds, guestName, phoneDigits, now });
     default:
       return null;
   }
@@ -1527,6 +1527,11 @@ const createGuestEntryRequest = async (req, res, next) => {
       return next(createHttpError('workCategory is required for other visitor.', 400));
     }
 
+    const resolvedWorkCategory =
+      visitorType === 'other_visitor'
+        ? getWorkCategoryDisplayName(workCategoryRaw) || workCategoryRaw
+        : workCategoryRaw;
+
     const useFlatDeliveryMultiUnitResponse =
       visitorType === 'delivery_executive' && uniqueDestinations.length > 1;
 
@@ -1577,7 +1582,7 @@ const createGuestEntryRequest = async (req, res, next) => {
         guestPhoneDigits: phoneDigits,
         visitorType,
         visitorCompanyName: companyName || null,
-        visitorWorkCategory: workCategoryRaw || null,
+        visitorWorkCategory: resolvedWorkCategory || null,
         accompanyingCount,
         vehicleNumber,
       });
@@ -1606,7 +1611,7 @@ const createGuestEntryRequest = async (req, res, next) => {
                   phoneNumber: phoneDigits,
                   imageUrl: null,
                   companyName: companyName || null,
-                  workCategory: workCategoryRaw || null,
+                  workCategory: resolvedWorkCategory || null,
                 },
               }),
           accompanyingCount: useFlatDeliveryMultiUnitResponse ? accompanyingCount : String(accompanyingCount || 0),
@@ -1665,11 +1670,13 @@ const createGuestEntryRequest = async (req, res, next) => {
       },
       { _id: 1, wingNameLower: 1, unitNumberLower: 1 }
     ).lean();
-    const unitByDestination = new Map();
+    const unitIdsByDestination = new Map();
     for (const unit of unitDocs || []) {
       const key = `${unit.wingNameLower}::${unit.unitNumberLower}`;
-      if (!unitByDestination.has(key)) {
-        unitByDestination.set(key, unit);
+      if (!unitIdsByDestination.has(key)) {
+        unitIdsByDestination.set(key, [unit._id]);
+      } else {
+        unitIdsByDestination.get(key).push(unit._id);
       }
     }
 
@@ -1678,14 +1685,14 @@ const createGuestEntryRequest = async (req, res, next) => {
         const wingKey = destination.wingName.toLowerCase();
         const unitKey = destination.unitNumber.toLowerCase();
         const destinationKey = `${wingKey}::${unitKey}`;
-        const unitDoc = unitByDestination.get(destinationKey);
-        const preApproval = unitDoc
+        const unitIds = unitIdsByDestination.get(destinationKey);
+        const preApproval = unitIds && unitIds.length > 0
           ? await resolvePreApprovalForUnit({
               visitorType,
               societyId: activeDuty.societyId,
-              unitId: unitDoc._id,
+              unitIds,
               companyName,
-              workCategory: workCategoryRaw,
+              workCategory: resolvedWorkCategory,
               vehicleNumber,
               guestName,
               phoneDigits,
@@ -1711,7 +1718,7 @@ const createGuestEntryRequest = async (req, res, next) => {
           guestImageUrl: finalImageUrl,
           visitorType,
           visitorCompanyName: companyName || null,
-          visitorWorkCategory: workCategoryRaw || null,
+          visitorWorkCategory: resolvedWorkCategory || null,
           accompanyingCount,
           vehicleNumber,
           status: autoApproved ? 'approved' : 'pending',
@@ -4303,6 +4310,10 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     const countryCode = normalizeCountryCode(visitor.countryCode || '+91');
     const companyName = visitor.visitorCompanyName || null;
     const workCategory = visitor.visitorWorkCategory || null;
+    const resolvedWorkCategory =
+      visitorType === 'other_visitor'
+        ? getWorkCategoryDisplayName(workCategory) || workCategory
+        : workCategory;
 
     if (!phoneDigits) {
       return next(createHttpError('Visitor does not have a valid phone number.', 400));
@@ -4372,11 +4383,13 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
       },
       { _id: 1, wingNameLower: 1, unitNumberLower: 1 }
     ).lean();
-    const unitByDestination = new Map();
+    const unitIdsByDestination = new Map();
     for (const unit of unitDocs || []) {
       const key = `${unit.wingNameLower}::${unit.unitNumberLower}`;
-      if (!unitByDestination.has(key)) {
-        unitByDestination.set(key, unit);
+      if (!unitIdsByDestination.has(key)) {
+        unitIdsByDestination.set(key, [unit._id]);
+      } else {
+        unitIdsByDestination.get(key).push(unit._id);
       }
     }
 
@@ -4386,14 +4399,14 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
         const wingKey = destination.wingName.toLowerCase();
         const unitKey = destination.unitNumber.toLowerCase();
         const destinationKey = `${wingKey}::${unitKey}`;
-        const unitDoc = unitByDestination.get(destinationKey);
-        const preApproval = unitDoc
+        const unitIds = unitIdsByDestination.get(destinationKey);
+        const preApproval = unitIds && unitIds.length > 0
           ? await resolvePreApprovalForUnit({
               visitorType,
               societyId: activeDuty.societyId,
-              unitId: unitDoc._id,
+              unitIds,
               companyName,
-              workCategory,
+              workCategory: resolvedWorkCategory,
               vehicleNumber,
               guestName,
               phoneDigits,
@@ -4422,7 +4435,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
           visitorType,
           visitorUserId: visitor._id,
           visitorCompanyName: companyName,
-          visitorWorkCategory: workCategory,
+          visitorWorkCategory: resolvedWorkCategory,
           accompanyingCount,
           vehicleNumber,
           status: autoApproved ? 'approved' : 'pending',

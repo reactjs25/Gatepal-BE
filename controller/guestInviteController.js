@@ -1316,6 +1316,24 @@ const scanGuestInvite = async (req, res, next) => {
     const unit = await MemberUnit.findById(invite.unitId).lean();
     const isPrivateEntry = Boolean(invite.isPrivateInvite) && Boolean(invite.invitedByUserId);
 
+    let recipientUserIds = [invite.invitedByUserId];
+    if (!isPrivateEntry && unit) {
+      const unitResidents = await MemberUnit.find(
+        {
+          societyId: invite.societyId,
+          wingNameLower: (unit.wingName || '').toLowerCase(),
+          unitNumberLower: (unit.unitNumber || '').toLowerCase(),
+          $or: [
+            { occupancyStatus: 'currently_residing' },
+            { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
+          ],
+        },
+        { memberId: 1 }
+      ).lean();
+      const memberIds = unitResidents.map((u) => u.memberId).filter(Boolean);
+      const unique = Array.from(new Set(memberIds.map((id) => String(id))));
+      if (unique.length > 0) recipientUserIds = unique;
+    }
 
     const guestEntryRequest = await GuestEntryRequest.create({
       societyId: invite.societyId,
@@ -1339,7 +1357,7 @@ const scanGuestInvite = async (req, res, next) => {
       status: 'approved',
       approvedByUserId: invite.invitedByUserId,
       approvedAt: now,
-      recipientUserIds: [invite.invitedByUserId],
+      recipientUserIds,
       isPrivateEntry,
       privateEntryForUserId: isPrivateEntry ? invite.invitedByUserId : null,
       guestInviteId: invite._id,
