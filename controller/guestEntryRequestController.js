@@ -2087,6 +2087,16 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       .map((d) => d.guestInviteId)
       .filter(Boolean);
 
+    const groupInviteEntryStatusMap = new Map();
+    for (const d of items || []) {
+      if (!d.guestInviteId) continue;
+      const key = String(d.guestInviteId);
+      if (!groupInviteEntryStatusMap.has(key)) {
+        groupInviteEntryStatusMap.set(key, []);
+      }
+      groupInviteEntryStatusMap.get(key).push(d.status);
+    }
+
     const guestInvitesMap = new Map();
     if (guestInviteIds.length > 0) {
       const guestInviteDocs = await GuestInvite.find(
@@ -2422,18 +2432,35 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
       const mapGuestInvite = (invite, guest) => {
         const effectiveStatus = resolveActiveStatus(invite.status, invite.validTill, now);
-        const statusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
-        const statusLabel =
+        let statusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
+        let statusLabel =
           effectiveStatus === 'active'
             ? 'Pre Approved'
             : effectiveStatus === 'expired'
               ? 'Expired'
               : 'Cancelled';
+
+        const isGroup = invite.type === 'group';
+
+        if (isGroup && effectiveStatus === 'active') {
+          const entryStatuses = groupInviteEntryStatusMap.get(String(invite._id)) || [];
+          if (entryStatuses.length > 0) {
+            if (entryStatuses.some((s) => s === 'entered')) {
+              statusKey = 'entered';
+              statusLabel = 'Inside Society';
+            } else if (entryStatuses.every((s) => s === 'left')) {
+              statusKey = 'left';
+              statusLabel = 'Left Society';
+            } else if (entryStatuses.some((s) => s === 'left')) {
+              statusKey = 'left';
+              statusLabel = 'Left Society';
+            }
+          }
+        }
+
         const fromLabel = toISTDateTimeLabelNoCommaWithoutYear(invite.validFrom);
         const tillLabel = toISTDateTimeLabelNoCommaWithoutYear(invite.validTill);
         const validityLabel = fromLabel && tillLabel ? `${fromLabel} to ${tillLabel}` : null;
-
-        const isGroup = invite.type === 'group';
 
         
         let guestImageUrl = null;
