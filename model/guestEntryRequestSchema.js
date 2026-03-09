@@ -51,6 +51,7 @@ const guestEntryRequestSchema = new mongoose.Schema(
 
     
     guestInviteId: { type: mongoose.Schema.Types.ObjectId, ref: 'GuestInvite', default: null, index: true },
+    guestInviteGuestId: { type: String, trim: true, default: null, index: true },
 
     accompanyingCount: { type: Number, default: 0 },
     vehicleNumber: { type: String, trim: true, default: null },

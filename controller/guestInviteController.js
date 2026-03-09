@@ -1314,6 +1314,7 @@ const scanGuestInvite = async (req, res, next) => {
 
     const member = await User.findById(invite.invitedByUserId).lean();
     const unit = await MemberUnit.findById(invite.unitId).lean();
+    const isPrivateEntry = Boolean(invite.isPrivateInvite) && Boolean(invite.invitedByUserId);
 
 
     const guestEntryRequest = await GuestEntryRequest.create({
@@ -1339,7 +1340,10 @@ const scanGuestInvite = async (req, res, next) => {
       approvedByUserId: invite.invitedByUserId,
       approvedAt: now,
       recipientUserIds: [invite.invitedByUserId],
+      isPrivateEntry,
+      privateEntryForUserId: isPrivateEntry ? invite.invitedByUserId : null,
       guestInviteId: invite._id,
+      guestInviteGuestId: guestId || 'group',
     });
 
     const dateLabel = toISTDateLabel(invite.validFrom);
@@ -1563,6 +1567,8 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
       return next(createHttpError('No entry scan found to update for this invite.', 404));
     }
 
+    const targetGuestId = normalizeString(logs[targetLogIndex]?.guestId || guestId || 'group') || 'group';
+
     const normalizedVehicleNumber =
       vehicleNumber === undefined ? undefined : normalizeString(vehicleNumber).toUpperCase() || null;
 
@@ -1627,13 +1633,19 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
     }
 
     let guestEntryRequestRecord = null;
+    const strictEntryRequestLookup = {
+      guestInviteId: invite._id,
+      guestInviteGuestId: targetGuestId,
+      createdByGuardId: authUser._id,
+    };
+    const fallbackEntryRequestLookup = {
+      guestInviteId: invite._id,
+      createdByGuardId: authUser._id,
+    };
 
     if (Object.keys(entryRequestUpdate).length > 0) {
       guestEntryRequestRecord = await GuestEntryRequest.findOneAndUpdate(
-        {
-          guestInviteId: invite._id,
-          createdByGuardId: authUser._id,
-        },
+        strictEntryRequestLookup,
         { $set: entryRequestUpdate },
         {
           sort: { createdAt: -1 },
@@ -1641,18 +1653,36 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
           projection: { requestId: 1, status: 1 },
         }
       );
+
+      if (!guestEntryRequestRecord) {
+        guestEntryRequestRecord = await GuestEntryRequest.findOneAndUpdate(
+          fallbackEntryRequestLookup,
+          { $set: entryRequestUpdate },
+          {
+            sort: { createdAt: -1 },
+            new: true,
+            projection: { requestId: 1, status: 1 },
+          }
+        );
+      }
     }
 
     if (!guestEntryRequestRecord) {
       guestEntryRequestRecord = await GuestEntryRequest.findOne(
-        {
-          guestInviteId: invite._id,
-          createdByGuardId: authUser._id,
-        },
+        strictEntryRequestLookup,
         { requestId: 1, status: 1 }
       )
         .sort({ createdAt: -1 })
         .lean();
+
+      if (!guestEntryRequestRecord) {
+        guestEntryRequestRecord = await GuestEntryRequest.findOne(
+          fallbackEntryRequestLookup,
+          { requestId: 1, status: 1 }
+        )
+          .sort({ createdAt: -1 })
+          .lean();
+      }
     }
 
     const statusKey = normalizeOption(guestEntryRequestRecord?.status || 'pending');

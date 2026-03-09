@@ -2044,6 +2044,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         entryAllowedAt: 1,
         entryLeftAt: 1,
         guestInviteId: 1,
+        guestInviteGuestId: 1,
         isPrivateEntry: 1,
         privateEntryForUserId: 1,
       }
@@ -2172,6 +2173,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       vehicleNumber: normalizedVehicle(d.vehicleNumber),
       guestName: normalizedText(d.guestName),
       guestPhoneDigits: normalizedDigits(d.guestPhoneDigits || d.guestPhoneNumber),
+      guestInviteId: d.guestInviteId ? String(d.guestInviteId) : null,
+      guestInviteGuestId: normalizeString(d.guestInviteGuestId || ''),
       approvedByUserId: d.approvedByUserId ? String(d.approvedByUserId) : null,
       createdAtMs: d.createdAt ? new Date(d.createdAt).getTime() : null,
     }));
@@ -2381,6 +2384,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         const guestName = normalizedText(guest?.name);
         const guestPhone = normalizedDigits(guest?.phoneDigits || guest?.phoneNumber);
         const invitedBy = invite.invitedByUserId ? String(invite.invitedByUserId) : null;
+        const inviteObjectId = invite?._id ? String(invite._id) : null;
+        const inviteGuestId = normalizeString(guest?.guestId || (invite.type === 'group' ? 'group' : ''));
 
         return entryIndex.some((entry) => {
           if (entry.visitorType !== 'guest') return false;
@@ -2389,6 +2394,13 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
           if (fromMs && tillMs && entry.createdAtMs) {
             if (entry.createdAtMs < fromMs || entry.createdAtMs > tillMs) return false;
           }
+
+          if (inviteObjectId && entry.guestInviteId && inviteObjectId === entry.guestInviteId) {
+            if (inviteGuestId && entry.guestInviteGuestId && inviteGuestId === entry.guestInviteGuestId) {
+              return true;
+            }
+          }
+
           if (guestPhone && entry.guestPhoneDigits) {
             return guestPhone === entry.guestPhoneDigits;
           }
