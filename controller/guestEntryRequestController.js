@@ -1250,8 +1250,9 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
           }));
 
         if (isApprovedList) {
-          // Include if at least one unit is approved (full or partial approval)
-          if (!hasAnyApproved) {
+          // Include if at least one unit is still in 'approved' status (not yet entered)
+          const stillApproved = groupDocs.filter((d) => d.status === 'approved');
+          if (stillApproved.length === 0) {
             continue;
           }
 
