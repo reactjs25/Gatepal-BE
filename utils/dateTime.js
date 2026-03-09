@@ -75,6 +75,41 @@ const toISTDateLabel = (value) => {
   }).format(d);
 };
 
+const IST_OFFSET_MS = 5 * 60 * 60 * 1000 + 30 * 60 * 1000;
+
+const getISTComponents = (date) => {
+  const d = date instanceof Date ? date : new Date(date || Date.now());
+  const istTime = new Date(d.getTime() + IST_OFFSET_MS);
+  return {
+    year: istTime.getUTCFullYear(),
+    month: istTime.getUTCMonth() + 1,
+    day: istTime.getUTCDate(),
+    hour: istTime.getUTCHours(),
+    minute: istTime.getUTCMinutes(),
+    second: istTime.getUTCSeconds(),
+  };
+};
+
+const createISTDate = (year, month, day, hour = 0, minute = 0, second = 0, ms = 0) => {
+  const utcMs = Date.UTC(year, month - 1, day, hour, minute, second, ms);
+  return new Date(utcMs - IST_OFFSET_MS);
+};
+
+const getISTMidnight = (date) => {
+  const { year, month, day } = getISTComponents(date);
+  return createISTDate(year, month, day, 0, 0, 0, 0);
+};
+
+const getISTEndOfDay = (date) => {
+  const { year, month, day } = getISTComponents(date);
+  return createISTDate(year, month, day, 23, 59, 59, 999);
+};
+
+const setISTHours = (date, h, m = 0, s = 0, ms = 0) => {
+  const { year, month, day } = getISTComponents(date);
+  return createISTDate(year, month, day, h, m, s, ms);
+};
+
 module.exports = {
   toDateOnly,
   toISTTimeLabel,
@@ -83,4 +118,9 @@ module.exports = {
   toISTDateTimeLabelNoComma,
   toISTDateTimeLabelNoCommaWithoutYear,
   toISTDateLabel,
+  getISTComponents,
+  createISTDate,
+  getISTMidnight,
+  getISTEndOfDay,
+  setISTHours,
 };

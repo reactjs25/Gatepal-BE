@@ -19,7 +19,7 @@ const {
   normalizePhoneDigits,
   isTenDigitPhone,
 } = require('../utils/phoneNumber');
-const { toISTDateLabel, toISTTimeLabel } = require('../utils/dateTime');
+const { toISTDateLabel, toISTTimeLabel, getISTMidnight, getISTEndOfDay, setISTHours, getISTComponents, createISTDate } = require('../utils/dateTime');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 const { uploadBufferToS3 } = require('../utils/s3Upload');
@@ -125,8 +125,7 @@ const parseDateOnly = (value, fieldLabel) => {
   if (Number.isNaN(d.getTime())) {
     throw createHttpError(`Invalid ${fieldLabel} format.`, 400);
   }
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return getISTMidnight(d);
 };
 
 const parseDateTime = (value, fieldLabel) => {
@@ -268,13 +267,12 @@ const computeUiBasedValidityWindow = ({
   const normalizedValidityType = normalizeOption(validityType || 'hours');
   const normalizedUntil = normalizeOption(untilTimeOption || '');
 
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
+  const todayIST = getISTMidnight(now);
 
-  let baseDate = new Date(today);
+  let baseDate = new Date(todayIST);
 
   if (normalizedDateOption === 'tomorrow') {
-    baseDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    baseDate = new Date(todayIST.getTime() + 24 * 60 * 60 * 1000);
   } else if (
     normalizedDateOption === 'select_date' ||
     normalizedDateOption === 'selectdate' ||
@@ -287,8 +285,7 @@ const computeUiBasedValidityWindow = ({
     if (Number.isNaN(parsed.getTime())) {
       throw createHttpError('Invalid selectedDate format.', 400);
     }
-    baseDate = new Date(parsed);
-    baseDate.setHours(0, 0, 0, 0);
+    baseDate = getISTMidnight(parsed);
   }
 
   if (normalizedValidityType === 'until_time') {
@@ -313,11 +310,9 @@ const computeUiBasedValidityWindow = ({
     let end;
 
     if (hour == null) {
-      end = new Date(baseDate);
-      end.setHours(23, 59, 59, 999);
+      end = getISTEndOfDay(baseDate);
     } else {
-      end = new Date(baseDate);
-      end.setHours(hour, 0, 0, 0);
+      end = setISTHours(baseDate, hour, 0, 0, 0);
     }
 
     if (end <= start) {
@@ -335,8 +330,7 @@ const computeUiBasedValidityWindow = ({
   ) {
     start = now;
   } else {
-    start = new Date(baseDate);
-    start.setHours(9, 0, 0, 0);
+    start = setISTHours(baseDate, 9, 0, 0, 0);
   }
 
   return computeValidityWindow({
@@ -398,8 +392,7 @@ const computeFrequentInviteValidityWindow = ({
   startDate,
   endDate,
 }) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayIST = getISTMidnight(new Date());
 
   const normalized = normalizeOption(allowEntryFor || '1_week');
 
@@ -408,10 +401,9 @@ const computeFrequentInviteValidityWindow = ({
     normalized === 'one_week' ||
     normalized === 'week'
   ) {
-    const start = new Date(today);
-    const end = new Date(today);
-    end.setDate(end.getDate() + 7 - 1);
-    end.setHours(23, 59, 59, 999);
+    const start = new Date(todayIST);
+    const endDateMs = new Date(todayIST.getTime() + (7 - 1) * 24 * 60 * 60 * 1000);
+    const end = getISTEndOfDay(endDateMs);
     return { validFrom: start, validTill: end };
   }
 
@@ -420,17 +412,17 @@ const computeFrequentInviteValidityWindow = ({
     normalized === 'one_month' ||
     normalized === 'month'
   ) {
-    const start = new Date(today);
-    const end = new Date(today);
-    end.setMonth(end.getMonth() + 1);
-    end.setDate(end.getDate() - 1);
-    end.setHours(23, 59, 59, 999);
+    const start = new Date(todayIST);
+    const { year, month, day } = getISTComponents(todayIST);
+    const temp = new Date(Date.UTC(year, month - 1, day));
+    temp.setUTCMonth(temp.getUTCMonth() + 1);
+    temp.setUTCDate(temp.getUTCDate() - 1);
+    const end = createISTDate(temp.getUTCFullYear(), temp.getUTCMonth() + 1, temp.getUTCDate(), 23, 59, 59, 999);
     return { validFrom: start, validTill: end };
   }
 
   const start = parseDateOnly(startDate, 'startDate');
-  const end = parseDateOnly(endDate, 'endDate');
-  end.setHours(23, 59, 59, 999);
+  const end = getISTEndOfDay(parseDateOnly(endDate, 'endDate'));
 
   if (end < start) {
     throw createHttpError('endDate must be on or after startDate.', 400);

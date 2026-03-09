@@ -6,7 +6,7 @@ const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { assertUnitResidentAccess } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
 const { ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
-const { toISTDateTimeLabelNoCommaWithoutYear } = require('../utils/dateTime');
+const { toISTDateTimeLabelNoCommaWithoutYear, getISTMidnight, getISTEndOfDay, setISTHours } = require('../utils/dateTime');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const OtherVisitorCompany = require('../model/otherVisitorCompanySchema');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
@@ -104,13 +104,12 @@ const computeUiBasedValidityWindow = ({
   const normalizedValidityType = normalizeOption(validityType || 'hours');
   const normalizedUntil = normalizeOption(untilTimeOption || '');
 
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
+  const todayIST = getISTMidnight(now);
 
-  let baseDate = new Date(today);
+  let baseDate = new Date(todayIST);
 
   if (normalizedDateOption === 'tomorrow') {
-    baseDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    baseDate = new Date(todayIST.getTime() + 24 * 60 * 60 * 1000);
   } else if (
     normalizedDateOption === 'select_date' ||
     normalizedDateOption === 'selectdate' ||
@@ -123,8 +122,7 @@ const computeUiBasedValidityWindow = ({
     if (Number.isNaN(parsed.getTime())) {
       throw createHttpError('Invalid selectedDate format.', 400);
     }
-    baseDate = new Date(parsed);
-    baseDate.setHours(0, 0, 0, 0);
+    baseDate = getISTMidnight(parsed);
   }
 
   if (normalizedValidityType === 'until_time') {
@@ -149,11 +147,9 @@ const computeUiBasedValidityWindow = ({
     let end;
 
     if (hour == null) {
-      end = new Date(baseDate);
-      end.setHours(23, 59, 59, 999);
+      end = getISTEndOfDay(baseDate);
     } else {
-      end = new Date(baseDate);
-      end.setHours(hour, 0, 0, 0);
+      end = setISTHours(baseDate, hour, 0, 0, 0);
     }
 
     if (end <= start) {
@@ -171,8 +167,7 @@ const computeUiBasedValidityWindow = ({
   ) {
     start = now;
   } else {
-    start = new Date(baseDate);
-    start.setHours(9, 0, 0, 0);
+    start = setISTHours(baseDate, 9, 0, 0, 0);
   }
 
   return computeValidityWindow({
