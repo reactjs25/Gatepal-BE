@@ -3160,11 +3160,26 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
 
       const shareMessage = `${invitedByUser?.fullName || 'A member'} has invited you.`;
 
+      let globalStatus = inviteStatusLabel(effectiveStatus);
+      let globalStatusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
+
+      if (effectiveStatus === 'active' && guests.length > 0 && guests[0].statusKey) {
+        const hasEntered = guests.some((g) => g.statusKey === 'entered');
+        const allLeft = guests.every((g) => g.statusKey === 'left');
+        if (hasEntered) {
+          globalStatus = 'Inside Society';
+          globalStatusKey = 'entered';
+        } else if (allLeft) {
+          globalStatus = 'Left Society';
+          globalStatusKey = 'left';
+        }
+      }
+
       return sendSuccessResponse(res, 200, 'Guest invite fetched successfully.', {
         data: {
           requestId: guestInvite.inviteId,
-          status: inviteStatusLabel(effectiveStatus),
-          statusKey: effectiveStatus === 'active' ? 'approved' : effectiveStatus,
+          status: globalStatus,
+          statusKey: globalStatusKey,
           category: 'Guest',
           visitorType: 'Guest',
           inviteType: guestInvite.type,
