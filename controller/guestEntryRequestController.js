@@ -455,7 +455,7 @@ const findDeliveryPreApproval = async ({ societyId, unitId, companyName, now }) 
     const nameRegex = new RegExp(`^${escapeRegex(trimmedCompany)}$`, 'i');
     query.$or = [{ companyName: null }, { companyName: '' }, { companyName: nameRegex }];
   }
-  return DeliveryPreApproval.findOne(query).sort({ validFrom: -1 }).lean();
+  return DeliveryPreApproval.findOne(query).sort({ validFrom: -1, createdAt: -1 }).lean();
 };
 
 const findTaxiPreApproval = async ({ societyId, unitId, companyName, vehicleNumber, now }) => {
@@ -476,7 +476,7 @@ const findTaxiPreApproval = async ({ societyId, unitId, companyName, vehicleNumb
   } else {
     query.$or = [{ vehicleNumber: null }, { vehicleNumber: '' }];
   }
-  return TaxiDriverPreApproval.findOne(query).sort({ validFrom: -1 }).lean();
+  return TaxiDriverPreApproval.findOne(query).sort({ validFrom: -1, createdAt: -1 }).lean();
 };
 
 const findOtherVisitorPreApproval = async ({ societyId, unitId, workCategory, companyName, now }) => {
@@ -497,7 +497,7 @@ const findOtherVisitorPreApproval = async ({ societyId, unitId, workCategory, co
     const nameRegex = new RegExp(`^${escapeRegex(trimmedCompany)}$`, 'i');
     query.$or = [{ companyName: null }, { companyName: '' }, { companyName: nameRegex }];
   }
-  return OtherVisitorPreApproval.findOne(query).sort({ validFrom: -1 }).lean();
+  return OtherVisitorPreApproval.findOne(query).sort({ validFrom: -1, createdAt: -1 }).lean();
 };
 
 const findGuestInviteApproval = async ({ societyId, unitId, guestName, phoneDigits, now }) => {
@@ -2147,6 +2147,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         isPreApproval: Boolean(d.guestInviteId),
         isPrivateInvite: Boolean(d.isPrivateEntry) || (linkedInvite ? Boolean(linkedInvite.isPrivateInvite) : false),
         isSilentDelivery: Boolean(d.isPrivateEntry) && !d.guestInviteId,
+        _sortAt: d.entryLeftAt || d.entryAllowedAt || d.approvedAt || d.createdAt || null,
       };
     });
 
