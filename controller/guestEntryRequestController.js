@@ -2234,22 +2234,11 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
     let preApprovalCards = [];
     if (preApprovalStatusFilter.length > 0) {
-      // Get all unitIds for the same physical unit (different members have different MemberUnit docs)
-      const allUnitDocs = await MemberUnit.find(
-        {
-          societyId: unitDoc.societyId,
-          wingNameLower: unitDoc.wingNameLower,
-          unitNumberLower: unitDoc.unitNumberLower,
-        },
-        { _id: 1 }
-      ).lean();
-      const allUnitIds = allUnitDocs.map((u) => u._id);
-
       const [deliveryApprovals, taxiApprovals, otherApprovals] = await Promise.all([
         DeliveryPreApproval.find(
           {
             societyId: unitDoc.societyId,
-            unitId: { $in: allUnitIds },
+            unitId: unitDoc._id,
             status: { $in: preApprovalStatusFilter },
             ...preApprovalDateQuery,
           },
@@ -2270,7 +2259,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         TaxiDriverPreApproval.find(
           {
             societyId: unitDoc.societyId,
-            unitId: { $in: allUnitIds },
+            unitId: unitDoc._id,
             status: { $in: preApprovalStatusFilter },
             ...preApprovalDateQuery,
           },
@@ -2293,7 +2282,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         OtherVisitorPreApproval.find(
           {
             societyId: unitDoc.societyId,
-            unitId: { $in: allUnitIds },
+            unitId: unitDoc._id,
             status: { $in: preApprovalStatusFilter },
             ...preApprovalDateQuery,
           },
@@ -2386,7 +2375,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       const guestInvites = await GuestInvite.find(
         {
           societyId: unitDoc.societyId,
-          unitId: { $in: allUnitIds },
+          unitId: unitDoc._id,
           status: { $in: preApprovalStatusFilter },
           ...preApprovalDateQuery,
         },
