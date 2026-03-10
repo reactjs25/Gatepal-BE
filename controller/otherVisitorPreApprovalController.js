@@ -3,7 +3,7 @@ const GuestEntryRequest = require('../model/guestEntryRequestSchema');
 const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
-const { assertUnitResidentAccess } = require('../utils/unitAccess');
+const { assertUnitResidentAccess, listSamePhysicalUnitIds } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
 const { ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
 const { toISTDateTimeLabelNoCommaWithoutYear, getISTMidnight, getISTEndOfDay, setISTHours } = require('../utils/dateTime');
@@ -348,10 +348,12 @@ const updateOtherVisitorPreApproval = async (req, res, next) => {
       return next(e);
     }
 
+    const sameUnitIds = await listSamePhysicalUnitIds(unitDoc);
+
     const approval = await OtherVisitorPreApproval.findOne({
       preApprovalId,
       societyId: unitDoc.societyId,
-      unitId: unitDoc._id,
+      unitId: { $in: sameUnitIds },
     });
     if (!approval) return next(createHttpError('Pre-approval not found.', 404));
     if (approval.status !== 'active') {
@@ -513,10 +515,12 @@ const cancelOtherVisitorPreApproval = async (req, res, next) => {
       return next(e);
     }
 
+    const sameUnitIds = await listSamePhysicalUnitIds(unitDoc);
+
     const approval = await OtherVisitorPreApproval.findOne({
       preApprovalId,
       societyId: unitDoc.societyId,
-      unitId: unitDoc._id,
+      unitId: { $in: sameUnitIds },
     });
 
     

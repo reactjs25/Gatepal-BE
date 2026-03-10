@@ -20,7 +20,7 @@ const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const { normalizeCountryCode, normalizeDigits, normalizePhoneDigits, isTenDigitPhone } = require('../utils/phoneNumber');
-const { assertUnitResidentAccess } = require('../utils/unitAccess');
+const { assertUnitResidentAccess, listSamePhysicalUnitIds } = require('../utils/unitAccess');
 const {
   toISTDateLabel,
   toISTDateTimeLabel,
@@ -1973,6 +1973,8 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       return next(e);
     }
 
+    const sameUnitIds = await listSamePhysicalUnitIds(unitDoc);
+
 
     const statusRaw = normalizeString(req.body?.status || 'all').toLowerCase();
     const dateFilter = normalizeOption(req.body?.dateFilter ?? req.body?.range ?? req.body?.period ?? '');
@@ -2238,7 +2240,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         DeliveryPreApproval.find(
           {
             societyId: unitDoc.societyId,
-            unitId: unitDoc._id,
+            unitId: { $in: sameUnitIds },
             status: { $in: preApprovalStatusFilter },
             ...preApprovalDateQuery,
           },
@@ -2259,7 +2261,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         TaxiDriverPreApproval.find(
           {
             societyId: unitDoc.societyId,
-            unitId: unitDoc._id,
+            unitId: { $in: sameUnitIds },
             status: { $in: preApprovalStatusFilter },
             ...preApprovalDateQuery,
           },
@@ -2282,7 +2284,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         OtherVisitorPreApproval.find(
           {
             societyId: unitDoc.societyId,
-            unitId: unitDoc._id,
+            unitId: { $in: sameUnitIds },
             status: { $in: preApprovalStatusFilter },
             ...preApprovalDateQuery,
           },
@@ -2375,7 +2377,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       const guestInvites = await GuestInvite.find(
         {
           societyId: unitDoc.societyId,
-          unitId: unitDoc._id,
+          unitId: { $in: sameUnitIds },
           status: { $in: preApprovalStatusFilter },
           ...preApprovalDateQuery,
         },
@@ -2727,6 +2729,8 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
       return next(e);
     }
 
+    const sameUnitIds = await listSamePhysicalUnitIds(unitDoc);
+
     const toMemberStatusLabel = (key, doc) => {
       if (key === 'approved') {
         
@@ -2937,7 +2941,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
 
     const [deliveryDoc, taxiDoc, otherDoc] = await Promise.all([
       DeliveryPreApproval.findOne(
-        { preApprovalId: requestId, societyId: unitDoc.societyId, unitId: unitDoc._id },
+        { preApprovalId: requestId, societyId: unitDoc.societyId, unitId: { $in: sameUnitIds } },
         {
           preApprovalId: 1,
           visitorType: 1,
@@ -2957,7 +2961,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         }
       ).lean(),
       TaxiDriverPreApproval.findOne(
-        { preApprovalId: requestId, societyId: unitDoc.societyId, unitId: unitDoc._id },
+        { preApprovalId: requestId, societyId: unitDoc.societyId, unitId: { $in: sameUnitIds } },
         {
           preApprovalId: 1,
           visitorType: 1,
@@ -2979,7 +2983,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
         }
       ).lean(),
       OtherVisitorPreApproval.findOne(
-        { preApprovalId: requestId, societyId: unitDoc.societyId, unitId: unitDoc._id },
+        { preApprovalId: requestId, societyId: unitDoc.societyId, unitId: { $in: sameUnitIds } },
         {
           preApprovalId: 1,
           visitorType: 1,
@@ -3080,7 +3084,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
     const guestInvite = await GuestInvite.findOne({
       inviteId: requestId,
       societyId: unitDoc.societyId,
-      unitId: unitDoc._id,
+      unitId: { $in: sameUnitIds },
     }).lean();
 
     if (guestInvite) {

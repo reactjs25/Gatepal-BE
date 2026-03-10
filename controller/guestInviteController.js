@@ -10,7 +10,7 @@ const TaxiDriverCompany = require('../model/taxiDriverCompanySchema');
 const OtherVisitorCompany = require('../model/otherVisitorCompanySchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
-const { assertUnitResidentAccess } = require('../utils/unitAccess');
+const { assertUnitResidentAccess, listSamePhysicalUnitIds } = require('../utils/unitAccess');
 const { normalizeString } = require('../utils/strings');
 const { ACTION_REASONS } = require('../utils/enums/actionReasonEnums');
 const {
@@ -884,10 +884,12 @@ const updateGuestInviteForMember = async (req, res, next) => {
       return next(e);
     }
 
+    const sameUnitIds = await listSamePhysicalUnitIds(unitDoc);
+
     const invite = await GuestInvite.findOne({
       inviteId,
       societyId: unitDoc.societyId,
-      unitId: unitDoc._id,
+      unitId: { $in: sameUnitIds },
     });
     if (!invite) return next(createHttpError('Guest invite not found.', 404));
     if (invite.status !== 'active') {
@@ -1052,10 +1054,12 @@ const cancelGuestInviteForMember = async (req, res, next) => {
       return next(e);
     }
 
+    const sameUnitIds = await listSamePhysicalUnitIds(unitDoc);
+
     const invite = await GuestInvite.findOne({
       inviteId,
       societyId: unitDoc.societyId,
-      unitId: unitDoc._id,
+      unitId: { $in: sameUnitIds },
     });
     if (!invite) return next(createHttpError('Guest invite not found.', 404));
     if (invite.status === 'cancelled') {

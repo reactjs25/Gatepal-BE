@@ -77,9 +77,29 @@ const assertUnitResidentAccess = async ({ unitId, authUser }) => {
   return unitDoc;
 };
 
+const listSamePhysicalUnitIds = async (unitDoc) => {
+  if (!unitDoc) return [];
+
+  const matchingUnits = await MemberUnit.find(
+    {
+      societyId: unitDoc.societyId,
+      wingNameLower: unitDoc.wingNameLower,
+      unitNumberLower: unitDoc.unitNumberLower,
+    },
+    { _id: 1 }
+  ).lean();
+
+  if (!Array.isArray(matchingUnits) || matchingUnits.length === 0) {
+    return unitDoc._id ? [unitDoc._id] : [];
+  }
+
+  return matchingUnits.map((unit) => unit._id);
+};
+
 module.exports = {
   buildCanonicalUnitId,
   assertUnitAccess,
   assertMemberUnitOwnership,
   assertUnitResidentAccess,
+  listSamePhysicalUnitIds,
 };
