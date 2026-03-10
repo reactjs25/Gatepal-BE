@@ -2220,9 +2220,16 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
     const preApprovalDateQuery = {};
     if (startAt || endAt) {
-      preApprovalDateQuery.validFrom = {};
-      if (startAt) preApprovalDateQuery.validFrom.$gte = startAt;
-      if (endAt) preApprovalDateQuery.validFrom.$lte = endAt;
+      // Use overlapping date range logic: show invites where validity period overlaps with the filter range
+      // An invite is valid for a date range if: validFrom <= endAt AND validTill >= startAt
+      if (startAt && endAt) {
+        preApprovalDateQuery.validFrom = { $lte: endAt };
+        preApprovalDateQuery.validTill = { $gte: startAt };
+      } else if (startAt) {
+        preApprovalDateQuery.validTill = { $gte: startAt };
+      } else if (endAt) {
+        preApprovalDateQuery.validFrom = { $lte: endAt };
+      }
     }
 
     let preApprovalCards = [];
