@@ -13,7 +13,7 @@ const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { normalizeString } = require('../../utils/strings');
 const { toCanonicalOccupantType, toCanonicalOccupancyStatus, mapUiToCanonicalOccupancy } = require('../../utils/enums/memberEnums');
-const { assertUnitAccess, buildCanonicalUnitId } = require('../../utils/unitAccess');
+const { assertUnitAccess, buildCanonicalUnitId, listSamePhysicalUnitIds } = require('../../utils/unitAccess');
 const { toISTDateLabel, toISTTimeLabel } = require('../../utils/dateTime');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
 const { isScopedSocietyAdminSession } = require('../../utils/adminSocietyContext');
@@ -351,6 +351,7 @@ const getUnitDashboard = async (req, res, next) => {
 
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
     const societyId = unitDoc.societyId;
+  const samePhysicalUnitIds = await listSamePhysicalUnitIds(unitDoc);
     const isSocietyAdminSession = isScopedSocietyAdminSession(req, authUser);
 
     let societyAdminId = isSocietyAdminSession ? (req.user?.societyAdminId || authUser.linkedSocietyAdminId || null) : null;
@@ -364,8 +365,12 @@ const getUnitDashboard = async (req, res, next) => {
       }
     }
     
-    const [familyCount, vehicleCount, petCount, announcementDocs, meetingDocs, ruleDocs, maintenanceDocs, userNotificationCount, adminNotificationCount] = await Promise.all([
-      FamilyMember.countDocuments({ unitId: unitDoc._id }),
+    const [familyRecordCount, sameUnitDocs, vehicleCount, petCount, announcementDocs, meetingDocs, ruleDocs, maintenanceDocs, userNotificationCount, adminNotificationCount] = await Promise.all([
+      FamilyMember.countDocuments({ unitId: { $in: samePhysicalUnitIds } }),
+      MemberUnit.find(
+        { _id: { $in: samePhysicalUnitIds } },
+        { _id: 1, memberId: 1 }
+      ).lean(),
       Vehicle.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
       Pet.countDocuments({ unitId: canonicalUnitId, deletedAt: null }),
       Announcement.find({ societyId, deletedAt: null }).sort({ createdAt: -1 }).lean(),
@@ -375,6 +380,13 @@ const getUnitDashboard = async (req, res, next) => {
       Notification.countDocuments({ userId: authUser._id, isRead: false, societyId }),
       societyAdminId ? Notification.countDocuments({ societyAdminId, isRead: false, societyId }) : Promise.resolve(0),
     ]);
+
+    const sameUnitResidentIds = new Set(
+      sameUnitDocs
+        .map((doc) => (doc?.memberId ? String(doc.memberId) : null))
+        .filter((memberId) => memberId && memberId !== String(authUser._id))
+    );
+    const familyCount = familyRecordCount + sameUnitResidentIds.size;
 
     const unreadNotificationCount = userNotificationCount + adminNotificationCount;
 
