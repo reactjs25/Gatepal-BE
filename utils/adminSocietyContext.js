@@ -5,6 +5,15 @@ const { lookupSocietyAdminByMobile } = require('./societyAdminUtils');
 const getEffectiveRole = (req, authUser) =>
   req?.user?.effectiveRole || authUser?.role || req?.user?.role || null;
 
+const isScopedSocietyAdminSession = (req, authUser) => {
+  const effectiveRole = getEffectiveRole(req, authUser);
+  if (effectiveRole === 'society_admin') {
+    return true;
+  }
+
+  return req?.user?.scope === 'app_user' && Boolean(req?.user?.societyAdminId);
+};
+
 const isSocietyAdminPrincipal = (req, authUser) => {
   const effectiveRole = getEffectiveRole(req, authUser);
   if (effectiveRole === 'society_admin') {
@@ -79,6 +88,7 @@ const resolveAdminSocietyFromContext = async ({ req, authUser, allowPhoneFallbac
 
 module.exports = {
   getEffectiveRole,
+  isScopedSocietyAdminSession,
   isSocietyAdminPrincipal,
   resolveAdminSocietyFromContext,
 };

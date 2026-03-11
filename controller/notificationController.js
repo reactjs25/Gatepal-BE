@@ -10,7 +10,7 @@ const {
   getRelativeDayLabel,
   getNotificationMessage,
 } = require('../utils/notificationMessages');
-const { isSocietyAdminPrincipal } = require('../utils/adminSocietyContext');
+const { isSocietyAdminPrincipal, isScopedSocietyAdminSession } = require('../utils/adminSocietyContext');
 
 const SOCIETY_RULE_CATEGORY_LABELS = {
   general: 'General',
@@ -75,6 +75,10 @@ const isSocietyAdmin = (req) => {
 
 
 const getSocietyAdminId = (req) => {
+  if (!isScopedSocietyAdminSession(req, req.appUser)) {
+    return null;
+  }
+
   if (req.user?.societyAdminId) {
     return req.user.societyAdminId;
   }

@@ -16,6 +16,7 @@ const { toCanonicalOccupantType, toCanonicalOccupancyStatus, mapUiToCanonicalOcc
 const { assertUnitAccess, buildCanonicalUnitId } = require('../../utils/unitAccess');
 const { toISTDateLabel, toISTTimeLabel } = require('../../utils/dateTime');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
+const { isScopedSocietyAdminSession } = require('../../utils/adminSocietyContext');
 
 const OCCUPANT_TYPES = new Set([
   'unit_owner',
@@ -350,9 +351,10 @@ const getUnitDashboard = async (req, res, next) => {
 
     const canonicalUnitId = buildCanonicalUnitId(unitDoc);
     const societyId = unitDoc.societyId;
+    const isSocietyAdminSession = isScopedSocietyAdminSession(req, authUser);
 
-    let societyAdminId = req.user?.societyAdminId || authUser.linkedSocietyAdminId || null;
-    if (!societyAdminId) {
+    let societyAdminId = isSocietyAdminSession ? (req.user?.societyAdminId || authUser.linkedSocietyAdminId || null) : null;
+    if (isSocietyAdminSession && !societyAdminId) {
       const adminMatches = await lookupSocietyAdminsByMobile(authUser.phoneNumber || '');
       const matchedForUnitSociety = adminMatches.find(
         (match) => String(match.societyId) === String(societyId)
@@ -631,10 +633,10 @@ const getUnitDashboard = async (req, res, next) => {
             actionCardType: 'uploadMaintenanceProof',
             Maintenance_proof: [Maintenance_proof],
           }] : []),
-          {
+          ...(isSocietyAdminSession ? [{
             actionCardType: 'accessExpiring',
             access_expire: [access_expire],
-          },
+          }] : []),
           ...(recent_announcement ? [{
             actionCardType: 'announcement',
             recent_announcement: [recent_announcement],
