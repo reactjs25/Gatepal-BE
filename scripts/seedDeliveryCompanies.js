@@ -1,5 +1,6 @@
 /**
- * Seed script to insert delivery companies into MongoDB.
+ * Seed script to insert delivery companies into MongoDB
+ * and remove any companies not present in this list.
  *
  * Usage:
  *   node scripts/seedDeliveryCompanies.js
@@ -85,6 +86,7 @@ const toId = (name) =>
 
 const seed = async () => {
   const uri = process.env.MONGO_URI;
+
   if (!uri) {
     console.error('MONGO_URI is not set in .env');
     process.exit(1);
@@ -100,6 +102,15 @@ const seed = async () => {
       imageUrl: '/assets/Default.png',
     }));
 
+    const allowedIds = docs.map((doc) => doc.id);
+
+    // 🔴 Remove companies not in script
+    const deleted = await DeliveryCompany.deleteMany({
+      id: { $nin: allowedIds },
+    });
+
+    console.log(`Removed ${deleted.deletedCount} companies not in seed list`);
+
     let inserted = 0;
     let skipped = 0;
 
@@ -107,13 +118,13 @@ const seed = async () => {
       try {
         await DeliveryCompany.create(doc);
         inserted++;
-        console.log(`  Inserted: ${doc.name}`);
+        console.log(`Inserted: ${doc.name}`);
       } catch (err) {
         if (err.code === 11000) {
           skipped++;
-          console.log(`  Skipped (already exists): ${doc.name}`);
+          console.log(`Skipped (already exists): ${doc.name}`);
         } else {
-          console.error(`  Error inserting ${doc.name}:`, err.message);
+          console.error(`Error inserting ${doc.name}:`, err.message);
         }
       }
     }
