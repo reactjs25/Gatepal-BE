@@ -627,7 +627,6 @@ const deleteFamilyMember = async (req, res, next) => {
 
       const overlapping = userUnits.filter(
         (uu) =>
-          (uu.occupantType === 'unit_owner_family_member' || uu.occupantType === 'tenant_family_member') &&
           authUnits.some(
             (au) =>
               String(au.societyId) === String(uu.societyId) &&
@@ -642,6 +641,9 @@ const deleteFamilyMember = async (req, res, next) => {
 
       await MemberUnit.deleteMany({ _id: { $in: overlapping.map((unit) => unit._id) } });
       await invalidateFamilyCacheForUnits({ authUserId: authUser._id, unitDocs: overlapping });
+      if (String(targetUser._id) !== String(authUser._id)) {
+        await invalidateFamilyCacheForUnits({ authUserId: targetUser._id, unitDocs: overlapping });
+      }
       return sendSuccessResponse(res, 200, 'Family member deleted successfully.');
     }
 
