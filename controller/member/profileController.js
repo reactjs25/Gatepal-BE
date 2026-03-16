@@ -8,6 +8,7 @@ const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
 const { countryCityData } = require('../../utils/countryCityData');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
+const { normalizeCountryCode } = require('../../utils/phoneNumber');
 const { normalizeString, toTitleCaseName } = require('../../utils/strings');
 const { uploadBufferToS3 } = require('../../utils/s3Upload');
 
@@ -231,6 +232,7 @@ const updateMemberProfile = async (req, res, next) => {
     const name = getLastBodyValue(payload.name);
     const fullName = getLastBodyValue(payload.fullName);
     const email = getLastBodyValue(payload.email);
+    const countryCode = getLastBodyValue(payload.countryCode);
 
     const updates = {};
 
@@ -253,6 +255,10 @@ const updateMemberProfile = async (req, res, next) => {
         return next(createHttpError('Invalid email address.', 400));
       }
       updates.email = candidateEmail || null;
+    }
+
+    if (countryCode !== undefined) {
+      updates.countryCode = normalizeCountryCode(String(countryCode));
     }
 
     if (phoneNumber !== undefined) {
@@ -307,6 +313,7 @@ const updateMemberProfile = async (req, res, next) => {
     const updateResponseData = {
       id: String(user._id),
       name: user.fullName || null,
+      countryCode: user.countryCode || '+91',
       phoneNumber: user.phoneNumber,
       imageUrl: user.profilePhoto || null,
     };
