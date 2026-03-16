@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const QRCode = require('qrcode');
 const validator = require('validator');
 const Society = require('../../model/societySchema');
@@ -10,6 +9,7 @@ const { countryCityData } = require('../../utils/countryCityData');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
 const { normalizeCountryCode } = require('../../utils/phoneNumber');
 const { normalizeString, toTitleCaseName } = require('../../utils/strings');
+const { buildMemberQrPayloadString, generateStableMemberCode } = require('../../utils/memberQrIdentity');
 const { uploadBufferToS3 } = require('../../utils/s3Upload');
 
 const findStateName = (countryName, cityName) => {
@@ -39,12 +39,6 @@ const findStateName = (countryName, cityName) => {
   return state && state.stateName ? state.stateName : null;
 };
 
-const generateStableMemberCode = (userId) => {
-  const hex = crypto.createHash('sha256').update(String(userId)).digest('hex');
-  const num = parseInt(hex.slice(0, 8), 16);
-  return String((num % 900000) + 100000);
-};
-
 const getLastBodyValue = (value) => {
   if (!Array.isArray(value)) {
     return value;
@@ -53,20 +47,6 @@ const getLastBodyValue = (value) => {
     return undefined;
   }
   return value[value.length - 1];
-};
-
-const buildQrPayload = ({ user, society, memberCode }) => {
-  const payload = {
-    type: 'gatepal_member',
-    memberId: memberCode,
-    userId: String(user._id),
-    role: user.role,
-    societyId: society ? String(society._id) : null,
-    societyName: society ? society.societyName : user.societyName,
-    wingName: user.wingName || null,
-    unitNumber: user.unitNumber || null,
-  };
-  return JSON.stringify(payload);
 };
 
 const getMemberProfile = async (req, res, next) => {
@@ -92,7 +72,7 @@ const getMemberProfile = async (req, res, next) => {
     let qrCodeImage = user.qrCodeImage || null;
     if (!qrCodeImage) {
       const currentSociety = user.societyId ? societyMap[String(user.societyId)] || null : null;
-      const payload = buildQrPayload({ user, society: currentSociety, memberCode });
+      const payload = buildMemberQrPayloadString({ user, society: currentSociety });
       try {
         const qrBuffer = await QRCode.toBuffer(payload, {
           type: 'png',

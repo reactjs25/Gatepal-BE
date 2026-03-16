@@ -22,6 +22,7 @@ const {
 const { toISTDateLabel, toISTTimeLabel, getISTMidnight, getISTEndOfDay, setISTHours, getISTComponents, createISTDate } = require('../utils/dateTime');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
+const { buildMemberQrPayload } = require('../utils/memberQrIdentity');
 const { uploadBufferToS3 } = require('../utils/s3Upload');
 
 const escapeRegex = (value) => (value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1184,16 +1185,45 @@ const scanGuestInvite = async (req, res, next) => {
 
     
     if (qrType === 'gatepal_member') {
+      if (!payload.userId) {
+        return next(createHttpError('Member QR code is missing user identity.', 400));
+      }
+
+      const member = await User.findById(payload.userId)
+        .select('fullName countryCode phoneNumber profilePhoto role societyId societyName wingName unitNumber')
+        .lean();
+
+      if (!member) {
+        return next(createHttpError('Member not found.', 404));
+      }
+
+      if (member.role !== 'member') {
+        return next(createHttpError('QR does not belong to a valid GatePal member.', 400));
+      }
+
+      const memberIdentity = buildMemberQrPayload({
+        user: member,
+        society:
+          member.societyId && member.societyName
+            ? { _id: member.societyId, societyName: member.societyName }
+            : null,
+      });
+
       return sendSuccessResponse(res, 200, 'Member QR code scanned successfully.', {
         qrType: 'member',
         memberInfo: {
-          memberId: payload.memberId || null,
-          userId: payload.userId || null,
-          role: payload.role || 'member',
-          societyId: payload.societyId || null,
-          societyName: payload.societyName || null,
-          wingName: payload.wingName || null,
-          unitNumber: payload.unitNumber || null,
+          memberId: memberIdentity.memberId,
+          userId: memberIdentity.userId,
+          role: 'member',
+          fullName: member.fullName || null,
+          countryCode: member.countryCode || '+91',
+          phoneNumber: member.phoneNumber || null,
+          imageUrl: member.profilePhoto || null,
+          societyId: memberIdentity.societyId || null,
+          societyName: memberIdentity.societyName || null,
+          wingName: memberIdentity.wingName || null,
+          unitNumber: memberIdentity.unitNumber || null,
+          canCreateVisitorEntry: true,
         },
         message: 'QR validated successfully. Click a picture to continue.',
       });

@@ -19,6 +19,7 @@ const { ACTION_REASONS, normalizeVisitorType } = require('../utils/enums/actionR
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
+const { generateStableMemberCode } = require('../utils/memberQrIdentity');
 const { normalizeCountryCode, normalizeDigits, normalizePhoneDigits, isTenDigitPhone } = require('../utils/phoneNumber');
 const { assertUnitResidentAccess, listSamePhysicalUnitIds } = require('../utils/unitAccess');
 const {
@@ -619,6 +620,62 @@ const resolveExistingVisitorPhoto = async ({ phoneDigits, visitorType }) => {
   }
 
   return null;
+};
+
+const buildOnboardedEntryIdentity = (user) => {
+  if (!user) {
+    return null;
+  }
+
+  if (user.role === 'visitor') {
+    const visitorType = user.visitorType || 'guest';
+    if (!VISITOR_TYPES.includes(visitorType)) {
+      return { error: createHttpError('Invalid visitor type.', 400) };
+    }
+
+    const workCategory = user.visitorWorkCategory || null;
+
+    return {
+      userRole: 'visitor',
+      visitorType,
+      guestName: user.fullName || 'Unknown Visitor',
+      countryCode: normalizeCountryCode(user.countryCode || '+91'),
+      phoneDigits: normalizePhoneDigits(user.phoneNumber),
+      companyName: user.visitorCompanyName || null,
+      workCategory,
+      resolvedWorkCategory:
+        visitorType === 'other_visitor'
+          ? getWorkCategoryDisplayName(workCategory) || workCategory
+          : workCategory,
+      imageUrl: user.profilePhoto || null,
+      visitorUserId: user._id,
+      visitorUserRole: 'visitor',
+      visitorMemberCode: null,
+      visitorHomeSocietyId: null,
+      visitorHomeSocietyName: null,
+    };
+  }
+
+  if (user.role === 'member') {
+    return {
+      userRole: 'member',
+      visitorType: 'guest',
+      guestName: user.fullName || 'Unknown Member',
+      countryCode: normalizeCountryCode(user.countryCode || '+91'),
+      phoneDigits: normalizePhoneDigits(user.phoneNumber),
+      companyName: null,
+      workCategory: null,
+      resolvedWorkCategory: null,
+      imageUrl: user.profilePhoto || null,
+      visitorUserId: user._id,
+      visitorUserRole: 'member',
+      visitorMemberCode: generateStableMemberCode(user._id),
+      visitorHomeSocietyId: user.societyId || null,
+      visitorHomeSocietyName: user.societyName || null,
+    };
+  }
+
+  return { error: createHttpError('User cannot be used for visitor entry.', 400) };
 };
 
 const resolveAdminSocietyId = async (req, authUser) => {
@@ -4295,14 +4352,14 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
 
     
     const visitor = await User.findById(userId).lean();
-    if (!visitor) return next(createHttpError('Visitor not found.', 404));
-    if (visitor.role !== 'visitor') return next(createHttpError('User is not an onboarded visitor.', 400));
+    if (!visitor) return next(createHttpError('GatePal user not found.', 404));
 
-    
-    const visitorType = visitor.visitorType || 'guest';
-    if (!VISITOR_TYPES.includes(visitorType)) {
-      return next(createHttpError('Invalid visitor type.', 400));
+    const identity = buildOnboardedEntryIdentity(visitor);
+    if (identity?.error) {
+      return next(identity.error);
     }
+
+    const visitorType = identity.visitorType;
 
     const destinations = destinationFromUnits.length > 0
       ? destinationFromUnits
@@ -4332,18 +4389,15 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
       );
     }
 
-    const guestName = visitor.fullName || 'Unknown Visitor';
-    const phoneDigits = normalizePhoneDigits(visitor.phoneNumber);
-    const countryCode = normalizeCountryCode(visitor.countryCode || '+91');
-    const companyName = visitor.visitorCompanyName || null;
-    const workCategory = visitor.visitorWorkCategory || null;
-    const resolvedWorkCategory =
-      visitorType === 'other_visitor'
-        ? getWorkCategoryDisplayName(workCategory) || workCategory
-        : workCategory;
+    const guestName = identity.guestName;
+    const phoneDigits = identity.phoneDigits;
+    const countryCode = identity.countryCode;
+    const companyName = identity.companyName;
+    const workCategory = identity.workCategory;
+    const resolvedWorkCategory = identity.resolvedWorkCategory;
 
     if (!phoneDigits) {
-      return next(createHttpError('Visitor does not have a valid phone number.', 400));
+      return next(createHttpError('GatePal user does not have a valid phone number.', 400));
     }
 
     
@@ -4361,7 +4415,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     }
 
     
-    const finalImageUrl = imageUrl || visitor.profilePhoto || null;
+    const finalImageUrl = imageUrl || identity.imageUrl || null;
 
     
     const recipientsByUnit = new Map();
@@ -4460,7 +4514,11 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
           guestPhoneDigits: phoneDigits,
           guestImageUrl: finalImageUrl,
           visitorType,
-          visitorUserId: visitor._id,
+          visitorUserId: identity.visitorUserId,
+          visitorUserRole: identity.visitorUserRole,
+          visitorMemberCode: identity.visitorMemberCode,
+          visitorHomeSocietyId: identity.visitorHomeSocietyId,
+          visitorHomeSocietyName: identity.visitorHomeSocietyName,
           visitorCompanyName: companyName || (autoApproved && preApproval?.companyName) || null,
           visitorWorkCategory: resolvedWorkCategory || (autoApproved && preApproval?.workCategory) || null,
           accompanyingCount,
@@ -4520,9 +4578,19 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
         countryCode,
         phoneNumber: phoneDigits,
         imageUrl: finalImageUrl,
+        userRole: identity.userRole,
         companyName,
         companyLogo,
         workCategory,
+        ...(identity.userRole === 'member'
+          ? {
+              memberId: identity.visitorMemberCode,
+              homeSociety: {
+                id: identity.visitorHomeSocietyId ? String(identity.visitorHomeSocietyId) : null,
+                name: identity.visitorHomeSocietyName || null,
+              },
+            }
+          : {}),
       },
       accompanyingCount: String(accompanyingCount),
       vehicleNumber,
