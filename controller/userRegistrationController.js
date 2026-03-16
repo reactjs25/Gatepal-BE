@@ -1,4 +1,5 @@
 const User = require('../model/userSchema');
+const MemberUnit = require('../model/memberUnitSchema');
 const { generateNumericOtp, sendOtpToPhone } = require('../utils/otpService');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ROLE_TYPES, normalizeRole, resolveOnboardingFlow } = require('../utils/userRoleUtils');
@@ -191,7 +192,25 @@ const completeOnboarding = async (req, res, next) => {
     }
 
     if (user.onboardingStatus === 'completed') {
-      throw createHttpError('Onboarding already completed for this account.', 409);
+      const unitCount = await MemberUnit.countDocuments({ memberId: user._id });
+
+      if (unitCount === 0) {
+        throw createHttpError('Onboarding is already completed for this account. Use add unit flow for this user.', 409, {
+          details: {
+            code: 'ADD_UNIT_REQUIRED',
+            nextStep: 'add_unit',
+            unitCount,
+          },
+        });
+      }
+
+      throw createHttpError('Onboarding already completed for this account.', 409, {
+        details: {
+          code: 'ONBOARDING_ALREADY_COMPLETED',
+          nextStep: 'home',
+          unitCount,
+        },
+      });
     }
 
     const flow = user.onboardingFlow || resolveOnboardingFlow(user.intendedRole || user.role);

@@ -140,6 +140,9 @@ const getMemberProfile = async (req, res, next) => {
       countryCode: user.countryCode || '+91',
       imageUrl: user.profilePhoto || null,
       phoneNumber: user.phoneNumber,
+      unitCount: unitsFromDb.length,
+      hasUnits: unitsFromDb.length > 0,
+      nextStep: unitsFromDb.length > 0 ? 'home' : 'add_unit',
       units: unitsFromDb.map((u) => {
         const s = societyMap[String(u.societyId)] || null;
         const societyRole =

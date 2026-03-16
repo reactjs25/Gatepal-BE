@@ -46,9 +46,9 @@ const validateMemberUnitPayload = (payload = {}) => {
   const wingName = normalizeString(payload.wingName ?? payload.wing);
   const unitNumber = normalizeString(payload.unitNumber ?? payload.unnitNumber ?? payload.unit);
 
-  const rawOccupantType = payload.occupantType ?? payload.occupancyType;
+  const rawOccupantType = payload.occupantType ?? payload.occupancyType ?? payload.occupanytype;
   const occupantType = toCanonicalOccupantType(rawOccupantType);
-  const occupancyStatus = toCanonicalOccupancyStatus(payload.occupancyStatus);
+  let occupancyStatus = toCanonicalOccupancyStatus(payload.occupancyStatus);
 
   if (!societyPin) {
     throw createHttpError('societyPin is required.', 400);
@@ -63,6 +63,10 @@ const validateMemberUnitPayload = (payload = {}) => {
       'occupantType must be one of unit_owner, unit_owner_family_member, tenant, tenant_family_member.',
       400
     );
+  }
+
+  if (!occupancyStatus && (occupantType === 'tenant' || occupantType === 'tenant_family_member')) {
+    occupancyStatus = 'unit_rented';
   }
 
   if (!occupancyStatus) {
@@ -185,6 +189,7 @@ const addMemberUnit = async (req, res, next) => {
         occupantType: doc.occupantType,
         occupancyStatus: doc.occupancyStatus,
         memberName: targetUser.fullName || null,
+        nextStep: 'home',
       },
     });
   } catch (error) {

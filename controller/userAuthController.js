@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const User = require('../model/userSchema');
+const MemberUnit = require('../model/memberUnitSchema');
 const { generateNumericOtp } = require('../utils/otpService');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ROLE_TYPES, normalizeRole, APP_USER_ROLES } = require('../utils/userRoleUtils');
@@ -182,14 +183,23 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   return null;
 };
 
-const mapPrincipalResponse = (principal) => {
+const buildUserUnitState = ({ unitCount = 0 }) => ({
+  unitCount,
+  hasUnits: unitCount > 0,
+  nextStep: unitCount > 0 ? 'home' : 'add_unit',
+});
+
+const mapPrincipalResponse = (principal, options = {}) => {
+  const { unitCount = null } = options;
   if (principal.type === 'user') {
+    const unitState = unitCount === null ? {} : buildUserUnitState({ unitCount });
     return {
       id: principal.doc._id,
       role: principal.doc.role,
       phoneNumber: principal.doc.phoneNumber,
       countryCode: principal.doc.countryCode,
       status: principal.doc.status,
+      ...unitState,
     };
   }
 
@@ -207,6 +217,11 @@ const mapPrincipalResponse = (principal) => {
     availableSocieties: mapAdminSocieties(principal.adminContexts || []),
     lastLoggedInSocietyId: principal.linkedUser?.lastLoggedInSocietyId || principal.society?._id || null,
   };
+};
+
+const getUserUnitCount = async (userId) => {
+  if (!userId) return 0;
+  return MemberUnit.countDocuments({ memberId: userId });
 };
 
 const ensureAccountIsActive = (principal) => {
@@ -418,8 +433,12 @@ const login = async (req, res, next) => {
       }
     }
 
+    const unitCount = principal.type === 'user'
+      ? await getUserUnitCount(principal.doc._id)
+      : null;
+
     return sendSuccessResponse(res, 200, 'Login successful.', {
-      data: mapPrincipalResponse(principal),
+      data: mapPrincipalResponse(principal, { unitCount }),
       token,
     });
   } catch (error) {
@@ -628,8 +647,12 @@ const resetPassword = async (req, res, next) => {
           : {},
     });
 
+    const unitCount = principal.type === 'user'
+      ? await getUserUnitCount(principal.doc._id)
+      : null;
+
     return sendSuccessResponse(res, 200, 'Password reset successful.', {
-      data: mapPrincipalResponse(principal),
+      data: mapPrincipalResponse(principal, { unitCount }),
       token,
     });
   } catch (error) {

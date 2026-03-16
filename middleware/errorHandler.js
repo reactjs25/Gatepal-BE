@@ -26,6 +26,7 @@ const errorHandler = async (err, req, res, next) => {
     statusCode: safeStatus,
     success: false,
     message: err.publicMessage || err.message || 'Internal server error',
+    ...(err.details !== undefined ? { details: err.details } : {}),
     timestamp: new Date().toISOString(),
   });
 };
