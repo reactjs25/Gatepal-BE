@@ -4,6 +4,7 @@ const config = require('./config/appConfig');
 const connectToDb = require('./connectToDb/connectToDb');
 const MemberUnit = require('./model/memberUnitSchema');
 const Society = require('./model/societySchema');
+const Vehicle = require('./model/vehicleSchema');
 const { initializeFirebase } = require('./config/firebaseConfig');
 const { expireVisitorStatuses } = require('./utils/expireVisitorStatuses');
 const { initializeScheduledJobs } = require('./jobs');
@@ -19,6 +20,7 @@ const startServer = async () => {
 
     await MemberUnit.syncIndexes();
     await Society.syncIndexes();
+    await Vehicle.syncIndexes();
     
     
     initializeFirebase();

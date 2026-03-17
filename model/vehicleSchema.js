@@ -26,7 +26,14 @@ const vehicleSchema = new mongoose.Schema(
 
 vehicleSchema.index(
   { unitId: 1, vehicleNumber: 1 },
-  { unique: true, name: 'uniq_vehicle_per_unit', partialFilterExpression: { deletedAt: null } }
+  {
+    unique: true,
+    name: 'uniq_vehicle_per_unit',
+    partialFilterExpression: {
+      deletedAt: null,
+      vehicleNumber: { $exists: true, $type: 'string', $gt: '' },
+    },
+  }
 );
 
 module.exports = mongoose.model('Vehicle', vehicleSchema);

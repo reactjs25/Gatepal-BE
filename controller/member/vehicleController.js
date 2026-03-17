@@ -14,6 +14,20 @@ const DEFAULT_VEHICLE_LIMITS = {
   otherVehiclesPerUnit: 3,
 };
 
+const mapVehicleWriteError = (error) => {
+  if (
+    error &&
+    error.code === 11000 &&
+    error.keyPattern &&
+    error.keyPattern.unitId === 1 &&
+    error.keyPattern.vehicleNumber === 1
+  ) {
+    return createHttpError('A vehicle with this number already exists for the unit.', 409);
+  }
+
+  return error;
+};
+
 const getVehicleLimitsForSociety = async (societyId) => {
   const society = await Society.findById(societyId, 'vehicleLimits').lean();
   if (!society || !society.vehicleLimits) {
@@ -145,7 +159,7 @@ const addVehicle = async (req, res, next) => {
       },
     });
   } catch (error) {
-    return next(setErrorDefaults(error, 'Failed to add vehicle'));
+    return next(setErrorDefaults(mapVehicleWriteError(error), 'Failed to add vehicle'));
   }
 };
 
@@ -261,7 +275,7 @@ const editVehicle = async (req, res, next) => {
       },
     });
   } catch (error) {
-    return next(setErrorDefaults(error, 'Failed to update vehicle'));
+    return next(setErrorDefaults(mapVehicleWriteError(error), 'Failed to update vehicle'));
   }
 };
 
