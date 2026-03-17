@@ -1,6 +1,7 @@
 const Society = require('../model/societySchema');
 const { createHttpError } = require('./httpError');
 const { lookupSocietyAdminByMobile } = require('./societyAdminUtils');
+const { assertSocietyIsAccessible, isSocietyAccessible } = require('./societyAccess');
 
 const getEffectiveRole = (req, authUser) =>
   req?.user?.effectiveRole || authUser?.role || req?.user?.role || null;
@@ -39,10 +40,7 @@ const resolveAdminSocietyFromContext = async ({ req, authUser, allowPhoneFallbac
   const scopedSocietyId = req?.user?.societyId || null;
   if (scopedSocietyId) {
     const scopedSociety = await Society.findById(scopedSocietyId).lean();
-    if (!scopedSociety) {
-      throw createHttpError('Society not found.', 404);
-    }
-    return scopedSociety;
+    return assertSocietyIsAccessible(scopedSociety);
   }
 
   const linkedAdminIds = Array.from(
@@ -58,18 +56,19 @@ const resolveAdminSocietyFromContext = async ({ req, authUser, allowPhoneFallbac
   );
 
   if (linkedAdminIds.length > 0) {
-    const linkedSociety = await Society.findOne({
+    const linkedSocieties = await Society.find({
       'societyAdmins._id': { $in: linkedAdminIds },
     }).lean();
-    if (linkedSociety) {
-      return linkedSociety;
+    if (linkedSocieties.length > 0) {
+      const accessibleSociety = linkedSocieties.find((society) => isSocietyAccessible(society));
+      return assertSocietyIsAccessible(accessibleSociety || linkedSocieties[0]);
     }
   }
 
   if (authUser.adminSocietyId) {
     const legacySociety = await Society.findById(authUser.adminSocietyId).lean();
     if (legacySociety) {
-      return legacySociety;
+      return assertSocietyIsAccessible(legacySociety);
     }
   }
 
@@ -78,7 +77,7 @@ const resolveAdminSocietyFromContext = async ({ req, authUser, allowPhoneFallbac
     if (match?.societyId) {
       const phoneSociety = await Society.findById(match.societyId).lean();
       if (phoneSociety) {
-        return phoneSociety;
+        return assertSocietyIsAccessible(phoneSociety);
       }
     }
   }

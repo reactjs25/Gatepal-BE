@@ -9,6 +9,7 @@ const { ROLE_TYPES, normalizeRole, APP_USER_ROLES } = require('../utils/userRole
 const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require('../utils/phoneNumber');
 const { generateUserAuthToken } = require('../utils/authToken');
 const { findSocietyAdminsByPhone } = require('../utils/societyAdminUtils');
+const { assertSocietyIsAccessible, isSocietyAccessible } = require('../utils/societyAccess');
 const { sendSuccessResponse } = require('../utils/response');
 const { isSupportedLanguageCode } = require('../utils/enums/languageEnums');
 
@@ -21,7 +22,9 @@ const pickActiveAdminContext = ({ contexts = [], lastLoggedInSocietyId }) => {
     return null;
   }
 
-  const activeContexts = contexts.filter((ctx) => ctx?.admin?.status !== 'Inactive');
+  const activeContexts = contexts.filter(
+    (ctx) => ctx?.admin?.status !== 'Inactive' && isSocietyAccessible(ctx?.society)
+  );
   const candidatePool = activeContexts.length > 0 ? activeContexts : contexts;
   const preferredSocietyId = lastLoggedInSocietyId ? String(lastLoggedInSocietyId) : null;
 
@@ -35,9 +38,27 @@ const pickActiveAdminContext = ({ contexts = [], lastLoggedInSocietyId }) => {
   return candidatePool[0] || null;
 };
 
+const pickPreferredAdminContext = ({ contexts = [], lastLoggedInSocietyId }) => {
+  if (!Array.isArray(contexts) || contexts.length === 0) {
+    return null;
+  }
+
+  const preferredSocietyId = lastLoggedInSocietyId ? String(lastLoggedInSocietyId) : null;
+
+  if (preferredSocietyId) {
+    const preferred = contexts.find((ctx) => String(ctx.society?._id) === preferredSocietyId);
+    if (preferred) {
+      return preferred;
+    }
+  }
+
+  return contexts[0] || null;
+};
+
 const toAdminSociety = (context) => ({
   societyId: context.society?._id,
   societyName: context.society?.societyName,
+  societyStatus: context.society?.status || null,
   adminId: context.admin?._id,
   adminStatus: context.admin?.status || null,
 });
@@ -104,7 +125,14 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
       lastLoggedInSocietyId: linkedUser?.lastLoggedInSocietyId || null,
     });
 
-    if (!activeContext) {
+    const fallbackContext = pickPreferredAdminContext({
+      contexts: adminContexts,
+      lastLoggedInSocietyId: linkedUser?.lastLoggedInSocietyId || null,
+    });
+
+    const resolvedContext = activeContext || fallbackContext;
+
+    if (!resolvedContext) {
       return null;
     }
 
@@ -114,10 +142,10 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
       countryCode: normalizedCountryCode,
       adminContexts,
       linkedUser,
-      doc: activeContext.admin,
-      society: activeContext.society,
+      doc: resolvedContext.admin,
+      society: resolvedContext.society,
       activeAdminContext: activeContext,
-      save: () => activeContext.society.save(),
+      save: () => resolvedContext.society.save(),
     };
 
     return principal;
@@ -244,6 +272,11 @@ const ensureAccountIsActive = (principal) => {
   if (principal.doc.status === 'Inactive') {
     throw createHttpError('Your society admin account is inactive.', 403);
   }
+
+  assertSocietyIsAccessible(principal.society, {
+    inactiveMessage: `${principal.society?.societyName || 'This society'} is inactive. Please renew the contract to continue.`,
+    suspendedMessage: `${principal.society?.societyName || 'This society'} is suspended. Please contact support.`,
+  });
 };
 
 const login = async (req, res, next) => {
@@ -483,6 +516,11 @@ const switchSociety = async (req, res, next) => {
     if (targetContext.admin?.status === 'Inactive') {
       throw createHttpError('Your society admin account is inactive for the selected society.', 403);
     }
+
+    assertSocietyIsAccessible(targetContext.society, {
+      inactiveMessage: `${targetContext.society?.societyName || 'This society'} is inactive. Please renew the contract to continue.`,
+      suspendedMessage: `${targetContext.society?.societyName || 'This society'} is suspended. Please contact support.`,
+    });
 
     const adminIds = contexts.map((ctx) => String(ctx.admin._id));
     authUser.linkedSocietyAdminId = targetContext.admin._id;

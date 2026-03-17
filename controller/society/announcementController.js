@@ -13,6 +13,7 @@ const {
 const { normalizeImageListToStorageUrls } = require('../../utils/imageDataUrl');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { assertUnitResidentAccess } = require('../../utils/unitAccess');
+const { assertSocietyIsAccessible } = require('../../utils/societyAccess');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
 const { sendToSocietyMembers } = require('../../utils/pushNotificationService');
 const { getNotificationMessage } = require('../../utils/notificationMessages');
@@ -61,6 +62,7 @@ const resolveAdminSociety = async (req, authUser) => {
     if (!society) {
       throw createHttpError('Society not found.', 404);
     }
+    assertSocietyIsAccessible(society);
     return society;
   }
 

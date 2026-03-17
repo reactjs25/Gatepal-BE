@@ -1,10 +1,17 @@
 const mongoose = require('mongoose');
 const MemberUnit = require('../model/memberUnitSchema');
+const Society = require('../model/societySchema');
 const { createHttpError } = require('./httpError');
+const { assertSocietyIsAccessible } = require('./societyAccess');
 
 const normalizeString = (v) => (v || '').toString().trim();
 
 const buildCanonicalUnitId = (unitDoc) => `${String(unitDoc.societyId)}:${unitDoc.wingNameLower}:${unitDoc.unitNumberLower}`;
+
+const assertUnitSocietyIsAccessible = async (unitDoc) => {
+  const society = await Society.findById(unitDoc.societyId).lean();
+  assertSocietyIsAccessible(society);
+};
 
 const assertUnitAccess = async ({ unitId, authUser }) => {
   const id = normalizeString(unitId);
@@ -23,6 +30,8 @@ const assertUnitAccess = async ({ unitId, authUser }) => {
   if (!hasAccess) {
     throw createHttpError('Forbidden: you do not have access to this unit', 403);
   }
+
+  await assertUnitSocietyIsAccessible(unitDoc);
 
   return unitDoc;
 };
@@ -45,6 +54,8 @@ const assertMemberUnitOwnership = async ({ unitId, authUser }) => {
   if (!isOwner) {
     throw createHttpError('Forbidden: only unit owner can delete vehicles', 403);
   }
+
+  await assertUnitSocietyIsAccessible(unitDoc);
 
   return unitDoc;
 };
@@ -73,6 +84,8 @@ const assertUnitResidentAccess = async ({ unitId, authUser }) => {
   if (!isResident) {
     throw createHttpError('Forbidden: only residents of this unit can perform this action', 403);
   }
+
+  await assertUnitSocietyIsAccessible(unitDoc);
 
   return unitDoc;
 };

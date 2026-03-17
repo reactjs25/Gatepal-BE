@@ -12,6 +12,7 @@ const { normalizeDigits, normalizeCountryCode } = require('../../utils/phoneNumb
 const { normalizeImageInputToStorageUrl } = require('../../utils/imageDataUrl');
 const { assertUnitAccess, buildCanonicalUnitId } = require('../../utils/unitAccess');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const { assertSocietyIsAccessible } = require('../../utils/societyAccess');
 
 const getLastBodyValue = (value) => {
   if (!Array.isArray(value)) return value;
@@ -311,6 +312,7 @@ const searchApprovedSocietyDailyHelp = async (req, res, next) => {
 
       const society = await Society.findById(paramId).lean();
       if (!society) return next(createHttpError('Society not found.', 404));
+      assertSocietyIsAccessible(society);
 
       const guardSocieties = authUser.guardSocieties || [];
       const isAssociated = guardSocieties.some(

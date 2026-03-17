@@ -3,6 +3,7 @@ const User = require('../model/userSchema');
 const Society = require('../model/societySchema');
 const { normalizeDigits } = require('../utils/phoneNumber');
 const { createHttpError } = require('../utils/httpError');
+const { assertSocietyIsAccessible } = require('../utils/societyAccess');
 const { autoEndExpiredDutyForGuard } = require('../utils/guardDutyUtils');
 
 const tryAutoEndGuardDuty = async (user) => {
@@ -46,6 +47,11 @@ const userAuthMiddleware = async (req, res, next) => {
       if (!society || !admin) {
         return next(createHttpError('Unauthorized: invalid society admin context', 401));
       }
+
+      assertSocietyIsAccessible(society, {
+        inactiveMessage: `${society.societyName || 'This society'} is inactive. Please renew the contract to continue.`,
+        suspendedMessage: `${society.societyName || 'This society'} is suspended. Please contact support.`,
+      });
 
       const digits = normalizeDigits(admin.mobile || '');
       const linkedUser = await User.findOne({

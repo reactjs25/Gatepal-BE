@@ -21,6 +21,7 @@ const {
     resolveAdminSocietyFromContext,
 } = require('../../utils/adminSocietyContext');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
+const { assertSocietyIsAccessible } = require('../../utils/societyAccess');
 
 const assertSocietyInfoAccess = (req, authUser) => {
     if (!authUser) {
@@ -64,6 +65,7 @@ const resolveSocietyForSocietyInfo = async (authUser, req) => {
 
         const society = await Society.findById(societyIdCandidate).lean();
         if (!society) throw createHttpError('Society not found.', 404);
+        assertSocietyIsAccessible(society);
 
         const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
         const enrolledIds = new Set(
@@ -91,6 +93,7 @@ const resolveSocietyForSocietyInfo = async (authUser, req) => {
         const unitDoc = await assertUnitResidentAccess({ unitId: unitIdCandidate, authUser });
         const society = await Society.findById(unitDoc.societyId).lean();
         if (!society) throw createHttpError('Society not found.', 404);
+        assertSocietyIsAccessible(society);
         return { society, unitDoc };
     }
 
@@ -119,6 +122,7 @@ const resolveSocietyForSocietyInfo = async (authUser, req) => {
 
         const society = await Society.findById(adminUnitDoc.societyId).lean();
         if (!society) throw createHttpError('Society not found.', 404);
+        assertSocietyIsAccessible(society);
         return { society, unitDoc: null };
     }
 

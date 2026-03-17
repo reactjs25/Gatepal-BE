@@ -8,6 +8,7 @@ const DailyHelpAssignment = require('../../model/dailyHelpAssignmentSchema');
 const MemberUnit = require('../../model/memberUnitSchema');
 const { sendSuccessResponse } = require('../../utils/response');
 const { createHttpError, setErrorDefaults } = require('../../utils/httpError');
+const { assertSocietyIsAccessible } = require('../../utils/societyAccess');
 const { toISTDateTimeLabel } = require('../../utils/dateTime');
 const { toTitleCaseName } = require('../../utils/strings');
 
@@ -208,6 +209,8 @@ const addSociety = async (req, res, next) => {
       return next(createHttpError('Society not found for provided name and PIN.', 404));
     }
 
+    assertSocietyIsAccessible(society);
+
     if (!Array.isArray(user.guardSocieties)) {
       user.guardSocieties = [];
     }
@@ -395,6 +398,8 @@ const startDuty = async (req, res, next) => {
     if (!society) {
       return next(createHttpError('Society not found.', 404));
     }
+
+    assertSocietyIsAccessible(society);
 
     const allGates = [...(society.entryGates || []), ...(society.exitGates || [])];
     const gate = allGates.find((g) => String(g._id) === String(gateId));

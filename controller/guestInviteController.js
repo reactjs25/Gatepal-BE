@@ -1,6 +1,7 @@
 const QRCode = require('qrcode');
 const { Jimp } = require('jimp');
 const jsQR = require('jsqr');
+const Society = require('../model/societySchema');
 const GuestInvite = require('../model/guestInviteSchema');
 const GuestEntryRequest = require('../model/guestEntryRequestSchema');
 const MemberUnit = require('../model/memberUnitSchema');
@@ -23,6 +24,7 @@ const { toISTDateLabel, toISTTimeLabel, getISTMidnight, getISTEndOfDay, setISTHo
 const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies');
 const { getTaxiCompanyInfo } = require('../utils/taxiDriverCompanies');
 const { buildMemberQrPayload } = require('../utils/memberQrIdentity');
+const { assertSocietyIsAccessible } = require('../utils/societyAccess');
 const { uploadBufferToS3 } = require('../utils/s3Upload');
 
 const escapeRegex = (value) => (value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1111,6 +1113,9 @@ const scanGuestInvite = async (req, res, next) => {
       return next(createHttpError('You must be on duty to scan guest invites.', 400));
     }
 
+    const dutySociety = await Society.findById(activeDuty.societyId).lean();
+    assertSocietyIsAccessible(dutySociety);
+
     let payload;
     try {
       let text = normalizeString(qrDataRaw);
@@ -1563,6 +1568,9 @@ const updateGuestInviteEntryDetails = async (req, res, next) => {
     if (!activeDuty) {
       return next(createHttpError('You must be on duty to update entry details.', 400));
     }
+
+    const dutySociety = await Society.findById(activeDuty.societyId).lean();
+    assertSocietyIsAccessible(dutySociety);
 
     const payload = req.body || {};
     const inviteId = getLastBodyValue(payload.inviteId);

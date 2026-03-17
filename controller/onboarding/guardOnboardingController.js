@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { createHttpError } = require('../../utils/httpError');
 const Society = require('../../model/societySchema');
+const { assertSocietyIsAccessible } = require('../../utils/societyAccess');
 const { normalizeImageInputToStorageUrl } = require('../../utils/imageDataUrl');
 const { toTitleCaseName } = require('../../utils/strings');
 
@@ -54,6 +55,8 @@ const handleGuardOnboarding = async ({ user, payload }) => {
     if (!society) {
       throw createHttpError('Society not found for provided name and PIN.', 404);
     }
+
+    assertSocietyIsAccessible(society);
   }
 
   user.fullName = sanitizedFullName;

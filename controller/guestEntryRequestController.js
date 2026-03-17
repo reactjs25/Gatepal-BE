@@ -1,6 +1,7 @@
 const GuestEntryRequest = require('../model/guestEntryRequestSchema');
 const GuestEntryRequestDraft = require('../model/guestEntryRequestDraftSchema');
 const GuestInvite = require('../model/guestInviteSchema');
+const Society = require('../model/societySchema');
 const MemberUnit = require('../model/memberUnitSchema');
 const User = require('../model/userSchema');
 const DailyHelp = require('../model/dailyHelpSchema');
@@ -36,6 +37,7 @@ const {
   isSocietyAdminPrincipal,
   resolveAdminSocietyFromContext,
 } = require('../utils/adminSocietyContext');
+const { assertSocietyIsAccessible } = require('../utils/societyAccess');
 
 const VISITOR_TYPE_LABELS = {
   guest: { category: 'Guest', visitorType: 'Guest' },
@@ -686,12 +688,16 @@ const resolveAdminSocietyId = async (req, authUser) => {
   return society._id;
 };
 
-const requireGuardOnDuty = (authUser) => {
+const requireGuardOnDuty = async (authUser) => {
   const guardSocieties = Array.isArray(authUser.guardSocieties) ? authUser.guardSocieties : [];
   const activeDuty = guardSocieties.find((s) => s.isOnDuty === true);
   if (!activeDuty) {
     throw createHttpError('You must be on duty to perform this action.', 400);
   }
+
+  const dutySociety = await Society.findById(activeDuty.societyId).lean();
+  assertSocietyIsAccessible(dutySociety);
+
   return activeDuty;
 };
 
@@ -902,7 +908,7 @@ const getRecentGuestsForGuard = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const wingName = normalizeString(req.body?.wingName ?? req.body?.wing);
     const unitNumberRaw = req.body?.unitNumber ?? req.body?.unit;
@@ -1041,7 +1047,7 @@ const listGuestEntryRequestsForGuard = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const statusKey = normalizeOption(req.body?.status ?? req.body?.statusKey ?? 'awaiting_approval');
     const visitorTypeRaw = req.body?.visitorType ?? req.body?.visitorTypeKey;
@@ -1464,7 +1470,7 @@ const createGuestEntryRequest = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const wingNameRaw = req.body?.wingName ?? req.body?.wing;
     const wingNames = Array.isArray(wingNameRaw)
@@ -1895,7 +1901,7 @@ const getGuestEntryRequestForGuard = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
     const requestIdsRaw = req.query?.requestIds ?? req.body?.requestIds;
@@ -3424,7 +3430,7 @@ const allowGuestEntry = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
     const requestIdsRaw = req.body?.requestIds ?? req.query?.requestIds;
@@ -3591,7 +3597,7 @@ const allowEntryWithoutApproval = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
     const requestIdsRaw = req.body?.requestIds ?? req.query?.requestIds;
@@ -3710,7 +3716,7 @@ const allowGuestExit = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const requestId = normalizeString(req.body?.requestId || req.query?.requestId || req.params?.requestId);
     const requestIdsRaw = req.body?.requestIds ?? req.query?.requestIds;
@@ -3861,7 +3867,7 @@ const updateGuestEntryRequestPhoto = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const requestId = normalizeString(req.body?.requestId || req.params?.requestId || req.query?.requestId);
     const imageUrl = normalizeString(req.body?.imageUrl);
@@ -4279,7 +4285,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const userId = normalizeString(req.body?.userId);
     const wingNameRaw = req.body?.wingName ?? req.body?.wing;
@@ -4624,7 +4630,7 @@ const allowDailyHelpEntryBridge = async (req, res, next) => {
     if (!authUser) return next(createHttpError('Unauthorized.', 401));
     if (authUser.role !== 'guard') return next(createHttpError('Only guards can perform this action.', 403));
 
-    const activeDuty = requireGuardOnDuty(authUser);
+    const activeDuty = await requireGuardOnDuty(authUser);
 
     const dailyHelpId = normalizeString(req.body?.dailyHelpId || req.query?.dailyHelpId || req.params?.dailyHelpId);
     const assignmentIdsRaw = req.body?.assignmentIds ?? req.query?.assignmentIds;
