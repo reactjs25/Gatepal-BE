@@ -1197,8 +1197,8 @@ const scanGuestInvite = async (req, res, next) => {
         return next(createHttpError('Member not found.', 404));
       }
 
-      if (member.role !== 'member') {
-        return next(createHttpError('QR does not belong to a valid GatePal member.', 400));
+      if (member.role !== 'member' && member.role !== 'society_admin') {
+        return next(createHttpError('QR does not belong to a valid GatePal resident.', 400));
       }
 
       const memberIdentity = buildMemberQrPayload({
@@ -1214,7 +1214,7 @@ const scanGuestInvite = async (req, res, next) => {
         memberInfo: {
           memberId: memberIdentity.memberId,
           userId: memberIdentity.userId,
-          role: 'member',
+          role: member.role,
           fullName: member.fullName || null,
           countryCode: member.countryCode || '+91',
           phoneNumber: member.phoneNumber || null,

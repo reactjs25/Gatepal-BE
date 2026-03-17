@@ -656,11 +656,11 @@ const buildOnboardedEntryIdentity = (user) => {
     };
   }
 
-  if (user.role === 'member') {
+  if (user.role === 'member' || user.role === 'society_admin') {
     return {
-      userRole: 'member',
+      userRole: user.role,
       visitorType: 'guest',
-      guestName: user.fullName || 'Unknown Member',
+      guestName: user.fullName || (user.role === 'society_admin' ? 'Unknown Society Admin' : 'Unknown Member'),
       countryCode: normalizeCountryCode(user.countryCode || '+91'),
       phoneDigits: normalizePhoneDigits(user.phoneNumber),
       companyName: null,
@@ -668,7 +668,7 @@ const buildOnboardedEntryIdentity = (user) => {
       resolvedWorkCategory: null,
       imageUrl: user.profilePhoto || null,
       visitorUserId: user._id,
-      visitorUserRole: 'member',
+      visitorUserRole: user.role,
       visitorMemberCode: generateStableMemberCode(user._id),
       visitorHomeSocietyId: user.societyId || null,
       visitorHomeSocietyName: user.societyName || null,
