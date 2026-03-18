@@ -307,6 +307,37 @@ const getStatusLabel = (status) =>
                   ? 'Wrong Entry'
                   : 'Awaiting Approval';
 
+  const getGroupInviteGlobalStatus = ({ effectiveStatus, guests, inviteStatusLabel }) => {
+    const fallbackStatus = inviteStatusLabel(effectiveStatus);
+    const fallbackStatusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
+
+    if (effectiveStatus !== 'active') {
+      return { status: fallbackStatus, statusKey: fallbackStatusKey };
+    }
+
+    const guestStatusKeys = (Array.isArray(guests) ? guests : [])
+      .map((guest) => normalizeOption(guest?.statusKey || ''))
+      .filter(Boolean);
+
+    if (guestStatusKeys.length === 0) {
+      return { status: fallbackStatus, statusKey: fallbackStatusKey };
+    }
+
+    const hasOpenGuestEntry = guestStatusKeys.some((statusKey) => statusKey === 'approved' || statusKey === 'pending');
+    const hasEnteredGuest = guestStatusKeys.some((statusKey) => statusKey === 'entered');
+    const allGuestsLeft = guestStatusKeys.every((statusKey) => statusKey === 'left');
+
+    if (!hasOpenGuestEntry && hasEnteredGuest) {
+      return { status: 'Inside Society', statusKey: 'entered' };
+    }
+
+    if (!hasOpenGuestEntry && allGuestsLeft) {
+      return { status: 'Left Society', statusKey: 'left' };
+    }
+
+    return { status: fallbackStatus, statusKey: fallbackStatusKey };
+  };
+
 const resolveTaxiCompanyName = async (companyName) => {
   const trimmed = normalizeString(companyName);
   if (!trimmed) return null;
@@ -3246,20 +3277,11 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
 
       const shareMessage = `${invitedByUser?.fullName || 'A member'} has invited you.`;
 
-      let globalStatus = inviteStatusLabel(effectiveStatus);
-      let globalStatusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
-
-      if (effectiveStatus === 'active' && guests.length > 0 && guests[0].statusKey) {
-        const hasEntered = guests.some((g) => g.statusKey === 'entered');
-        const allLeft = guests.every((g) => g.statusKey === 'left');
-        if (hasEntered) {
-          globalStatus = 'Inside Society';
-          globalStatusKey = 'entered';
-        } else if (allLeft) {
-          globalStatus = 'Left Society';
-          globalStatusKey = 'left';
-        }
-      }
+      const { status: globalStatus, statusKey: globalStatusKey } = getGroupInviteGlobalStatus({
+        effectiveStatus,
+        guests,
+        inviteStatusLabel,
+      });
 
       return sendSuccessResponse(res, 200, 'Guest invite fetched successfully.', {
         data: {
