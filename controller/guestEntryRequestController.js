@@ -311,30 +311,6 @@ const getStatusLabel = (status) =>
     const fallbackStatus = inviteStatusLabel(effectiveStatus);
     const fallbackStatusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
 
-    if (effectiveStatus !== 'active') {
-      return { status: fallbackStatus, statusKey: fallbackStatusKey };
-    }
-
-    const guestStatusKeys = (Array.isArray(guests) ? guests : [])
-      .map((guest) => normalizeOption(guest?.statusKey || ''))
-      .filter(Boolean);
-
-    if (guestStatusKeys.length === 0) {
-      return { status: fallbackStatus, statusKey: fallbackStatusKey };
-    }
-
-    const hasOpenGuestEntry = guestStatusKeys.some((statusKey) => statusKey === 'approved' || statusKey === 'pending');
-    const hasEnteredGuest = guestStatusKeys.some((statusKey) => statusKey === 'entered');
-    const allGuestsLeft = guestStatusKeys.every((statusKey) => statusKey === 'left');
-
-    if (!hasOpenGuestEntry && hasEnteredGuest) {
-      return { status: 'Inside Society', statusKey: 'entered' };
-    }
-
-    if (!hasOpenGuestEntry && allGuestsLeft) {
-      return { status: 'Left Society', statusKey: 'left' };
-    }
-
     return { status: fallbackStatus, statusKey: fallbackStatusKey };
   };
 
