@@ -1,24 +1,6 @@
 const http = require('http');
 const https = require('https');
 
-const {
-  VINING_SMS_URI: smsUri,
-  VINING_SMS_USERNAME: smsUsername,
-  VINING_SMS_API_KEY: smsApiKey,
-  VINING_SMS_SENDER_ID: smsSenderId,
-  VINING_SMS_ROUTE: smsRoute,
-  VINING_SMS_APIREQUEST: smsApiRequest = 'Text',
-  VINING_SMS_FORMAT: smsFormat = 'JSON',
-  VINING_SMS_SIGNUP_TEMPLATE_ID: signupTemplateId,
-  VINING_SMS_FORGOT_PASSWORD_TEMPLATE_ID: forgotPasswordTemplateId,
-  VINING_SMS_SIGNUP_APIREQUEST: signupApiRequest,
-  VINING_SMS_FORGOT_PASSWORD_APIREQUEST: forgotPasswordApiRequest,
-  VINING_SMS_SIGNUP_MESSAGE_TEMPLATE:
-    signupMessageTemplate = '{otp} is your GatePal OTP to verify mobile number. Valid for {validityMins} mins. Do not share this code with anyone. If not requested please ignore. Team GatePal',
-  VINING_SMS_FORGOT_PASSWORD_MESSAGE_TEMPLATE:
-    forgotPasswordMessageTemplate = '{otp} is GatePal OTP to reset password. Valid for {validityMins} mins. Don’t share this code with anyone. If not requested, ignore message. Team GatePal',
-} = process.env;
-
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10);
 
 const TEMPLATE_TYPES = {
@@ -26,25 +8,45 @@ const TEMPLATE_TYPES = {
   FORGOT_PASSWORD: 'forgot_password',
 };
 
+const getSmsConfig = () => ({
+  smsUri: process.env.VINING_SMS_URI,
+  smsUsername: process.env.VINING_SMS_USERNAME,
+  smsApiKey: process.env.VINING_SMS_API_KEY,
+  smsSenderId: process.env.VINING_SMS_SENDER_ID,
+  smsRoute: process.env.VINING_SMS_ROUTE,
+  smsApiRequest: process.env.VINING_SMS_APIREQUEST || 'Text',
+  smsFormat: process.env.VINING_SMS_FORMAT || 'JSON',
+  signupTemplateId: process.env.VINING_SMS_SIGNUP_TEMPLATE_ID,
+  forgotPasswordTemplateId: process.env.VINING_SMS_FORGOT_PASSWORD_TEMPLATE_ID,
+  signupApiRequest: process.env.VINING_SMS_SIGNUP_APIREQUEST,
+  forgotPasswordApiRequest: process.env.VINING_SMS_FORGOT_PASSWORD_APIREQUEST,
+  signupMessageTemplate:
+    process.env.VINING_SMS_SIGNUP_MESSAGE_TEMPLATE ||
+    '{otp} is your GatePal OTP to verify mobile number. Valid for {validityMins} mins. Do not share this code with anyone. If not requested please ignore. Team GatePal',
+  forgotPasswordMessageTemplate:
+    process.env.VINING_SMS_FORGOT_PASSWORD_MESSAGE_TEMPLATE ||
+    '{otp} is GatePal OTP to reset password. Valid for {validityMins} mins. Don’t share this code with anyone. If not requested, ignore message. Team GatePal',
+});
+
 const generateNumericOtp = (length = 4) => {
   const min = 10 ** (length - 1);
   const max = 10 ** length - 1;
   return String(Math.floor(Math.random() * (max - min + 1)) + min);
 };
 
-const getTemplateConfig = (templateType) => {
+const getTemplateConfig = (templateType, smsConfig) => {
   if (templateType === TEMPLATE_TYPES.FORGOT_PASSWORD) {
     return {
-      templateId: forgotPasswordTemplateId,
-      messageTemplate: forgotPasswordMessageTemplate,
-      apiRequest: forgotPasswordApiRequest || smsApiRequest,
+      templateId: smsConfig.forgotPasswordTemplateId,
+      messageTemplate: smsConfig.forgotPasswordMessageTemplate,
+      apiRequest: smsConfig.forgotPasswordApiRequest || smsConfig.smsApiRequest,
     };
   }
 
   return {
-    templateId: signupTemplateId,
-    messageTemplate: signupMessageTemplate,
-    apiRequest: signupApiRequest || smsApiRequest,
+    templateId: smsConfig.signupTemplateId,
+    messageTemplate: smsConfig.signupMessageTemplate,
+    apiRequest: smsConfig.signupApiRequest || smsConfig.smsApiRequest,
   };
 };
 
@@ -118,12 +120,13 @@ const postFormData = (targetUrl, formData) => {
 };
 
 const sendOtpToPhone = async ({ countryCode = '+91', phoneNumber, otp, templateType = TEMPLATE_TYPES.SIGNUP }) => {
+  const smsConfig = getSmsConfig();
   const requiredConfig = {
-    smsUri,
-    smsUsername,
-    smsApiKey,
-    smsSenderId,
-    smsRoute,
+    smsUri: smsConfig.smsUri,
+    smsUsername: smsConfig.smsUsername,
+    smsApiKey: smsConfig.smsApiKey,
+    smsSenderId: smsConfig.smsSenderId,
+    smsRoute: smsConfig.smsRoute,
   };
 
   const missingConfig = Object.entries(requiredConfig)
@@ -134,7 +137,7 @@ const sendOtpToPhone = async ({ countryCode = '+91', phoneNumber, otp, templateT
     throw new Error(`Missing SMS configuration: ${missingConfig.join(', ')}`);
   }
 
-  const { templateId, messageTemplate, apiRequest } = getTemplateConfig(templateType);
+  const { templateId, messageTemplate, apiRequest } = getTemplateConfig(templateType, smsConfig);
   if (!templateId) {
     throw new Error(`Missing SMS template ID for template type: ${templateType}`);
   }
@@ -146,13 +149,13 @@ const sendOtpToPhone = async ({ countryCode = '+91', phoneNumber, otp, templateT
     validityMins,
   });
 
-  const responseBody = await postFormData(smsUri, {
-    username: smsUsername,
-    apikey: smsApiKey,
+  const responseBody = await postFormData(smsConfig.smsUri, {
+    username: smsConfig.smsUsername,
+    apikey: smsConfig.smsApiKey,
     apirequest: apiRequest,
-    sender: smsSenderId,
-    route: smsRoute,
-    format: smsFormat,
+    sender: smsConfig.smsSenderId,
+    route: smsConfig.smsRoute,
+    format: smsConfig.smsFormat,
     message,
     mobile,
     TemplateID: templateId,
