@@ -3,7 +3,7 @@ const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const User = require('../model/userSchema');
 const MemberUnit = require('../model/memberUnitSchema');
-const { generateNumericOtp } = require('../utils/otpService');
+const { generateNumericOtp, sendOtpToPhone, TEMPLATE_TYPES } = require('../utils/otpService');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ROLE_TYPES, normalizeRole, APP_USER_ROLES } = require('../utils/userRoleUtils');
 const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require('../utils/phoneNumber');
@@ -585,6 +585,13 @@ const requestPasswordOtp = async (req, res, next) => {
     principal.doc.resetPasswordExpires = null;
 
     await principal.save();
+
+    await sendOtpToPhone({
+      countryCode: principal.doc.countryCode || countryCode,
+      phoneNumber: principal.doc.phoneNumber || principal.doc.mobile || phoneNumber,
+      otp,
+      templateType: TEMPLATE_TYPES.FORGOT_PASSWORD,
+    });
 
     return sendSuccessResponse(res, 200, 'OTP sent successfully.', {
       data: {

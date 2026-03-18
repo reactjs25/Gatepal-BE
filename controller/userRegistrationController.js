@@ -1,6 +1,6 @@
 const User = require('../model/userSchema');
 const MemberUnit = require('../model/memberUnitSchema');
-const { generateNumericOtp, sendOtpToPhone } = require('../utils/otpService');
+const { generateNumericOtp, sendOtpToPhone, TEMPLATE_TYPES } = require('../utils/otpService');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ROLE_TYPES, normalizeRole, resolveOnboardingFlow } = require('../utils/userRoleUtils');
 const { normalizePhoneNumber, normalizeCountryCode, normalizeDigits } = require('../utils/phoneNumber');
@@ -124,6 +124,7 @@ const registerUser = async (req, res, next) => {
       countryCode: normalizedCountryCode,
       phoneNumber: normalizedPhone,
       otp,
+      templateType: TEMPLATE_TYPES.SIGNUP,
     });
 
     const includeOtpInResponse = true;
