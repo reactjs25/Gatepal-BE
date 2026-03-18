@@ -8,6 +8,8 @@ const TEMPLATE_TYPES = {
   FORGOT_PASSWORD: 'forgot_password',
 };
 
+const isSmsEnabled = () => String(process.env.OTP_SMS_ENABLED || 'false').toLowerCase() === 'true';
+
 const getSmsConfig = () => ({
   smsUri: process.env.VINING_SMS_URI,
   smsUsername: process.env.VINING_SMS_USERNAME,
@@ -120,6 +122,11 @@ const postFormData = (targetUrl, formData) => {
 };
 
 const sendOtpToPhone = async ({ countryCode = '+91', phoneNumber, otp, templateType = TEMPLATE_TYPES.SIGNUP }) => {
+  if (!isSmsEnabled()) {
+    console.log('[OTP] SMS sending is disabled by OTP_SMS_ENABLED flag');
+    return;
+  }
+
   const smsConfig = getSmsConfig();
   const requiredConfig = {
     smsUri: smsConfig.smsUri,
