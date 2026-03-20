@@ -1,4 +1,5 @@
 const RESERVED_KEYS = new Set(['statusCode', 'success', 'message', 'timestamp']);
+const { localizeResponseMessage } = require('./responseMessageLocalization');
 
 const isPlainObject = (obj) => {
   if (!obj || typeof obj !== 'object') return false;
@@ -66,6 +67,7 @@ const sanitizePayload = (payload = {}) => {
 const sendSuccessResponse = (res, statusCode = 200, message = 'OK', payload = {}) => {
   const safeStatus = Number.isInteger(statusCode) ? statusCode : 200;
   const sanitized = sanitizePayload(payload);
+  const localizedMessage = localizeResponseMessage(message, res?.req, res);
 
   const isEmptyData = (val) => {
     if (val === null || val === undefined) return true;
@@ -113,7 +115,7 @@ const sendSuccessResponse = (res, statusCode = 200, message = 'OK', payload = {}
   const responseBody = {
     statusCode: safeStatus,
     success: true,
-    message,
+    message: localizedMessage,
     timestamp: new Date().toISOString(),
     ...sanitized,
   };

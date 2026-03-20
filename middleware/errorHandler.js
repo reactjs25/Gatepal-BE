@@ -1,4 +1,5 @@
 const { logError } = require('../utils/errorLogger');
+const { localizeResponseMessage } = require('../utils/responseMessageLocalization');
 
   
 const errorHandler = async (err, req, res, next) => {
@@ -22,10 +23,16 @@ const errorHandler = async (err, req, res, next) => {
     return;
   }
 
+  const message = localizeResponseMessage(
+    err.publicMessage || err.message || 'Internal server error',
+    req,
+    res
+  );
+
   res.status(safeStatus).json({
     statusCode: safeStatus,
     success: false,
-    message: err.publicMessage || err.message || 'Internal server error',
+    message,
     ...(err.details !== undefined ? { details: err.details } : {}),
     timestamp: new Date().toISOString(),
   });

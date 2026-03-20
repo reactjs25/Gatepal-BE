@@ -1,4 +1,4 @@
-const { SUPPORTED_LANGUAGE_CODES } = require('./enums/languageEnums');
+const { normalizeSupportedLanguageCode } = require('./enums/languageEnums');
 
 const LANGUAGE_LOCALES = Object.freeze({
   en: 'en-US',
@@ -7,8 +7,7 @@ const LANGUAGE_LOCALES = Object.freeze({
 });
 
 const normalizeLanguageCode = (languageCode) => {
-  const normalized = (languageCode || 'en').toString().trim().toLowerCase();
-  return SUPPORTED_LANGUAGE_CODES.includes(normalized) ? normalized : 'en';
+  return normalizeSupportedLanguageCode(languageCode) || 'en';
 };
 
 const getLanguageLocale = (languageCode) => LANGUAGE_LOCALES[normalizeLanguageCode(languageCode)] || 'en-US';

@@ -11,7 +11,7 @@ const { generateUserAuthToken } = require('../utils/authToken');
 const { findSocietyAdminsByPhone } = require('../utils/societyAdminUtils');
 const { assertSocietyIsAccessible, isSocietyAccessible } = require('../utils/societyAccess');
 const { sendSuccessResponse } = require('../utils/response');
-const { isSupportedLanguageCode } = require('../utils/enums/languageEnums');
+const { isSupportedLanguageCode, normalizeSupportedLanguageCode } = require('../utils/enums/languageEnums');
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 const OTP_TTL_IN_MS = parseInt(process.env.OTP_TTL_IN_MS || '300000', 10);
@@ -470,6 +470,10 @@ const login = async (req, res, next) => {
       ? await getUserUnitCount(principal.doc._id)
       : null;
 
+    res.locals.languageCode = normalizeSupportedLanguageCode(
+      principal.linkedUser?.preferredLanguage || principal.doc?.preferredLanguage || 'en'
+    ) || 'en';
+
     return sendSuccessResponse(res, 200, 'Login successful.', {
       data: mapPrincipalResponse(principal, { unitCount }),
       token,
@@ -834,7 +838,7 @@ const updatePreferences = async (req, res, next) => {
       throw createHttpError('preferredLanguage is required.', 400);
     }
 
-    const normalizedLanguageCode = preferredLanguage.trim().toLowerCase();
+    const normalizedLanguageCode = normalizeSupportedLanguageCode(preferredLanguage);
     if (!isSupportedLanguageCode(normalizedLanguageCode)) {
       throw createHttpError('Unsupported preferredLanguage value.', 400);
     }
