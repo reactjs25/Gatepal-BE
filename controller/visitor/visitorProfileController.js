@@ -12,6 +12,7 @@ const OtherVisitorCompany = require('../../model/otherVisitorCompanySchema');
 const { getOtherVisitorCompanyInfo } = require('../../utils/otherVisitorCompanies');
 const { getTaxiCompanyInfo } = require('../../utils/taxiDriverCompanies');
 const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
+const { normalizeCountryCode } = require('../../utils/phoneNumber');
 
 const getLastBodyValue = (value) => {
     if (!Array.isArray(value)) return value;
@@ -197,6 +198,7 @@ const updateVisitorProfile = async (req, res, next) => {
                     ? payload.profilePhoto
                     : payload.profileImage;
         const fullNameRaw = getLastBodyValue(payload.fullName);
+        const countryCodeRaw = getLastBodyValue(payload.countryCode);
         const phoneNumberRaw = getLastBodyValue(payload.phoneNumber);
         const vehicleNumberRaw = getLastBodyValue(payload.vehicleNumber);
         const companyNameRaw = getLastBodyValue(payload.companyName);
@@ -229,6 +231,15 @@ const updateVisitorProfile = async (req, res, next) => {
                 return next(createHttpError('fullName cannot be empty.', 400));
             }
             updates.fullName = candidateName;
+            shouldInvalidateQr = true;
+        }
+
+        if (countryCodeRaw !== undefined) {
+            const candidateCountryCode = normalizeCountryCode(String(countryCodeRaw).trim());
+            if (!candidateCountryCode) {
+                return next(createHttpError('Please enter a valid country code.', 400));
+            }
+            updates.countryCode = candidateCountryCode;
             shouldInvalidateQr = true;
         }
 
@@ -319,6 +330,7 @@ const updateVisitorProfile = async (req, res, next) => {
                 visitor: {
                     ...(user.onboardingData?.visitor || {}),
                     ...(updates.fullName !== undefined ? { fullName: user.fullName } : {}),
+                    ...(updates.countryCode !== undefined ? { countryCode: user.countryCode } : {}),
                     ...(updates.profilePhoto !== undefined
                         ? {
                             hasProfilePhoto: Boolean(user.profilePhoto),
