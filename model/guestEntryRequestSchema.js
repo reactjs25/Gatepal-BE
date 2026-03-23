@@ -1,8 +1,10 @@
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
+const { ROLE_TYPES } = require('../utils/userRoleUtils');
 
 const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled', 'expired', 'entered', 'left', 'wrong_entry'];
 const VISITOR_TYPES = ['guest', 'delivery_executive', 'taxi_vehicle_driver', 'other_visitor'];
+const VISITOR_USER_ROLES = [ROLE_TYPES.VISITOR, ROLE_TYPES.MEMBER, ROLE_TYPES.SOCIETY_ADMIN];
 
 const guestEntryRequestSchema = new mongoose.Schema(
   {
@@ -46,7 +48,7 @@ const guestEntryRequestSchema = new mongoose.Schema(
     
     visitorType: { type: String, enum: VISITOR_TYPES, default: 'guest', index: true },
     visitorUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
-    visitorUserRole: { type: String, enum: ['visitor', 'member'], default: null },
+    visitorUserRole: { type: String, enum: VISITOR_USER_ROLES, default: null },
     visitorMemberCode: { type: String, trim: true, default: null },
     visitorHomeSocietyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Society', default: null, index: true },
     visitorHomeSocietyName: { type: String, trim: true, default: null },
