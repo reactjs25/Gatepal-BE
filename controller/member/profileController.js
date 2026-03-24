@@ -49,6 +49,64 @@ const getLastBodyValue = (value) => {
   return value[value.length - 1];
 };
 
+const syncLinkedSocietyAdminProfile = async ({ user, updates }) => {
+  const linkedAdminIds = Array.from(
+    new Set(
+      [
+        user.linkedSocietyAdminId,
+        ...((user.linkedSocietyAdminIds || []).map((id) => String(id))),
+      ]
+        .filter(Boolean)
+        .map((id) => String(id))
+    )
+  );
+
+  if (linkedAdminIds.length === 0) {
+    return;
+  }
+
+  const societies = await Society.find({ 'societyAdmins._id': { $in: linkedAdminIds } });
+  let hasSocietyChanges = false;
+
+  for (const society of societies) {
+    let societyChanged = false;
+
+    for (const linkedAdminId of linkedAdminIds) {
+      const admin = society.societyAdmins.id(linkedAdminId);
+      if (!admin) {
+        continue;
+      }
+
+      if (updates.fullName !== undefined && admin.name !== user.fullName) {
+        admin.name = user.fullName;
+        societyChanged = true;
+      }
+
+      if (updates.email !== undefined && admin.email !== user.email) {
+        admin.email = user.email;
+        societyChanged = true;
+      }
+
+      if (updates.phoneNumber !== undefined && admin.mobile !== user.phoneNumber) {
+        admin.mobile = user.phoneNumber;
+        societyChanged = true;
+      }
+
+      if (updates.countryCode !== undefined && admin.countryCode !== user.countryCode) {
+        admin.countryCode = user.countryCode;
+        societyChanged = true;
+      }
+    }
+
+    if (societyChanged) {
+      await society.save();
+      hasSocietyChanges = true;
+    }
+  }
+
+  return hasSocietyChanges;
+};
+
 const getMemberProfile = async (req, res, next) => {
   try {
     const user = req.appUser;
@@ -255,20 +313,22 @@ const updateMemberProfile = async (req, res, next) => {
       }
 
       const SuperAdmin = require('../../model/superAdminSchema');
-      const { lookupSocietyAdminByMobile } = require('../../utils/societyAdminUtils');
 
       const saExists = await SuperAdmin.exists({ phoneNumber: digits });
       if (saExists) {
         return next(createHttpError('This phone number already exists in the system.', 409));
       }
 
-      const adminMatch = await lookupSocietyAdminByMobile(digits);
-      if (adminMatch) {
+      const adminMatches = await lookupSocietyAdminsByMobile(digits);
+      if (Array.isArray(adminMatches) && adminMatches.length > 0) {
         const linkedIds = new Set([
           ...(user.linkedSocietyAdminId ? [String(user.linkedSocietyAdminId)] : []),
           ...((user.linkedSocietyAdminIds || []).map((id) => String(id))),
         ]);
-        if (!linkedIds.has(String(adminMatch.adminId))) {
+        const hasUnlinkedAdminConflict = adminMatches.some(
+          (adminMatch) => !linkedIds.has(String(adminMatch.adminId))
+        );
+        if (hasUnlinkedAdminConflict) {
           return next(createHttpError('This phone number already exists in the system.', 409));
         }
       }
@@ -292,6 +352,7 @@ const updateMemberProfile = async (req, res, next) => {
 
     Object.assign(user, updates);
     await user.save();
+    await syncLinkedSocietyAdminProfile({ user, updates });
 
     const updateResponseData = {
       id: String(user._id),
