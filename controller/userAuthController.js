@@ -105,6 +105,8 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   const normalizedRole = normalizeRole(role);
   const rawPhone = normalizePhoneNumber(String(phoneNumber || ''));
   const digitsOnly = normalizeDigits(rawPhone);
+  const hasExplicitCountryCode =
+    countryCode !== undefined && countryCode !== null && String(countryCode).trim().length > 0;
 
   if (!digitsOnly) {
     throw createHttpError('Phone number is required.', 400);
@@ -157,13 +159,13 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
       phoneNumber: digitsOnly,
     };
 
-    if (normalizedCountryCode) {
+    if (hasExplicitCountryCode) {
       query.countryCode = normalizedCountryCode;
     }
 
     let user = await User.findOne(query);
 
-    if (!user) {
+    if (!user && !hasExplicitCountryCode) {
       user = await User.findOne({
         role: normalizedRole,
         phoneNumber: digitsOnly,
@@ -174,22 +176,22 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
       user = await User.findOne({
         role: normalizedRole,
         phoneNumber: rawPhone,
-        ...(normalizedCountryCode ? { countryCode: normalizedCountryCode } : {}),
+        ...(hasExplicitCountryCode ? { countryCode: normalizedCountryCode } : {}),
       });
     }
 
-    if (!user && rawPhone && rawPhone !== digitsOnly) {
+    if (!user && rawPhone && rawPhone !== digitsOnly && !hasExplicitCountryCode) {
       user = await User.findOne({
         role: normalizedRole,
         phoneNumber: rawPhone,
       });
     }
 
-    if (!user) {
+    if (!user && !hasExplicitCountryCode) {
       user = await User.findOne({ phoneNumber: digitsOnly });
     }
 
-    if (!user && rawPhone) {
+    if (!user && rawPhone && !hasExplicitCountryCode) {
       user = await User.findOne({ phoneNumber: rawPhone });
     }
 
