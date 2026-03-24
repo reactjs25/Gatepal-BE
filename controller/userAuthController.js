@@ -101,6 +101,14 @@ const upsertFcmToken = ({ tokenList, fcmToken, normalizedDeviceType, deviceId })
   return list;
 };
 
+const getUserRoleCandidates = (normalizedRole) => {
+  if (normalizedRole === ROLE_TYPES.MEMBER) {
+    return [ROLE_TYPES.MEMBER, ROLE_TYPES.SOCIETY_ADMIN];
+  }
+
+  return [normalizedRole];
+};
+
 const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   const normalizedRole = normalizeRole(role);
   const rawPhone = normalizePhoneNumber(String(phoneNumber || ''));
@@ -154,8 +162,9 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
   }
 
   if (APP_USER_ROLES.has(normalizedRole)) {
+    const roleCandidates = getUserRoleCandidates(normalizedRole);
     const query = {
-      role: normalizedRole,
+      role: roleCandidates.length === 1 ? roleCandidates[0] : { $in: roleCandidates },
       phoneNumber: digitsOnly,
     };
 
@@ -167,14 +176,14 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
 
     if (!user && !hasExplicitCountryCode) {
       user = await User.findOne({
-        role: normalizedRole,
+        role: roleCandidates.length === 1 ? roleCandidates[0] : { $in: roleCandidates },
         phoneNumber: digitsOnly,
       });
     }
 
     if (!user && rawPhone && rawPhone !== digitsOnly) {
       user = await User.findOne({
-        role: normalizedRole,
+        role: roleCandidates.length === 1 ? roleCandidates[0] : { $in: roleCandidates },
         phoneNumber: rawPhone,
         ...(hasExplicitCountryCode ? { countryCode: normalizedCountryCode } : {}),
       });
@@ -182,7 +191,7 @@ const findPrincipal = async ({ role, countryCode, phoneNumber }) => {
 
     if (!user && rawPhone && rawPhone !== digitsOnly && !hasExplicitCountryCode) {
       user = await User.findOne({
-        role: normalizedRole,
+        role: roleCandidates.length === 1 ? roleCandidates[0] : { $in: roleCandidates },
         phoneNumber: rawPhone,
       });
     }
