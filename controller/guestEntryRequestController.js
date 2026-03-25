@@ -2316,27 +2316,14 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
 
     const preApprovalDateQuery = {};
     if (startAt || endAt) {
-      if (dateFilter === 'today' && startAt && endAt) {
-        preApprovalDateQuery.$or = [
-          {
-            validFrom: { $lte: endAt },
-            validTill: { $gte: startAt },
-          },
-          {
-            status: 'active',
-            validTill: { $gte: startAt },
-          },
-        ];
-      } else {
-        // Show invites where their validity period overlaps with the selected range.
-        if (startAt && endAt) {
-          preApprovalDateQuery.validFrom = { $lte: endAt };
-          preApprovalDateQuery.validTill = { $gte: startAt };
-        } else if (startAt) {
-          preApprovalDateQuery.validTill = { $gte: startAt };
-        } else if (endAt) {
-          preApprovalDateQuery.validFrom = { $lte: endAt };
-        }
+      // Show invites where their validity period overlaps with the selected range.
+      if (startAt && endAt) {
+        preApprovalDateQuery.validFrom = { $lte: endAt };
+        preApprovalDateQuery.validTill = { $gte: startAt };
+      } else if (startAt) {
+        preApprovalDateQuery.validTill = { $gte: startAt };
+      } else if (endAt) {
+        preApprovalDateQuery.validFrom = { $lte: endAt };
       }
     }
 
