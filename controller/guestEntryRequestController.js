@@ -30,6 +30,10 @@ const {
   toISTDateTimeLabelNoComma,
   toISTDateTimeLabelNoCommaWithoutYear,
   toISTTimeLabel,
+  getISTMidnight,
+  getISTEndOfDay,
+  getISTComponents,
+  createISTDate,
 } = require('../utils/dateTime');
 const { sendToUsers, sendToUser } = require('../utils/pushNotificationService');
 const { normalizeLanguageCode } = require('../utils/notificationMessages');
@@ -2075,15 +2079,16 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
     let startAt = null;
     let endAt = null;
     const now = new Date();
+    const todayStartIST = getISTMidnight(now);
+    const todayEndIST = getISTEndOfDay(now);
 
     if (dateFilter) {
       if (dateFilter === 'today') {
-        startAt = new Date(now);
-        startAt.setHours(0, 0, 0, 0);
-        endAt = new Date(now);
-        endAt.setHours(23, 59, 59, 999);
+        startAt = todayStartIST;
+        endAt = todayEndIST;
       } else if (dateFilter === 'this_month' || dateFilter === 'thismonth') {
-        startAt = new Date(now.getFullYear(), now.getMonth(), 1);
+        const { year, month } = getISTComponents(now);
+        startAt = createISTDate(year, month, 1, 0, 0, 0, 0);
         endAt = now;
       } else if (
         dateFilter === 'past_3_months' ||
@@ -2095,8 +2100,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         dateFilter === 'past_90_days' ||
         dateFilter === 'last_90_days'
       ) {
-        startAt = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        startAt.setHours(0, 0, 0, 0);
+        startAt = new Date(todayStartIST.getTime() - 90 * 24 * 60 * 60 * 1000);
         endAt = now;
       }
     }
