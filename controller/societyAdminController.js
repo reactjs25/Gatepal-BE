@@ -28,6 +28,7 @@ const sanitizeSocietyAdmin = (society, admin) => ({
   id: admin._id.toString(),
   name: admin.name,
   email: admin.email,
+  countryCode: admin.countryCode || '+91',
   mobile: admin.mobile,
   status: admin.status,
   societyId: society._id.toString(),

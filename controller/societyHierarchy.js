@@ -8,6 +8,7 @@ const MissingUnitRequest = require('../model/missingUnitRequestSchema');
 
 const getCountryCityOptions = async (req, res) => {
     const options = countryCityData.map((c) => {
+        const countryCode = (c.countryCode || '').toUpperCase().trim();
         const states = Array.isArray(c.states) ? c.states : [];
         const cities = Array.from(
             new Set(
@@ -15,8 +16,9 @@ const getCountryCityOptions = async (req, res) => {
             )
         ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
         return {
-            countryCode: c.countryCode || '',
+            countryCode,
             countryName: c.countryName || '',
+            dialCode: COUNTRY_DIAL_CODE_MAP[countryCode] || '',
             cities,
         };
     });

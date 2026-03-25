@@ -2,6 +2,7 @@ const Society = require('../model/societySchema');
 const MissingUnitRequest = require('../model/missingUnitRequestSchema');
 const { createHttpError, setErrorDefaults } = require('../utils/httpError');
 const { ensureAdminListIsUnique, normalizeAdminEmail, normalizeAdminMobile } = require('../utils/societyAdminUtils');
+const { normalizeCountryCode } = require('../utils/phoneNumber');
 const { sendSuccessResponse } = require('../utils/response');
 
 const PIN_MIN = 100000;
@@ -85,10 +86,12 @@ const normalizeSocietyAdminsInput = (admins = []) =>
     .map((admin = {}) => {
       const email = toTrimmedString(admin.email).toLowerCase();
       const mobile = toTrimmedString(admin.mobile).replace(/\D/g, '');
+      const countryCode = normalizeCountryCode(toTrimmedString(admin.countryCode));
 
       return {
         name: toTrimmedString(admin.name),
         mobile,
+        countryCode,
         email,
       };
     })
@@ -126,6 +129,7 @@ const normalizeIncomingAdmins = (admins = []) =>
         ...admin,
         email: admin.email ? normalizeAdminEmail(admin.email) : admin.email,
         mobile: admin.mobile ? normalizeAdminMobile(admin.mobile) : admin.mobile,
+        countryCode: normalizeCountryCode(admin.countryCode),
       }))
     : [];
 
