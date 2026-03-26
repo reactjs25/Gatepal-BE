@@ -2,12 +2,141 @@ const mongoose = require('mongoose');
 const { getMessaging } = require('../config/firebaseConfig');
 const User = require('../model/userSchema');
 const Society = require('../model/societySchema');
+const MemberUnit = require('../model/memberUnitSchema');
 const Notification = require('../model/notificationSchema');
 const { normalizeLanguageCode } = require('./notificationMessages');
+const { buildCanonicalUnitId } = require('./unitAccess');
 
 const societyNameCache = new Map();
 
 const normalizeString = (value) => (value || '').toString().trim();
+
+const normalizeLowerString = (value) => normalizeString(value).toLowerCase();
+
+const normalizeCanonicalUnitId = (value) => {
+  const raw = normalizeString(value);
+  if (!raw) return '';
+
+  const parts = raw.split(':');
+  if (parts.length !== 3) return '';
+
+  const [societyId, wingNameLower, unitNumberLower] = parts;
+  if (!mongoose.Types.ObjectId.isValid(societyId)) {
+    return '';
+  }
+
+  const normalizedWing = normalizeLowerString(wingNameLower);
+  const normalizedUnit = normalizeLowerString(unitNumberLower);
+  if (!normalizedWing || !normalizedUnit) {
+    return '';
+  }
+
+  return `${societyId}:${normalizedWing}:${normalizedUnit}`;
+};
+
+const buildCanonicalUnitIdFromParts = ({ societyId, wingName, unitNumber, wingNameLower, unitNumberLower }) => {
+  const normalizedSocietyId = normalizeString(societyId);
+  if (!mongoose.Types.ObjectId.isValid(normalizedSocietyId)) {
+    return '';
+  }
+
+  const normalizedWing = normalizeLowerString(wingNameLower || wingName);
+  const normalizedUnit = normalizeLowerString(unitNumberLower || unitNumber);
+  if (!normalizedWing || !normalizedUnit) {
+    return '';
+  }
+
+  return `${normalizedSocietyId}:${normalizedWing}:${normalizedUnit}`;
+};
+
+const collectUnitDescriptorObjects = (data = {}) => {
+  const descriptors = [];
+  const pushDescriptor = (value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      descriptors.push(value);
+    }
+  };
+
+  pushDescriptor(data);
+  pushDescriptor(data.unit);
+
+  ['units', 'unitTargets', 'approvedFor', 'notApprovedFor'].forEach((key) => {
+    if (Array.isArray(data[key])) {
+      data[key].forEach(pushDescriptor);
+    }
+  });
+
+  return descriptors;
+};
+
+const resolveNotificationUnitScope = async (data = {}, options = {}) => {
+  const canonicalUnitIds = new Set();
+  const explicitUnitIds = new Set();
+  const fallbackSocietyId = normalizeString(options.societyId || data.societyId);
+
+  const addCanonical = (value) => {
+    const normalized = normalizeCanonicalUnitId(value);
+    if (normalized) {
+      canonicalUnitIds.add(normalized);
+    }
+  };
+
+  const addExplicitUnitId = (value) => {
+    const normalized = normalizeString(value);
+    if (!normalized) {
+      return;
+    }
+
+    const canonical = normalizeCanonicalUnitId(normalized);
+    if (canonical) {
+      canonicalUnitIds.add(canonical);
+      return;
+    }
+
+    if (mongoose.Types.ObjectId.isValid(normalized)) {
+      explicitUnitIds.add(normalized);
+    }
+  };
+
+  addExplicitUnitId(options.unitId);
+  addExplicitUnitId(data.unitId);
+  if (Array.isArray(data.unitIds)) {
+    data.unitIds.forEach(addExplicitUnitId);
+  }
+
+  const descriptors = collectUnitDescriptorObjects(data);
+  descriptors.forEach((descriptor) => {
+    addCanonical(descriptor.canonicalUnitId);
+    addCanonical(descriptor.canonicalUnitKey);
+    addExplicitUnitId(descriptor.unitId);
+
+    const descriptorSocietyId = normalizeString(descriptor.societyId || fallbackSocietyId);
+    const fromParts = buildCanonicalUnitIdFromParts({
+      societyId: descriptorSocietyId,
+      wingName: descriptor.wingName,
+      unitNumber: descriptor.unitNumber,
+      wingNameLower: descriptor.wingNameLower,
+      unitNumberLower: descriptor.unitNumberLower,
+    });
+    addCanonical(fromParts);
+  });
+
+  if (explicitUnitIds.size > 0) {
+    const unitDocs = await MemberUnit.find(
+      { _id: { $in: Array.from(explicitUnitIds) } },
+      { societyId: 1, wingNameLower: 1, unitNumberLower: 1 }
+    ).lean();
+
+    unitDocs.forEach((unitDoc) => {
+      addCanonical(buildCanonicalUnitId(unitDoc));
+    });
+  }
+
+  return {
+    societyId: fallbackSocietyId || null,
+    canonicalUnitIds: Array.from(canonicalUnitIds),
+  };
+};
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -44,9 +173,11 @@ const appendSocietyNameToTitle = (title, societyName) => {
 
 const saveNotification = async (userId, title, body, data = {}, fcmResult = {}, options = {}) => {
   try {
+    const unitScope = await resolveNotificationUnitScope(data, options);
     const notification = new Notification({
       userId,
-      societyId: data.societyId || options.societyId || null,
+      societyId: unitScope.societyId || null,
+      ...(unitScope.canonicalUnitIds.length > 0 ? { canonicalUnitIds: unitScope.canonicalUnitIds } : {}),
       title,
       body,
       type: data.type || 'general',
@@ -67,9 +198,11 @@ const saveNotification = async (userId, title, body, data = {}, fcmResult = {}, 
 
 const saveNotificationsForUsers = async (userIds, title, body, data = {}, fcmResult = {}) => {
   try {
+    const unitScope = await resolveNotificationUnitScope(data);
     const notifications = userIds.map((userId) => ({
       userId,
-      societyId: data.societyId || null,
+      societyId: unitScope.societyId || null,
+      ...(unitScope.canonicalUnitIds.length > 0 ? { canonicalUnitIds: unitScope.canonicalUnitIds } : {}),
       title,
       body,
       type: data.type || 'general',
@@ -92,9 +225,12 @@ const saveNotificationsForUsersWithResolvedContent = async (entries = [], data =
       return null;
     }
 
+    const unitScope = await resolveNotificationUnitScope(data);
+
     const notifications = entries.map((entry) => ({
       userId: entry.userId,
-      societyId: data.societyId || null,
+      societyId: unitScope.societyId || null,
+      ...(unitScope.canonicalUnitIds.length > 0 ? { canonicalUnitIds: unitScope.canonicalUnitIds } : {}),
       title: entry.title,
       body: entry.body,
       type: data.type || 'general',

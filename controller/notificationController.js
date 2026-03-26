@@ -1,5 +1,6 @@
+const mongoose = require('mongoose');
 const Notification = require('../model/notificationSchema');
-const { isValidObjectId } = require('mongoose');
+const { isValidObjectId } = mongoose;
 const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
 const { createHttpError } = require('../utils/httpError');
@@ -11,6 +12,7 @@ const {
   getNotificationMessage,
 } = require('../utils/notificationMessages');
 const { isSocietyAdminPrincipal, isScopedSocietyAdminSession } = require('../utils/adminSocietyContext');
+const { assertUnitAccess, buildCanonicalUnitId, listSamePhysicalUnitIds } = require('../utils/unitAccess');
 
 const SOCIETY_RULE_CATEGORY_LABELS = {
   general: 'General',
@@ -98,6 +100,98 @@ const getRequestedSocietyId = (req) => {
   return rawSocietyId;
 };
 
+const getRequestedUnitId = (req) => {
+  const rawUnitId = (req.query?.unitId || req.body?.unitId || '').toString().trim();
+  if (!rawUnitId) {
+    return null;
+  }
+
+  if (!isValidObjectId(rawUnitId)) {
+    throw createHttpError('Invalid unitId.', 400);
+  }
+
+  return rawUnitId;
+};
+
+const getUnitlessNotificationClause = () => ({
+  canonicalUnitIds: { $exists: false },
+  'data.unitId': { $exists: false },
+  'data.unit': { $exists: false },
+  'data.units': { $exists: false },
+  'data.unitTargets': { $exists: false },
+  'data.approvedFor': { $exists: false },
+  'data.notApprovedFor': { $exists: false },
+  'data.wingName': { $exists: false },
+  'data.unitNumber': { $exists: false },
+});
+
+const buildUnitFilterClauses = (unitScope, includeUnitless = false) => {
+  if (!unitScope?.canonicalUnitId) {
+    return [];
+  }
+
+  const clauses = [
+    { canonicalUnitIds: unitScope.canonicalUnitId },
+    { 'data.unit.wingName': unitScope.wingName, 'data.unit.unitNumber': unitScope.unitNumber },
+    { 'data.unit.wingName': unitScope.wingNameLower, 'data.unit.unitNumber': unitScope.unitNumberLower },
+    { 'data.units': { $elemMatch: { wingName: unitScope.wingName, unitNumber: unitScope.unitNumber } } },
+    { 'data.units': { $elemMatch: { wingName: unitScope.wingNameLower, unitNumber: unitScope.unitNumberLower } } },
+    { 'data.unitTargets': { $elemMatch: { wingName: unitScope.wingName, unitNumber: unitScope.unitNumber } } },
+    { 'data.unitTargets': { $elemMatch: { wingName: unitScope.wingNameLower, unitNumber: unitScope.unitNumberLower } } },
+    { 'data.approvedFor': { $elemMatch: { wingName: unitScope.wingName, unitNumber: unitScope.unitNumber } } },
+    { 'data.approvedFor': { $elemMatch: { wingName: unitScope.wingNameLower, unitNumber: unitScope.unitNumberLower } } },
+    { 'data.notApprovedFor': { $elemMatch: { wingName: unitScope.wingName, unitNumber: unitScope.unitNumber } } },
+    { 'data.notApprovedFor': { $elemMatch: { wingName: unitScope.wingNameLower, unitNumber: unitScope.unitNumberLower } } },
+    { 'data.wingName': unitScope.wingName, 'data.unitNumber': unitScope.unitNumber },
+    { 'data.wingName': unitScope.wingNameLower, 'data.unitNumber': unitScope.unitNumberLower },
+  ];
+
+  if (Array.isArray(unitScope.legacyUnitIds) && unitScope.legacyUnitIds.length > 0) {
+    clauses.push({ 'data.unitId': { $in: unitScope.legacyUnitIds } });
+  }
+
+  if (includeUnitless) {
+    clauses.push(getUnitlessNotificationClause());
+  }
+
+  return clauses;
+};
+
+const resolveRequestedUnitScope = async (req, selectedSocietyId = null) => {
+  const requestedUnitId = getRequestedUnitId(req);
+  if (!requestedUnitId) {
+    return null;
+  }
+
+  const unitDoc = await assertUnitAccess({ unitId: requestedUnitId, authUser: req.appUser });
+  const resolvedSocietyId = String(unitDoc.societyId);
+
+  if (selectedSocietyId && String(selectedSocietyId) !== resolvedSocietyId) {
+    throw createHttpError('unitId does not belong to the selected society.', 409);
+  }
+
+  const relatedUnitIds = await listSamePhysicalUnitIds(unitDoc);
+  const legacyUnitIds = relatedUnitIds.reduce((acc, unitId) => {
+    const normalized = String(unitId);
+    acc.push(normalized);
+    if (mongoose.Types.ObjectId.isValid(normalized)) {
+      acc.push(new mongoose.Types.ObjectId(normalized));
+    }
+    return acc;
+  }, []);
+
+  return {
+    requestedUnitId,
+    societyId: resolvedSocietyId,
+    canonicalUnitId: buildCanonicalUnitId(unitDoc),
+    legacyUnitIds,
+    wingName: unitDoc.wingName,
+    wingNameLower: unitDoc.wingNameLower,
+    unitNumber: unitDoc.unitNumber,
+    unitNumberLower: unitDoc.unitNumberLower,
+  };
+};
+
 const formatNotificationCreatedOn = (dateValue, preferredLanguage = 'en') => {
   if (!dateValue) return '';
 
@@ -140,13 +234,19 @@ const formatNotificationCreatedOn = (dateValue, preferredLanguage = 'en') => {
 
 
 
-const getNotificationQuery = (req, societyId = null) => {
+const getNotificationQuery = (req, options = {}) => {
+  const { societyId = null, unitScope = null, includeUnitlessWhenScoped = false } = options;
   const userId = req.appUser._id;
   const societyAdminId = getSocietyAdminId(req);
   const query = societyAdminId ? { $or: [{ userId }, { societyAdminId }] } : { userId };
 
   if (societyId) {
     query.societyId = societyId;
+  }
+
+  const unitClauses = buildUnitFilterClauses(unitScope, includeUnitlessWhenScoped);
+  if (unitClauses.length > 0) {
+    query.$and = [...(query.$and || []), { $or: unitClauses }];
   }
   
   return query;
@@ -243,7 +343,13 @@ const getNotifications = async (req, res, next) => {
     }
 
     const selectedSocietyId = getRequestedSocietyId(req);
-    const query = getNotificationQuery(req, selectedSocietyId);
+    const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
+    const effectiveSocietyId = selectedUnitScope?.societyId || selectedSocietyId;
+    const query = getNotificationQuery(req, {
+      societyId: effectiveSocietyId,
+      unitScope: selectedUnitScope,
+      includeUnitlessWhenScoped: Boolean(selectedUnitScope),
+    });
 
     if (req.query.isRead === 'true') {
       query.isRead = true;
@@ -255,7 +361,11 @@ const getNotifications = async (req, res, next) => {
       query.type = req.query.type;
     }
 
-    const unreadQuery = getNotificationQuery(req, selectedSocietyId);
+    const unreadQuery = getNotificationQuery(req, {
+      societyId: effectiveSocietyId,
+      unitScope: selectedUnitScope,
+      includeUnitlessWhenScoped: Boolean(selectedUnitScope),
+    });
     unreadQuery.isRead = false;
 
     const unreadBySocietyBaseQuery = getNotificationQuery(req);
@@ -295,7 +405,8 @@ const getNotifications = async (req, res, next) => {
       data: formattedNotifications,
       unreadCount,
       unreadCountBySociety,
-      selectedSocietyId,
+      selectedSocietyId: effectiveSocietyId,
+      selectedUnitId: selectedUnitScope?.requestedUnitId || null,
     });
   } catch (error) {
     return next(error);
@@ -314,7 +425,13 @@ const getUnreadCount = async (req, res, next) => {
     }
 
     const selectedSocietyId = getRequestedSocietyId(req);
-    const query = getNotificationQuery(req, selectedSocietyId);
+    const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
+    const effectiveSocietyId = selectedUnitScope?.societyId || selectedSocietyId;
+    const query = getNotificationQuery(req, {
+      societyId: effectiveSocietyId,
+      unitScope: selectedUnitScope,
+      includeUnitlessWhenScoped: Boolean(selectedUnitScope),
+    });
     query.isRead = false;
 
     const unreadBySocietyBaseQuery = getNotificationQuery(req);
@@ -339,7 +456,8 @@ const getUnreadCount = async (req, res, next) => {
       data: {
         unreadCount,
         unreadCountBySociety,
-        selectedSocietyId,
+        selectedSocietyId: effectiveSocietyId,
+        selectedUnitId: selectedUnitScope?.requestedUnitId || null,
       },
     });
   } catch (error) {
@@ -427,7 +545,13 @@ const markAllAsRead = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const query = getNotificationQuery(req);
+    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
+    const query = getNotificationQuery(req, {
+      societyId: selectedUnitScope?.societyId || selectedSocietyId,
+      unitScope: selectedUnitScope,
+      includeUnitlessWhenScoped: Boolean(selectedUnitScope),
+    });
     query.isRead = false;
 
     const result = await Notification.updateMany(
@@ -482,7 +606,13 @@ const clearReadNotifications = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const query = getNotificationQuery(req);
+    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
+    const query = getNotificationQuery(req, {
+      societyId: selectedUnitScope?.societyId || selectedSocietyId,
+      unitScope: selectedUnitScope,
+      includeUnitlessWhenScoped: Boolean(selectedUnitScope),
+    });
     query.isRead = true;
 
     const result = await Notification.deleteMany(query);

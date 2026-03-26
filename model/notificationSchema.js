@@ -12,6 +12,10 @@ const notificationSchema = new mongoose.Schema(
       ref: "Society",
       index: true,
     },
+    canonicalUnitIds: {
+      type: [String],
+      index: true,
+    },
     isSocietyAdmin: {
       type: Boolean,
       default: false,
@@ -100,7 +104,10 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
+notificationSchema.index({ userId: 1, societyId: 1, canonicalUnitIds: 1, createdAt: -1 });
+notificationSchema.index({ userId: 1, societyId: 1, canonicalUnitIds: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ societyAdminId: 1, createdAt: -1 });
+notificationSchema.index({ societyAdminId: 1, societyId: 1, canonicalUnitIds: 1, createdAt: -1 });
 
 notificationSchema.index(
   { createdAt: 1 },
