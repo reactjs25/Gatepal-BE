@@ -73,11 +73,15 @@ const resolveNotificationUnitScope = async (data = {}, options = {}) => {
   const canonicalUnitIds = new Set();
   const explicitUnitIds = new Set();
   const fallbackSocietyId = normalizeString(options.societyId || data.societyId);
+  let resolvedSocietyId = mongoose.Types.ObjectId.isValid(fallbackSocietyId) ? fallbackSocietyId : '';
 
   const addCanonical = (value) => {
     const normalized = normalizeCanonicalUnitId(value);
     if (normalized) {
       canonicalUnitIds.add(normalized);
+      if (!resolvedSocietyId) {
+        [resolvedSocietyId] = normalized.split(':');
+      }
     }
   };
 
@@ -128,12 +132,15 @@ const resolveNotificationUnitScope = async (data = {}, options = {}) => {
     ).lean();
 
     unitDocs.forEach((unitDoc) => {
+      if (!resolvedSocietyId && unitDoc?.societyId) {
+        resolvedSocietyId = String(unitDoc.societyId);
+      }
       addCanonical(buildCanonicalUnitId(unitDoc));
     });
   }
 
   return {
-    societyId: fallbackSocietyId || null,
+    societyId: resolvedSocietyId || null,
     canonicalUnitIds: Array.from(canonicalUnitIds),
   };
 };

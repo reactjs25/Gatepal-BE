@@ -81,6 +81,17 @@ const shouldNotifyGuardByPreference = async (guardUserId, eventType) => {
   return guard[preferenceField] !== false;
 };
 
+const buildUnitScopedNotificationData = (doc, payload = {}) => ({
+  ...payload,
+  societyId: doc?.societyId ? String(doc.societyId) : undefined,
+  unit: {
+    wingName: doc?.wingName || '',
+    wingNameLower: doc?.wingNameLower || '',
+    unitNumber: doc?.unitNumber || '',
+    unitNumberLower: doc?.unitNumberLower || '',
+  },
+});
+
 
 const getNotificationContent = (doc, action, languageCode = 'en') => {
   const lang = normalizeLanguageCode(languageCode);
@@ -1870,12 +1881,12 @@ const createGuestEntryRequest = async (req, res, next) => {
           doc.recipientUserIds,
           notification.title,
           notification.body,
-          {
+          buildUnitScopedNotificationData(doc, {
             type: 'guest_entry_request',
             requestId: doc.requestId,
             visitorType: doc.visitorType || 'guest',
             status: 'pending',
-          },
+          }),
           {
             localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'approval', languageCode),
           }
@@ -3414,12 +3425,12 @@ const decideGuestEntryRequest = async (req, res, next) => {
           doc.createdByGuardId,
           notification.title,
           notification.body,
-          {
+          buildUnitScopedNotificationData(doc, {
             type: decision === 'approve' ? 'guest_entry_approved' : 'guest_entry_rejected',
             requestId: doc.requestId,
             visitorType: doc.visitorType || 'guest',
             status: decision === 'approve' ? 'approved' : 'rejected',
-          },
+          }),
           {
             localizedContentResolver: ({ languageCode }) =>
               getNotificationContent(doc, decision === 'approve' ? 'approved' : 'denied', languageCode),
@@ -3513,12 +3524,12 @@ const allowGuestEntry = async (req, res, next) => {
               filteredIds,
               notification.title,
               notification.body,
-              {
+              buildUnitScopedNotificationData(d, {
                 type: 'guest_entry',
                 requestId: d.requestId,
                 visitorType: d.visitorType || 'guest',
                 status: 'entered',
-              },
+              }),
               {
                 localizedContentResolver: ({ languageCode }) => getNotificationContent(d, 'entry', languageCode),
               }
@@ -3584,12 +3595,12 @@ const allowGuestEntry = async (req, res, next) => {
           filteredIds,
           notification.title,
           notification.body,
-          {
+          buildUnitScopedNotificationData(doc, {
             type: 'guest_entry',
             requestId: doc.requestId,
             visitorType: doc.visitorType || 'guest',
             status: 'entered',
-          },
+          }),
           {
             localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'entry', languageCode),
           }
@@ -3792,12 +3803,12 @@ const allowGuestExit = async (req, res, next) => {
               filteredIds,
               notification.title,
               notification.body,
-              {
+              buildUnitScopedNotificationData(d, {
                 type: 'guest_exit',
                 requestId: d.requestId,
                 visitorType: d.visitorType || 'guest',
                 status: 'left',
-              },
+              }),
               {
                 localizedContentResolver: ({ languageCode }) => getNotificationContent(d, 'exit', languageCode),
               }
@@ -3854,12 +3865,12 @@ const allowGuestExit = async (req, res, next) => {
           filteredIds,
           notification.title,
           notification.body,
-          {
+          buildUnitScopedNotificationData(doc, {
             type: 'guest_exit',
             requestId: doc.requestId,
             visitorType: doc.visitorType || 'guest',
             status: 'left',
-          },
+          }),
           {
             localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'exit', languageCode),
           }
@@ -4110,7 +4121,7 @@ const allowGuestExitForMember = async (req, res, next) => {
           guardId,
           title,
           body,
-          {
+          buildUnitScopedNotificationData(doc, {
             type: 'guest_exit',
             requestId: doc.requestId,
             visitorType: doc.visitorType,
@@ -4119,7 +4130,7 @@ const allowGuestExitForMember = async (req, res, next) => {
             unitNumber: doc.unitNumber,
             status: 'left',
             markedByMember: 'true',
-          },
+          }),
           {
             localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'member_exit', languageCode),
           }
@@ -4227,7 +4238,7 @@ const markWrongEntryForMember = async (req, res, next) => {
           guardToNotify,
           notification.title,
           notification.body,
-          {
+          buildUnitScopedNotificationData(doc, {
             type: 'guest_wrong_entry',
             requestId: doc.requestId,
             visitorType: doc.visitorType || 'guest',
@@ -4236,7 +4247,7 @@ const markWrongEntryForMember = async (req, res, next) => {
             unitNumber: doc.unitNumber,
             status: 'wrong_entry',
             markedByMember: 'true',
-          },
+          }),
           {
             localizedContentResolver: ({ languageCode }) =>
               getNotificationContent(doc, 'wrong_entry', languageCode),
@@ -4580,12 +4591,12 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
           doc.recipientUserIds,
           notification.title,
           notification.body,
-          {
+          buildUnitScopedNotificationData(doc, {
             type: 'guest_entry_request',
             requestId: doc.requestId,
             visitorType: visitorType || 'guest',
             status: 'pending',
-          },
+          }),
           {
             localizedContentResolver: ({ languageCode }) => getNotificationContent(doc, 'approval', languageCode),
           }
