@@ -247,6 +247,63 @@ const formatNotificationCreatedOn = (dateValue, preferredLanguage = 'en') => {
   return `${datePart}, ${timePart}`;
 };
 
+const buildNotificationDeduplicationKey = (notification = {}) => {
+  const data = notification.data || {};
+  const type = notification.type || 'general';
+
+  if (data.requestId) {
+    return `${type}:request:${String(data.requestId)}`;
+  }
+
+  if (data.announcementId) {
+    return `${type}:announcement:${String(data.announcementId)}`;
+  }
+
+  if (data.meetingId) {
+    return `${type}:meeting:${String(data.meetingId)}`;
+  }
+
+  if (data.ruleId) {
+    return `${type}:rule:${String(data.ruleId)}`;
+  }
+
+  if (data.maintenanceId) {
+    return `${type}:maintenance:${String(data.maintenanceId)}:${String(data.month || '')}:${String(data.year || '')}`;
+  }
+
+  if (data.testNotification === 'true' && data.timestamp) {
+    return `${type}:test:${String(data.timestamp)}`;
+  }
+
+  return [
+    type,
+    notification.title || '',
+    notification.body || '',
+    String(notification.societyId || data.societyId || ''),
+    notification.createdAt ? new Date(notification.createdAt).toISOString() : '',
+  ].join('::');
+};
+
+const dedupeNotifications = (notifications = []) => {
+  const grouped = new Map();
+
+  notifications.forEach((notification) => {
+    const key = buildNotificationDeduplicationKey(notification);
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        ...notification,
+        isRead: Boolean(notification.isRead),
+      });
+      return;
+    }
+
+    const existing = grouped.get(key);
+    existing.isRead = Boolean(existing.isRead) && Boolean(notification.isRead);
+  });
+
+  return Array.from(grouped.values());
+};
+
 
 
 
@@ -413,16 +470,25 @@ const getNotifications = async (req, res, next) => {
     unreadBySocietyBaseQuery.isRead = false;
     unreadBySocietyBaseQuery.societyId = { $ne: null };
 
-    const [notifications, unreadCount, unreadCountsBySocietyRaw] = await Promise.all([
+    const [notifications, unreadNotifications, unreadCountsBySocietyRaw] = await Promise.all([
       Notification.find(query)
         .sort({ createdAt: -1 })
         .lean(),
-      Notification.countDocuments(unreadQuery),
+      Notification.find(unreadQuery)
+        .sort({ createdAt: -1 })
+        .lean(),
       Notification.aggregate([
         { $match: unreadBySocietyBaseQuery },
         { $group: { _id: '$societyId', count: { $sum: 1 } } },
       ]),
     ]);
+
+    const notificationsForResponse = selectedUnitScope
+      ? dedupeNotifications(notifications)
+      : notifications;
+    const unreadCount = selectedUnitScope
+      ? dedupeNotifications(unreadNotifications).length
+      : unreadNotifications.length;
 
     const unreadCountBySociety = unreadCountsBySocietyRaw.reduce((acc, row) => {
       if (!row?._id) return acc;
@@ -431,7 +497,7 @@ const getNotifications = async (req, res, next) => {
     }, {});
 
     const preferredLanguage = normalizeLanguageCode(authUser.preferredLanguage || 'en');
-    const formattedNotifications = notifications.map((n) => ({
+    const formattedNotifications = notificationsForResponse.map((n) => ({
       id: String(n._id),
       title: n.title,
       body: n.body,
@@ -479,13 +545,17 @@ const getUnreadCount = async (req, res, next) => {
     unreadBySocietyBaseQuery.isRead = false;
     unreadBySocietyBaseQuery.societyId = { $ne: null };
 
-    const [unreadCount, unreadCountsBySocietyRaw] = await Promise.all([
-      Notification.countDocuments(query),
+    const [unreadNotifications, unreadCountsBySocietyRaw] = await Promise.all([
+      Notification.find(query).sort({ createdAt: -1 }).lean(),
       Notification.aggregate([
         { $match: unreadBySocietyBaseQuery },
         { $group: { _id: '$societyId', count: { $sum: 1 } } },
       ]),
     ]);
+
+    const unreadCount = selectedUnitScope
+      ? dedupeNotifications(unreadNotifications).length
+      : unreadNotifications.length;
 
     const unreadCountBySociety = unreadCountsBySocietyRaw.reduce((acc, row) => {
       if (!row?._id) return acc;
