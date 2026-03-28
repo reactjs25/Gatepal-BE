@@ -1029,6 +1029,8 @@ const verifyMaintenance = async (req, res, next) => {
         {
           type: 'maintenance_verified',
           maintenanceId: doc.maintenanceId,
+          societyId: String(society._id),
+          unitId: doc.unitId,
           month: doc.month,
           year: String(doc.year),
         },
@@ -1161,6 +1163,8 @@ const rejectMaintenance = async (req, res, next) => {
         {
           type: 'maintenance_rejected',
           maintenanceId: doc.maintenanceId,
+          societyId: String(society._id),
+          unitId: doc.unitId,
           month: doc.month,
           year: String(doc.year),
           reason: reasonCanonical,

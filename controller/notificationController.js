@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Notification = require('../model/notificationSchema');
+const MemberUnit = require('../model/memberUnitSchema');
 const { isValidObjectId } = mongoose;
 const User = require('../model/userSchema');
 const { sendSuccessResponse } = require('../utils/response');
@@ -180,11 +181,26 @@ const resolveRequestedUnitScope = async (req, selectedSocietyId = null) => {
     return acc;
   }, []);
 
+  const sameUnitDocs = await MemberUnit.find(
+    { _id: { $in: relatedUnitIds } },
+    { memberId: 1 }
+  ).lean();
+
+  const residentUserIds = Array.from(
+    new Set(
+      sameUnitDocs
+        .map((doc) => doc?.memberId)
+        .filter(Boolean)
+        .map((memberId) => String(memberId))
+    )
+  );
+
   return {
     requestedUnitId,
     societyId: resolvedSocietyId,
     canonicalUnitId: buildCanonicalUnitId(unitDoc),
     legacyUnitIds,
+    residentUserIds,
     wingName: unitDoc.wingName,
     wingNameLower: unitDoc.wingNameLower,
     unitNumber: unitDoc.unitNumber,
@@ -238,10 +254,35 @@ const getNotificationQuery = (req, options = {}) => {
   const { societyId = null, unitScope = null, includeUnitlessWhenScoped = false } = options;
   const userId = req.appUser._id;
   const societyAdminId = getSocietyAdminId(req);
-  const query = societyAdminId ? { $or: [{ userId }, { societyAdminId }] } : { userId };
+  const scopedResidentUserIds = Array.isArray(unitScope?.residentUserIds)
+    ? unitScope.residentUserIds.filter(Boolean)
+    : [];
+
+  const recipientClauses = [];
+  if (scopedResidentUserIds.length > 0) {
+    recipientClauses.push({ userId: { $in: scopedResidentUserIds } });
+  } else {
+    recipientClauses.push({ userId });
+  }
+
+  if (societyAdminId) {
+    recipientClauses.push({ societyAdminId });
+  }
+
+  const query = recipientClauses.length === 1 ? recipientClauses[0] : { $or: recipientClauses };
 
   if (societyId) {
     query.societyId = societyId;
+  }
+
+  if (unitScope?.requestedUnitId) {
+    console.log('[NotificationAPI] Building unit-scoped query:', JSON.stringify({
+      authUserId: String(userId),
+      societyAdminId: societyAdminId ? String(societyAdminId) : null,
+      requestedUnitId: String(unitScope.requestedUnitId),
+      residentUserIds: scopedResidentUserIds,
+      societyId: societyId ? String(societyId) : null,
+    }));
   }
 
   const unitClauses = buildUnitFilterClauses(unitScope, includeUnitlessWhenScoped);

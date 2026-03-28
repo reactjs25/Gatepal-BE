@@ -1895,6 +1895,15 @@ const createGuestEntryRequest = async (req, res, next) => {
     for (const doc of createdDocs) {
       if (doc.status === 'pending' && doc.recipientUserIds && doc.recipientUserIds.length > 0) {
         const notification = getNotificationContent(doc, 'approval');
+        console.log('[GuestEntryRequest] Queueing guest_entry_request notification:', JSON.stringify({
+          requestId: doc.requestId,
+          societyId: doc.societyId ? String(doc.societyId) : null,
+          unit: {
+            wingName: doc.wingName,
+            unitNumber: doc.unitNumber,
+          },
+          recipientUserIds: doc.recipientUserIds.map((id) => String(id)),
+        }));
         sendToUsers(
           doc.recipientUserIds,
           notification.title,

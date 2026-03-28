@@ -249,7 +249,18 @@ const saveNotificationsForUsersWithResolvedContent = async (entries = [], data =
       fcmError: entry.fcmResult?.error || null,
     }));
 
-    await Notification.insertMany(notifications);
+    const insertedNotifications = await Notification.insertMany(notifications);
+
+    if (data.type === 'guest_entry_request') {
+      console.log('[PushNotification] Saved guest_entry_request notifications:', JSON.stringify({
+        requestId: data.requestId || null,
+        recipientUserIds: entries.map((entry) => String(entry.userId)),
+        societyId: unitScope.societyId || null,
+        canonicalUnitIds: unitScope.canonicalUnitIds,
+        notificationIds: insertedNotifications.map((notification) => String(notification._id)),
+      }));
+    }
+
     return notifications;
   } catch (error) {
     console.error('[PushNotification] Failed to save localized notifications:', error.message);
