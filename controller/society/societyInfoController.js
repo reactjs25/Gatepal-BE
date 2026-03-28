@@ -1152,12 +1152,16 @@ const getSocietyInfoPets = async (req, res, next) => {
             let dogs = 0;
             let cats = 0;
             let parrots = 0;
-            let otherPets = 0;
+            let rabbits = 0;
+            let hamsters = 0;
+            let others = 0;
             pets.forEach((p) => {
                 if (p.petType === 'Dog') dogs += 1;
                 else if (p.petType === 'Cat') cats += 1;
                 else if (p.petType === 'Parrot') parrots += 1;
-                else otherPets += 1;
+                else if (p.petType === 'Rabbit') rabbits += 1;
+                else if (p.petType === 'Hamsters') hamsters += 1;
+                else others += 1;
             });
 
             const petsSummary = {
@@ -1165,7 +1169,9 @@ const getSocietyInfoPets = async (req, res, next) => {
                 ...(dogs ? { dogs } : {}),
                 ...(cats ? { cats } : {}),
                 ...(parrots ? { parrots } : {}),
-                ...(otherPets ? { others: otherPets } : {}),
+                ...(rabbits ? { rabbits } : {}),
+                ...(hamsters ? { hamsters } : {}),
+                ...(others ? { others } : {}),
             };
 
             const petsList = pets.map((p) => ({
@@ -1209,12 +1215,16 @@ const getSocietyInfoPets = async (req, res, next) => {
         let dogs = 0;
         let cats = 0;
         let parrots = 0;
-        let otherPets = 0;
+        let rabbits = 0;
+        let hamsters = 0;
+        let others = 0;
         pets.forEach((p) => {
             if (p.petType === 'Dog') dogs += 1;
             else if (p.petType === 'Cat') cats += 1;
             else if (p.petType === 'Parrot') parrots += 1;
-            else otherPets += 1;
+            else if (p.petType === 'Rabbit') rabbits += 1;
+            else if (p.petType === 'Hamsters') hamsters += 1;
+            else others += 1;
         });
 
         
@@ -1223,7 +1233,9 @@ const getSocietyInfoPets = async (req, res, next) => {
             ...(dogs ? { dogs } : {}),
             ...(cats ? { cats } : {}),
             ...(parrots ? { parrots } : {}),
-            ...(otherPets ? { others: otherPets } : {}),
+            ...(rabbits ? { rabbits } : {}),
+            ...(hamsters ? { hamsters } : {}),
+            ...(others ? { others } : {}),
         };
 
         const petsList = pets.map((p) => {
