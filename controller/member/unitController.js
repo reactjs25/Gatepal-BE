@@ -358,6 +358,8 @@ const getUnitDashboard = async (req, res, next) => {
     const societyId = unitDoc.societyId;
   const samePhysicalUnitIds = await listSamePhysicalUnitIds(unitDoc);
     const isSocietyAdminSession = isScopedSocietyAdminSession(req, authUser);
+    const isSameSocietyAdminContext =
+      isSocietyAdminSession && req.user?.societyId && String(req.user.societyId) === String(societyId);
 
     let societyAdminId = isSocietyAdminSession ? (req.user?.societyAdminId || authUser.linkedSocietyAdminId || null) : null;
     if (isSocietyAdminSession && !societyAdminId) {
@@ -650,7 +652,7 @@ const getUnitDashboard = async (req, res, next) => {
             actionCardType: 'uploadMaintenanceProof',
             Maintenance_proof: [Maintenance_proof],
           }] : []),
-          ...(isSocietyAdminSession ? [{
+          ...(isSameSocietyAdminContext ? [{
             actionCardType: 'accessExpiring',
             access_expire: [access_expire],
           }] : []),
