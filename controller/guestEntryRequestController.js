@@ -322,6 +322,24 @@ const getStatusLabel = (status) =>
                   ? 'Wrong Entry'
                   : 'Awaiting Approval';
 
+const shiftISTYearMonth = (year, month, offset = 0) => {
+  const totalMonths = year * 12 + (month - 1) + offset;
+  return {
+    year: Math.floor(totalMonths / 12),
+    month: (totalMonths % 12) + 1,
+  };
+};
+
+const getISTMonthRange = (date, monthOffset = 0) => {
+  const { year, month } = getISTComponents(date);
+  const rangeMonth = shiftISTYearMonth(year, month, monthOffset);
+  const nextMonth = shiftISTYearMonth(rangeMonth.year, rangeMonth.month, 1);
+  const startAt = createISTDate(rangeMonth.year, rangeMonth.month, 1, 0, 0, 0, 0);
+  const endAt = new Date(createISTDate(nextMonth.year, nextMonth.month, 1, 0, 0, 0, 0).getTime() - 1);
+
+  return { startAt, endAt };
+};
+
   const getGroupInviteGlobalStatus = ({ effectiveStatus, guests, inviteStatusLabel }) => {
     const fallbackStatus = inviteStatusLabel(effectiveStatus);
     const fallbackStatusKey = effectiveStatus === 'active' ? 'approved' : effectiveStatus;
@@ -2098,9 +2116,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         startAt = todayStartIST;
         endAt = todayEndIST;
       } else if (dateFilter === 'this_month' || dateFilter === 'thismonth') {
-        const { year, month } = getISTComponents(now);
-        startAt = createISTDate(year, month, 1, 0, 0, 0, 0);
-        endAt = now;
+        ({ startAt, endAt } = getISTMonthRange(now));
       } else if (
         dateFilter === 'past_3_months' ||
         dateFilter === 'past_3_month' ||
@@ -2111,8 +2127,10 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
         dateFilter === 'past_90_days' ||
         dateFilter === 'last_90_days'
       ) {
-        startAt = new Date(todayStartIST.getTime() - 90 * 24 * 60 * 60 * 1000);
-        endAt = now;
+        const previousThreeMonthRange = getISTMonthRange(now, -3);
+        const currentMonthRange = getISTMonthRange(now);
+        startAt = previousThreeMonthRange.startAt;
+        endAt = new Date(currentMonthRange.startAt.getTime() - 1);
       }
     }
     const status = ['pending', 'approved', 'rejected', 'expired', 'cancelled', 'entered', 'left', 'all'].includes(
