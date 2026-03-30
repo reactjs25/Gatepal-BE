@@ -470,7 +470,7 @@ const getUnitDashboard = async (req, res, next) => {
       recent_announcement = {
         id: 'recent_announcement',
         title: recentAnnouncement.title || 'Recent Announcement',
-        description: contentPreview || 'New announcement from society.',
+        description: recentAnnouncement.contentHtml || `<p>${contentPreview || 'New announcement from society.'}</p>`,
         severity: 'success',
         ctaLabel: 'View Details',
         titleIcon: '/assets/announcement 1.png',
@@ -517,7 +517,8 @@ const getUnitDashboard = async (req, res, next) => {
       society_meeting = {
         id: 'meeting',
         title: 'Upcoming society meeting',
-        description: `General meeting of society will be held on ${formattedDate}, ${dayName} at ${formattedTime} in ${venue}. ${agendaPreview ? agendaPreview + '...' : 'All members are requested to attend.'}`,
+        description: upcomingMeeting.agendaHtml
+          || `<p>General meeting of society will be held on ${formattedDate}, ${dayName} at ${formattedTime} in ${venue}. ${agendaPreview ? `${agendaPreview}...` : 'All members are requested to attend.'}</p>`,
         severity: 'success',
         ctaLabel: 'View Details',
         titleIcon: '/assets/society_icon.png',
