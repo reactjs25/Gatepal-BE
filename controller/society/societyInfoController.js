@@ -38,6 +38,12 @@ const assertSocietyInfoAccess = (req, authUser) => {
     }
 };
 
+const toFamilyOccupantType = (occupantType) => {
+    if (occupantType === 'unit_owner') return 'unit_owner_family_member';
+    if (occupantType === 'tenant') return 'tenant_family_member';
+    return occupantType || null;
+};
+
 const resolveSocietyForSocietyInfo = async (authUser, req) => {
     if (!authUser) throw createHttpError('Unauthorized.', 401);
     const effectiveRole = req?.user?.effectiveRole || authUser.role;
@@ -724,7 +730,7 @@ const getSocietyInfoResidents = async (req, res, next) => {
                 unitId: String(fm.unitId),
                 wingName: unitDoc.wingName || null,
                 unitNumber: unitDoc.unitNumber || null,
-                occupantType: unitDoc.occupantType || null,
+                occupantType: toFamilyOccupantType(unitDoc.occupantType),
                 imageUrl: fm.imageUrl || null,
             }));
 
@@ -842,7 +848,7 @@ const getSocietyInfoResidents = async (req, res, next) => {
                 unitId: String(fm.unitId),
                 wingName: unitInfo.wingName || null,
                 unitNumber: unitNumber || null,
-                occupantType: unitInfo.occupantType || null,
+                occupantType: toFamilyOccupantType(unitInfo.occupantType),
                 imageUrl: fm.imageUrl || null,
             };
         });
