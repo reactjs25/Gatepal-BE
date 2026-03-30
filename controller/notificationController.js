@@ -304,6 +304,64 @@ const dedupeNotifications = (notifications = []) => {
   return Array.from(grouped.values());
 };
 
+const buildDeduplicatedNotificationMatch = (notification = {}) => {
+  const data = notification.data || {};
+  const type = notification.type || 'general';
+
+  if (data.requestId) {
+    return {
+      type,
+      'data.requestId': data.requestId,
+    };
+  }
+
+  if (data.announcementId) {
+    return {
+      type,
+      'data.announcementId': data.announcementId,
+    };
+  }
+
+  if (data.meetingId) {
+    return {
+      type,
+      'data.meetingId': data.meetingId,
+    };
+  }
+
+  if (data.ruleId) {
+    return {
+      type,
+      'data.ruleId': data.ruleId,
+    };
+  }
+
+  if (data.maintenanceId) {
+    return {
+      type,
+      'data.maintenanceId': data.maintenanceId,
+      'data.month': data.month,
+      'data.year': data.year,
+    };
+  }
+
+  if (data.testNotification === 'true' && data.timestamp) {
+    return {
+      type,
+      'data.testNotification': 'true',
+      'data.timestamp': data.timestamp,
+    };
+  }
+
+  return {
+    type,
+    title: notification.title || '',
+    body: notification.body || '',
+    createdAt: notification.createdAt,
+    societyId: notification.societyId || data.societyId || null,
+  };
+};
+
 
 
 
@@ -589,21 +647,55 @@ const markAsRead = async (req, res, next) => {
 
     const { id } = req.params;
 
-    const query = getNotificationQuery(req);
-    query._id = id;
+    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
+    const baseQuery = getNotificationQuery(req, {
+      societyId: selectedUnitScope?.societyId || selectedSocietyId,
+      unitScope: selectedUnitScope,
+      includeUnitlessWhenScoped: Boolean(selectedUnitScope),
+    });
 
-    const notification = await Notification.findOneAndUpdate(
-      query,
-      { isRead: true, readAt: new Date() },
-      { new: true }
-    );
+    const notification = await Notification.findOne({
+      ...baseQuery,
+      _id: id,
+    }).lean();
 
     if (!notification) {
       throw createHttpError('Notification not found.', 404);
     }
 
+    const readAt = new Date();
+
+    if (selectedUnitScope) {
+      const result = await Notification.updateMany(
+        {
+          ...baseQuery,
+          ...buildDeduplicatedNotificationMatch(notification),
+          isRead: false,
+        },
+        { isRead: true, readAt }
+      );
+
+      return sendSuccessResponse(res, 200, 'Notification marked as read.', {
+        data: {
+          id: String(notification._id),
+          modifiedCount: result.modifiedCount,
+          readAt,
+        },
+      });
+    }
+
+    const updatedNotification = await Notification.findOneAndUpdate(
+      {
+        ...baseQuery,
+        _id: id,
+      },
+      { isRead: true, readAt },
+      { new: true }
+    );
+
     return sendSuccessResponse(res, 200, 'Notification marked as read.', {
-      data: notification,
+      data: updatedNotification,
     });
   } catch (error) {
     return next(error);
@@ -628,17 +720,48 @@ const markMultipleAsRead = async (req, res, next) => {
       throw createHttpError('notificationIds array is required.', 400);
     }
 
-    const query = getNotificationQuery(req);
-    query._id = { $in: notificationIds };
-    query.isRead = false;
+    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
+    const baseQuery = getNotificationQuery(req, {
+      societyId: selectedUnitScope?.societyId || selectedSocietyId,
+      unitScope: selectedUnitScope,
+      includeUnitlessWhenScoped: Boolean(selectedUnitScope),
+    });
 
-    const result = await Notification.updateMany(
-      query,
-      { isRead: true, readAt: new Date() }
-    );
+    const readAt = new Date();
+    let modifiedCount = 0;
+
+    if (selectedUnitScope) {
+      const seedNotifications = await Notification.find({
+        ...baseQuery,
+        _id: { $in: notificationIds },
+      }).lean();
+
+      for (const notification of seedNotifications) {
+        const result = await Notification.updateMany(
+          {
+            ...baseQuery,
+            ...buildDeduplicatedNotificationMatch(notification),
+            isRead: false,
+          },
+          { isRead: true, readAt }
+        );
+        modifiedCount += result.modifiedCount;
+      }
+    } else {
+      const result = await Notification.updateMany(
+        {
+          ...baseQuery,
+          _id: { $in: notificationIds },
+          isRead: false,
+        },
+        { isRead: true, readAt }
+      );
+      modifiedCount = result.modifiedCount;
+    }
 
     return sendSuccessResponse(res, 200, 'Notifications marked as read.', {
-      data: { modifiedCount: result.modifiedCount },
+      data: { modifiedCount },
     });
   } catch (error) {
     return next(error);
