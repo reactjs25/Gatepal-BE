@@ -161,6 +161,34 @@ const countAdditionalResidentMembers = ({ occupants, familyMembers }) => {
     return extra;
 };
 
+const buildPetsSummary = (pets = []) => {
+    let dogs = 0;
+    let cats = 0;
+    let parrots = 0;
+    let rabbits = 0;
+    let hamsters = 0;
+    let others = 0;
+
+    pets.forEach((pet) => {
+        if (pet.petType === 'Dog') dogs += 1;
+        else if (pet.petType === 'Cat') cats += 1;
+        else if (pet.petType === 'Parrot') parrots += 1;
+        else if (pet.petType === 'Rabbit') rabbits += 1;
+        else if (pet.petType === 'Hamsters') hamsters += 1;
+        else others += 1;
+    });
+
+    return {
+        title: 'Pets',
+        ...(dogs ? { dogs } : {}),
+        ...(cats ? { cats } : {}),
+        ...(parrots ? { parrots } : {}),
+        ...(rabbits ? { rabbits } : {}),
+        ...(hamsters ? { hamsters } : {}),
+        ...(others ? { others } : {}),
+    };
+};
+
 const toValidTimestamp = (value) => {
     if (!value) return null;
     const d = value instanceof Date ? value : new Date(value);
@@ -325,24 +353,7 @@ const getSocietyInfo = async (req, res, next) => {
 
             const pets = await Pet.find({ unitId: canonicalUnitId, deletedAt: null }).lean();
 
-            let dogs = 0;
-            let cats = 0;
-            let parrots = 0;
-            let otherPets = 0;
-            pets.forEach((p) => {
-                if (p.petType === 'Dog') dogs += 1;
-                else if (p.petType === 'Cat') cats += 1;
-                else if (p.petType === 'Parrot') parrots += 1;
-                else otherPets += 1;
-            });
-
-            const petsSummary = {
-                title: 'Pets',
-                ...(dogs ? { dogs } : {}),
-                ...(cats ? { cats } : {}),
-                ...(parrots ? { parrots } : {}),
-                ...(otherPets ? { others: otherPets } : {}),
-            };
+            const petsSummary = buildPetsSummary(pets);
 
             const data = {
                 societyId: String(society._id),
@@ -465,25 +476,7 @@ const getSocietyInfo = async (req, res, next) => {
 
         const pets = await Pet.find({ unitId: { $regex: `^${prefix}` }, deletedAt: null }).lean();
 
-        let dogs = 0;
-        let cats = 0;
-        let parrots = 0;
-        let otherPets = 0;
-        pets.forEach((p) => {
-            if (p.petType === 'Dog') dogs += 1;
-            else if (p.petType === 'Cat') cats += 1;
-            else if (p.petType === 'Parrot') parrots += 1;
-            else otherPets += 1;
-        });
-
-        
-        const petsSummary = {
-            title: 'Pets',
-            ...(dogs ? { dogs } : {}),
-            ...(cats ? { cats } : {}),
-            ...(parrots ? { parrots } : {}),
-            ...(otherPets ? { others: otherPets } : {}),
-        };
+        const petsSummary = buildPetsSummary(pets);
 
         
         const pendingMissing = await MissingUnitRequest.find(
