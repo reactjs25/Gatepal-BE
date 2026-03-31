@@ -105,6 +105,74 @@ const getRequestedSocietyId = (req) => {
   return rawSocietyId;
 };
 
+const isGuardUser = (req) => {
+  const effectiveRole = req.user?.effectiveRole || req.appUser?.role;
+  return effectiveRole === 'guard';
+};
+
+const getGuardAccessibleSocietyIds = (authUser) => {
+  if (!authUser) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      [
+        ...(Array.isArray(authUser.guardSocieties)
+          ? authUser.guardSocieties.map((society) => society?.societyId)
+          : []),
+        authUser.societyId,
+        authUser.lastLoggedInSocietyId,
+      ]
+        .filter(Boolean)
+        .map((societyId) => String(societyId))
+    )
+  );
+};
+
+const resolveEffectiveSocietyId = (req) => {
+  const requestedSocietyId = getRequestedSocietyId(req);
+  if (!isGuardUser(req)) {
+    return requestedSocietyId;
+  }
+
+  const accessibleSocietyIds = getGuardAccessibleSocietyIds(req.appUser);
+  if (requestedSocietyId) {
+    if (accessibleSocietyIds.length > 0 && !accessibleSocietyIds.includes(String(requestedSocietyId))) {
+      throw createHttpError('Guard is not associated with this society.', 403);
+    }
+
+    return requestedSocietyId;
+  }
+
+  const guardSocieties = Array.isArray(req.appUser?.guardSocieties) ? req.appUser.guardSocieties : [];
+  const onDutySocietyId = guardSocieties.find((society) => society?.isOnDuty === true && society?.societyId)?.societyId;
+  if (onDutySocietyId) {
+    return String(onDutySocietyId);
+  }
+
+  if (
+    req.appUser?.lastLoggedInSocietyId &&
+    accessibleSocietyIds.includes(String(req.appUser.lastLoggedInSocietyId))
+  ) {
+    return String(req.appUser.lastLoggedInSocietyId);
+  }
+
+  if (req.appUser?.societyId && accessibleSocietyIds.includes(String(req.appUser.societyId))) {
+    return String(req.appUser.societyId);
+  }
+
+  if (accessibleSocietyIds.length === 1) {
+    return accessibleSocietyIds[0];
+  }
+
+  if (accessibleSocietyIds.length > 0) {
+    return accessibleSocietyIds[0];
+  }
+
+  return null;
+};
+
 const getRequestedUnitId = (req) => {
   const rawUnitId = (req.query?.unitId || req.body?.unitId || '').toString().trim();
   if (!rawUnitId) {
@@ -383,7 +451,7 @@ const getNotifications = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedSocietyId = resolveEffectiveSocietyId(req);
     const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
     const effectiveSocietyId = selectedUnitScope?.societyId || selectedSocietyId;
     const query = getNotificationQuery(req, {
@@ -474,7 +542,7 @@ const getUnreadCount = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedSocietyId = resolveEffectiveSocietyId(req);
     const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
     const effectiveSocietyId = selectedUnitScope?.societyId || selectedSocietyId;
     const query = getNotificationQuery(req, {
@@ -532,7 +600,7 @@ const markAsRead = async (req, res, next) => {
 
     const { id } = req.params;
 
-    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedSocietyId = resolveEffectiveSocietyId(req);
     const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
     const baseQuery = getNotificationQuery(req, {
       societyId: selectedUnitScope?.societyId || selectedSocietyId,
@@ -605,7 +673,7 @@ const markMultipleAsRead = async (req, res, next) => {
       throw createHttpError('notificationIds array is required.', 400);
     }
 
-    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedSocietyId = resolveEffectiveSocietyId(req);
     const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
     const baseQuery = getNotificationQuery(req, {
       societyId: selectedUnitScope?.societyId || selectedSocietyId,
@@ -664,7 +732,7 @@ const markAllAsRead = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedSocietyId = resolveEffectiveSocietyId(req);
     const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
     const query = getNotificationQuery(req, {
       societyId: selectedUnitScope?.societyId || selectedSocietyId,
@@ -699,7 +767,13 @@ const deleteNotification = async (req, res, next) => {
 
     const { id } = req.params;
 
-    const query = getNotificationQuery(req);
+    const selectedSocietyId = resolveEffectiveSocietyId(req);
+    const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
+    const query = getNotificationQuery(req, {
+      societyId: selectedUnitScope?.societyId || selectedSocietyId,
+      unitScope: selectedUnitScope,
+      includeUnitlessWhenScoped: Boolean(selectedUnitScope),
+    });
     query._id = id;
 
     const notification = await Notification.findOneAndDelete(query);
@@ -725,7 +799,7 @@ const clearReadNotifications = async (req, res, next) => {
       throw createHttpError('Unauthorized.', 401);
     }
 
-    const selectedSocietyId = getRequestedSocietyId(req);
+    const selectedSocietyId = resolveEffectiveSocietyId(req);
     const selectedUnitScope = await resolveRequestedUnitScope(req, selectedSocietyId);
     const query = getNotificationQuery(req, {
       societyId: selectedUnitScope?.societyId || selectedSocietyId,
