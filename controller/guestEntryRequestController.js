@@ -1684,7 +1684,7 @@ const createGuestEntryRequest = async (req, res, next) => {
     if (alreadyInsideEntry) {
       return next(
         createHttpError(
-          `This visitor is already inside the society (Entry: ${alreadyInsideEntry.requestId}). Please mark exit first.`,
+          'This visitor is already inside the society. Please mark exit first.',
           409
         )
       );
@@ -4477,7 +4477,7 @@ const createOnboardedVisitorEntry = async (req, res, next) => {
     if (alreadyInsideEntry) {
       return next(
         createHttpError(
-          `This visitor is already inside the society (Entry: ${alreadyInsideEntry.requestId}). Please mark exit first.`,
+          'This visitor is already inside the society. Please mark exit first.',
           409
         )
       );
@@ -4800,7 +4800,7 @@ const allowDailyHelpEntryBridge = async (req, res, next) => {
     if (alreadyInsideEntry) {
       return next(
         createHttpError(
-          `This visitor is already inside the society (Entry: ${alreadyInsideEntry.requestId}). Please mark exit first.`,
+          'This visitor is already inside the society. Please mark exit first.',
           409
         )
       );
