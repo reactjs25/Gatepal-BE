@@ -17,6 +17,7 @@ const { assertUnitAccess, buildCanonicalUnitId, listSamePhysicalUnitIds } = requ
 const { toISTDateLabel, toISTTimeLabel } = require('../../utils/dateTime');
 const { lookupSocietyAdminsByMobile } = require('../../utils/societyAdminUtils');
 const { isScopedSocietyAdminSession } = require('../../utils/adminSocietyContext');
+const { buildNotificationQuery, dedupeNotifications } = require('../../utils/notificationScope');
 
 const OCCUPANT_TYPES = new Set([
   'unit_owner',
@@ -372,7 +373,7 @@ const getUnitDashboard = async (req, res, next) => {
       }
     }
     
-    const [familyRecordCount, sameUnitDocs, vehicleCount, petCount, announcementDocs, meetingDocs, ruleDocs, maintenanceDocs, userNotificationCount, adminNotificationCount] = await Promise.all([
+    const [familyRecordCount, sameUnitDocs, vehicleCount, petCount, announcementDocs, meetingDocs, ruleDocs, maintenanceDocs] = await Promise.all([
       FamilyMember.countDocuments({ unitId: { $in: samePhysicalUnitIds } }),
       MemberUnit.find(
         { _id: { $in: samePhysicalUnitIds } },
@@ -384,9 +385,43 @@ const getUnitDashboard = async (req, res, next) => {
       Meeting.find({ societyId, deletedAt: null }).sort({ createdAt: -1 }).lean(),
       SocietyRule.find({ societyId, deletedAt: null }).lean(),
       Maintenance.find({ unitId: canonicalUnitId, deletedAt: null }).lean(),
-      Notification.countDocuments({ userId: authUser._id, isRead: false, societyId }),
-      societyAdminId ? Notification.countDocuments({ societyAdminId, isRead: false, societyId }) : Promise.resolve(0),
     ]);
+
+    const residentUserIds = Array.from(
+      new Set(
+        sameUnitDocs
+          .map((doc) => doc?.memberId)
+          .filter(Boolean)
+          .map((memberId) => String(memberId))
+      )
+    );
+    const legacyUnitIds = samePhysicalUnitIds.reduce((acc, currentUnitId) => {
+      const normalized = String(currentUnitId);
+      acc.push(normalized);
+      if (mongoose.Types.ObjectId.isValid(normalized)) {
+        acc.push(new mongoose.Types.ObjectId(normalized));
+      }
+      return acc;
+    }, []);
+    const unreadNotificationQuery = buildNotificationQuery({
+      userId: authUser._id,
+      societyAdminId,
+      societyId: String(societyId),
+      unitScope: {
+        requestedUnitId: String(unitDoc._id),
+        societyId: String(societyId),
+        canonicalUnitId,
+        legacyUnitIds,
+        residentUserIds,
+        wingName: unitDoc.wingName,
+        wingNameLower: unitDoc.wingNameLower,
+        unitNumber: unitDoc.unitNumber,
+        unitNumberLower: unitDoc.unitNumberLower,
+      },
+      includeUnitlessWhenScoped: true,
+    });
+    unreadNotificationQuery.isRead = false;
+    const unreadNotifications = await Notification.find(unreadNotificationQuery).sort({ createdAt: -1 }).lean();
 
     const sameUnitResidentIds = new Set(
       sameUnitDocs
@@ -395,7 +430,7 @@ const getUnitDashboard = async (req, res, next) => {
     );
     const familyCount = familyRecordCount + sameUnitResidentIds.size;
 
-    const unreadNotificationCount = userNotificationCount + adminNotificationCount;
+    const unreadNotificationCount = dedupeNotifications(unreadNotifications).length;
 
     const addedItems = [familyCount > 0, vehicleCount > 0, petCount > 0].filter(Boolean).length;
     const progressPercent = Math.round((addedItems / 3) * 100);
