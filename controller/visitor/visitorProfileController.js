@@ -147,7 +147,7 @@ const buildVisitorProfileResponse = (user, options = {}) => {
         vehicleNumber: user.visitorVehicleNumber || null,
         imageUrl: user.profilePhoto || null,
         message:
-            'Hello, our society is using GatePal™ app to manage our society. It is a wonderful application to manage guest entries and approvals. I strongly recommend for your society. You can download it from https://maplink.com',
+            'Hello, our society is using GatePal™ app to manage our society. It is a wonderful application to manage guest entries and approvals. I strongly recommend for your society. You can download it from https://gatepal.in',
         ...(includeQr ? { qrCodeImageUrl: user.qrCodeImage || null } : {}),
     };
 };
