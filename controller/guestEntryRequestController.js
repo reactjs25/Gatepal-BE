@@ -2770,7 +2770,9 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
         vehicleNumber: 1,
         status: 1,
         wingName: 1,
+        wingNameLower: 1,
         unitNumber: 1,
+        unitNumberLower: 1,
         createdAt: 1,
         guestImageUrl: 1,
         entryAllowedAt: 1,
@@ -2803,6 +2805,56 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
         .filter(([, imageUrl]) => Boolean(imageUrl))
     );
 
+    const unitCriteria = Array.from(
+      new Map(
+        (docs || [])
+          .map((doc) => {
+            const wingNameLower = normalizeString(doc.wingNameLower || doc.wingName).toLowerCase();
+            const unitNumberLower = normalizeString(doc.unitNumberLower || doc.unitNumber).toLowerCase();
+            if (!wingNameLower || !unitNumberLower) return null;
+            return [
+              `${wingNameLower}::${unitNumberLower}`,
+              { wingNameLower, unitNumberLower },
+            ];
+          })
+          .filter(Boolean)
+      ).values()
+    );
+
+    const unitDocs = unitCriteria.length
+      ? await MemberUnit.find(
+          {
+            societyId,
+            $and: [
+              { $or: unitCriteria },
+              {
+                $or: [
+                  { occupancyStatus: 'currently_residing' },
+                  { occupancyStatus: 'unit_rented', occupantType: { $in: ['tenant', 'tenant_family_member'] } },
+                ],
+              },
+            ],
+          },
+          { _id: 1, wingNameLower: 1, unitNumberLower: 1, occupantType: 1 }
+        ).lean()
+      : [];
+
+    const occupantPriority = {
+      tenant: 0,
+      unit_owner: 1,
+      tenant_family_member: 2,
+      unit_owner_family_member: 3,
+    };
+    const unitIdsByDestination = new Map();
+    for (const unit of unitDocs || []) {
+      const key = `${unit.wingNameLower}::${unit.unitNumberLower}`;
+      const existing = unitIdsByDestination.get(key);
+      const priority = occupantPriority[unit.occupantType] ?? 99;
+      if (!existing || priority < existing.priority) {
+        unitIdsByDestination.set(key, { unitId: String(unit._id), priority });
+      }
+    }
+
     const payload = (docs || []).map((doc) => {
       const companyLogo = resolveCompanyLogo({
         visitorType: doc.visitorType,
@@ -2810,6 +2862,10 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
         deliveryCompanyLogos,
       });
       const labels = toVisitorLabels(doc.visitorType || 'guest');
+      const unitKey = `${normalizeString(doc.wingNameLower || doc.wingName).toLowerCase()}::${normalizeString(
+        doc.unitNumberLower || doc.unitNumber
+      ).toLowerCase()}`;
+      const unitId = unitIdsByDestination.get(unitKey)?.unitId || null;
       return {
         requestId: doc.requestId,
         status: getStatusLabel(doc.status),
@@ -2817,7 +2873,7 @@ const listGuestEntryRequestsForSocietyAdmin = async (req, res, next) => {
         category: labels.category,
         visitorType: labels.visitorType,
         requestedOn: doc.createdAt ? toISTDateTimeLabelWithoutYear(doc.createdAt) : null,
-        unit: { wingName: doc.wingName, unitNumber: doc.unitNumber },
+        unit: { unitId, wingName: doc.wingName, unitNumber: doc.unitNumber },
         guest: {
           name: doc.guestName,
           countryCode: doc.guestCountryCode || '+91',
