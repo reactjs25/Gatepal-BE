@@ -90,6 +90,22 @@ const assertUnitResidentAccess = async ({ unitId, authUser }) => {
   return unitDoc;
 };
 
+const assertUnitSocietyAdminAccess = async ({ unitId, adminSocietyId }) => {
+  const id = normalizeString(unitId);
+  if (!id) throw createHttpError('unitId path parameter is required', 400);
+  if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError('Invalid unit ID format', 400);
+  const unitDoc = await MemberUnit.findById(id);
+  if (!unitDoc) throw createHttpError('Unit not found', 404);
+
+  if (!adminSocietyId || String(unitDoc.societyId) !== String(adminSocietyId)) {
+    throw createHttpError('Forbidden: unit does not belong to your society', 403);
+  }
+
+  await assertUnitSocietyIsAccessible(unitDoc);
+
+  return unitDoc;
+};
+
 const listSamePhysicalUnitIds = async (unitDoc) => {
   if (!unitDoc) return [];
 
@@ -114,5 +130,6 @@ module.exports = {
   assertUnitAccess,
   assertMemberUnitOwnership,
   assertUnitResidentAccess,
+  assertUnitSocietyAdminAccess,
   listSamePhysicalUnitIds,
 };

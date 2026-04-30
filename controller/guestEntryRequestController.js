@@ -22,7 +22,7 @@ const { getOtherVisitorCompanyInfo } = require('../utils/otherVisitorCompanies')
 const { getWorkCategoryDisplayName } = require('../utils/workCategories');
 const { generateStableMemberCode } = require('../utils/memberQrIdentity');
 const { normalizeCountryCode, normalizeDigits, normalizePhoneDigits, isTenDigitPhone } = require('../utils/phoneNumber');
-const { assertUnitResidentAccess, listSamePhysicalUnitIds } = require('../utils/unitAccess');
+const { assertUnitResidentAccess, assertUnitSocietyAdminAccess, listSamePhysicalUnitIds } = require('../utils/unitAccess');
 const {
   toISTDateLabel,
   toISTDateTimeLabel,
@@ -2915,7 +2915,12 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
 
     let unitDoc;
     try {
-      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+      if (isSocietyAdminPrincipal(req, authUser)) {
+        const adminSocietyId = req.user?.societyId || authUser.adminSocietyId;
+        unitDoc = await assertUnitSocietyAdminAccess({ unitId, adminSocietyId });
+      } else {
+        unitDoc = await assertUnitResidentAccess({ unitId, authUser });
+      }
     } catch (e) {
       return next(e);
     }
