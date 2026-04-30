@@ -2915,19 +2915,7 @@ const getGuestEntryRequestDetailForMember = async (req, res, next) => {
 
     let unitDoc;
     try {
-      if (isSocietyAdminPrincipal(req, authUser)) {
-        const id = normalizeString(unitId);
-        if (!id) return next(createHttpError('Invalid unit ID.', 400));
-        unitDoc = await MemberUnit.findById(id);
-        if (!unitDoc) return next(createHttpError('Unit not found.', 404));
-
-        const adminSocietyId = req.user?.societyId || authUser.adminSocietyId;
-        if (!adminSocietyId || String(unitDoc.societyId) !== String(adminSocietyId)) {
-          return next(createHttpError('Forbidden: unit does not belong to your society.', 403));
-        }
-      } else {
-        unitDoc = await assertUnitResidentAccess({ unitId, authUser });
-      }
+      unitDoc = await assertUnitResidentAccess({ unitId, authUser });
     } catch (e) {
       return next(e);
     }
