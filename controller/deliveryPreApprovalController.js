@@ -284,12 +284,12 @@ const createDeliveryPreApproval = async (req, res, next) => {
         preApprovalId: approval.preApprovalId,
         category: 'Delivery',
         visitorType: 'Delivery Executive',
+        workCategory: 'delivery_executive',
         company: {
           id: companyPayload.id,
           name: companyPayload.name,
           imageUrl: companyPayload.imageUrl,
         },
-        visitorName: approval.visitorName || null,
         unit: {
           id: String(unitDoc._id),
           wingName: unitDoc.wingName,
@@ -424,12 +424,12 @@ const updateDeliveryPreApproval = async (req, res, next) => {
         preApprovalId: approval.preApprovalId,
         category: 'Delivery',
         visitorType: 'Delivery Executive',
+        workCategory: 'delivery_executive',
         company: {
           id: approval.companyId || null,
           name: approval.companyName || null,
           imageUrl: approval.companyImageUrl || null,
         },
-        visitorName: approval.visitorName || null,
         unit: {
           id: String(unitDoc._id),
           wingName: unitDoc.wingName,

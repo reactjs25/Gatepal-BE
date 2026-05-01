@@ -590,15 +590,7 @@ const getUnitDashboard = async (req, res, next) => {
         };
       } 
       else if (currentMonthMaintenance && currentMonthMaintenance.status === 'Uploaded') {
-        Maintenance_proof = {
-          id: 'maintenance_due',
-          title: 'Maintenance Proof Pending',
-          description: `Your maintenance proof for ${currentMonth} ${currentYear} is pending verification. Please wait for admin approval.`,
-          severity: 'info',
-          ctaLabel: 'View Status',
-          titleIcon: '/assets/maintainance.png',
-          ctaLabelIcon: '/assets/view_details.png',
-        };
+        Maintenance_proof = null;
       }
       else {
         const lastDayOfMonth = new Date(currentYear, currentMonthIndex + 1, 0);
