@@ -2655,7 +2655,7 @@ const listGuestEntryRequestsForMember = async (req, res, next) => {
       const { _sortAt, ...rest } = item;
       return rest;
     });
-    return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully.', { data: finalPayload });
+    return sendSuccessResponse(res, 200, 'Guest entry requests fetched successfully.', { data: finalPayload, filters: ['Expired'] });
   } catch (error) {
     return next(setErrorDefaults(error, 'Failed to fetch guest entry requests'));
   }
