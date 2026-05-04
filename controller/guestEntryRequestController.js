@@ -303,7 +303,7 @@ const LEGACY_WRONG_ENTRY_REASON_MAP = {
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const normalizeCompanyId = (name) =>
-  (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 const getStatusLabel = (status) =>
   status === 'approved'

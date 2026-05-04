@@ -30,7 +30,7 @@ const { uploadBufferToS3 } = require('../utils/s3Upload');
 const escapeRegex = (value) => (value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const normalizeCompanyId = (name) =>
-  (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 const getLastBodyValue = (value) => {
   if (!Array.isArray(value)) return value;
