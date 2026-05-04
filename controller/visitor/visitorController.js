@@ -30,7 +30,11 @@ const getDeliveryCompanies = async (req, res, next) => {
 
     if (existing && existing.length > 0) {
       return sendSuccessResponse(res, 200, 'Delivery companies fetched successfully.', {
-        data: existing.map((c) => ({ id: c.id, name: c.name, imageUrl: c.imageUrl })),
+        data: existing.map((c) => ({
+          id: c.id,
+          name: c.name,
+          imageUrl: c.imageUrl || '/assets/Default.png',
+        })),
       });
     }
 

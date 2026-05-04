@@ -81,8 +81,7 @@ const DELIVERY_COMPANIES = [
 const toId = (name) =>
   name
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '');
+    .replace(/[^a-z0-9]/g, '');
 
 const seed = async () => {
   const uri = process.env.MONGO_URI;
@@ -111,25 +110,20 @@ const seed = async () => {
 
     console.log(`Removed ${deleted.deletedCount} companies not in seed list`);
 
-    let inserted = 0;
-    let skipped = 0;
+    const result = await DeliveryCompany.bulkWrite(
+      docs.map((doc) => ({
+        updateOne: {
+          filter: { id: doc.id },
+          update: { $set: doc },
+          upsert: true,
+        },
+      })),
+      { ordered: false }
+    );
 
-    for (const doc of docs) {
-      try {
-        await DeliveryCompany.create(doc);
-        inserted++;
-        console.log(`Inserted: ${doc.name}`);
-      } catch (err) {
-        if (err.code === 11000) {
-          skipped++;
-          console.log(`Skipped (already exists): ${doc.name}`);
-        } else {
-          console.error(`Error inserting ${doc.name}:`, err.message);
-        }
-      }
-    }
-
-    console.log(`\nDone! Inserted: ${inserted}, Skipped: ${skipped}`);
+    console.log(
+      `\nDone! Inserted: ${result.upsertedCount}, Updated: ${result.modifiedCount}, Matched: ${result.matchedCount}`
+    );
   } catch (err) {
     console.error('Failed to seed delivery companies:', err.message);
   } finally {
